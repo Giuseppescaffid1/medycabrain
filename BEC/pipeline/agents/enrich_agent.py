@@ -14,6 +14,8 @@ from __future__ import annotations
 import logging
 import time
 
+from django.db.models import Q
+
 from core.models import DONE, FAILED, PENDING, SKIPPED, Enrichment, Reel, ReelArgument
 from llm import client, prompts
 
@@ -81,8 +83,12 @@ def run(ctx) -> dict:
     if not client.available():
         return {"skipped": True, "note": "HF_API_TOKEN not set"}
 
-    # Stage A: enrichment
-    qs = Reel.objects.filter(enrich_status=PENDING, transcribe_status=DONE, is_active=True)
+    # Stage A: enrichment. Include silent reels (transcription SKIPPED) —
+    # they still have captions worth enriching.
+    qs = Reel.objects.filter(
+        Q(transcribe_status=DONE) | Q(transcribe_status=SKIPPED),
+        enrich_status=PENDING, is_active=True,
+    )
     if ctx.limit:
         qs = qs[: ctx.limit]
     enriched = failed = 0

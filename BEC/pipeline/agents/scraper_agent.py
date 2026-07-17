@@ -113,7 +113,7 @@ def _scrape_account_graphql(account: TrackedAccount, budget: list[int]) -> tuple
         time.sleep(random.uniform(min_delay, min_delay * 2))
         nodes, page_info = ig_client.fetch_reels_page(
             session, profile.ig_user_id, doc_id, after=cursor,
-            page_size=page_size, csrftoken=csrf,
+            page_size=page_size, csrftoken=csrf, handle=account.username,
         )
         budget[0] -= 1
 

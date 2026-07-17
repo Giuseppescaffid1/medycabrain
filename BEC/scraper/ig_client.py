@@ -34,22 +34,20 @@ logger = logging.getLogger(__name__)
 
 IG_APP_ID = "936619743392459"
 GRAPHQL_URL = "https://www.instagram.com/graphql/query"
-WEB_PROFILE_URL = "https://www.instagram.com/api/v1/users/web_profile_info/"
+TOPSEARCH_URL = "https://www.instagram.com/api/v1/web/search/topsearch/"
 
-_USER_AGENT = (
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) "
-    "Chrome/124.0.0.0 Safari/537.36"
-)
-
+# NOTE (verified 2026-07-17 from VPS 81.17.96.27, no proxy):
+#   - web_profile_info is gated from datacenter IPs (returns the 404 HTML
+#     app-shell even when logged in). Resolve username -> user_id via the
+#     topsearch endpoint instead.
+#   - Do NOT set an explicit Accept header: curl_cffi's impersonation sends
+#     Chrome's exact Accept; overriding it can flip anti-bot behaviour.
+#     Let impersonate own UA + Accept + sec-* headers.
 IG_HEADERS = {
-    "User-Agent": _USER_AGENT,
-    "Accept": "*/*",
     "Accept-Language": "it-IT,it;q=0.9,en-US;q=0.8,en;q=0.7",
     "X-IG-App-ID": IG_APP_ID,
     "X-Requested-With": "XMLHttpRequest",
     "Referer": "https://www.instagram.com/",
-    "Origin": "https://www.instagram.com",
 }
 
 _MAX_ATTEMPTS = 3
@@ -110,20 +108,38 @@ def _request(session, method: str, url: str, csrftoken: str = "", **kwargs) -> d
 # ── Profile resolution ─────────────────────────────────────────────────────────
 
 def resolve_user(session, username: str, csrftoken: str = "") -> ProfileMeta:
-    data = _request(
-        session, "GET", WEB_PROFILE_URL,
-        csrftoken=csrftoken, params={"username": username},
-    )
-    user = (data.get("data") or {}).get("user")
-    if not user:
-        raise IGSchemaChanged(f"web_profile_info missing data.user for @{username}")
-    return ProfileMeta(
-        username=username,
-        ig_user_id=str(user.get("id") or ""),
-        display_name=user.get("full_name") or "",
-        profile_pic_url=user.get("profile_pic_url_hd") or user.get("profile_pic_url") or "",
-        bio=user.get("biography") or "",
-        followers_count=(user.get("edge_followed_by") or {}).get("count"),
+    """Resolve @username -> ProfileMeta via the topsearch endpoint.
+
+    web_profile_info is IP-gated from datacenter hosts, so we search and
+    match the exact username. Instagram's search dislikes dotted handles as
+    a query, so we try a few query forms and match case-insensitively.
+    """
+    target = username.lower().lstrip("@")
+    queries = [username, username.replace(".", " "),
+               username.split(".")[0], username.split("_")[0]]
+    seen = set()
+    for q in queries:
+        if q in seen:
+            continue
+        seen.add(q)
+        data = _request(
+            session, "GET", TOPSEARCH_URL,
+            csrftoken=csrftoken, params={"query": q, "context": "blended"},
+        )
+        for entry in data.get("users") or []:
+            user = entry.get("user") or {}
+            if (user.get("username") or "").lower() == target:
+                return ProfileMeta(
+                    username=username,
+                    ig_user_id=str(user.get("pk") or user.get("pk_id") or ""),
+                    display_name=user.get("full_name") or "",
+                    profile_pic_url=user.get("profile_pic_url") or "",
+                    bio="",  # topsearch omits bio; not needed for scraping
+                    followers_count=None,  # topsearch omits follower count
+                )
+    raise IGBlocked(
+        f"could not resolve @{username} via topsearch "
+        f"(handle may not exist or is not surfaced in search)"
     )
 
 
@@ -131,36 +147,44 @@ def resolve_user(session, username: str, csrftoken: str = "") -> ProfileMeta:
 
 def fetch_reels_page(
     session, ig_user_id: str, doc_id: str, after: str = "",
-    page_size: int = 12, csrftoken: str = "",
+    page_size: int = 12, csrftoken: str = "", handle: str = "",
 ) -> tuple[list[dict], dict]:
     """Fetch one page of the clips (reels) connection.
 
     Returns (raw_nodes, page_info). page_info = {has_next_page, end_cursor}.
     Raises IGSchemaChanged if the expected connection keys are absent.
     """
+    # Verified variable shape (2026-07-17): target_user_id goes INSIDE `data`,
+    # NOT at the top level — a top-level target_user_id yields a CRITICAL
+    # "execution error" from the GraphQL resolver.
     variables = {
         "data": {
-            "count": page_size,
-            "include_relationship_info": True,
-            "latest_besties_reel_media": True,
-            "latest_reel_media": True,
+            "page_size": page_size,
+            "include_feed_video": True,
+            "target_user_id": str(ig_user_id),
         },
-        "target_user_id": str(ig_user_id),
         "__relay_internal__pv__PolarisIsLoggedInrelayprovider": True,
     }
     if after:
         variables["after"] = after
-        variables["data"]["page_size"] = page_size
 
     payload = {
         "doc_id": str(doc_id),
         "variables": json.dumps(variables),
     }
+    referer = (f"https://www.instagram.com/{handle}/reels/"
+               if handle else "https://www.instagram.com/")
     data = _request(
         session, "POST", GRAPHQL_URL, csrftoken=csrftoken,
         data=payload,
-        headers={"Content-Type": "application/x-www-form-urlencoded"},
+        headers={"Content-Type": "application/x-www-form-urlencoded",
+                 "Referer": referer},
     )
+
+    # A CRITICAL execution error on the clips path means the variable shape
+    # or doc_id is wrong — treat as a schema change so we fall back.
+    if data.get("errors"):
+        raise IGSchemaChanged(f"GraphQL errors: {str(data['errors'])[:200]}")
 
     # The clips connection key has varied across doc_ids; probe a few.
     conn = _extract_connection(data)

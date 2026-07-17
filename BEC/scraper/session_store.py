@@ -91,24 +91,29 @@ def test_session(path: str | None = None) -> tuple[bool, str]:
     except (FileNotFoundError, ValueError) as exc:
         return False, str(exc)
 
-    from .ig_client import build_session, IG_HEADERS
+    from .ig_client import build_session, IG_HEADERS, TOPSEARCH_URL
 
+    # current_user is a mobile-app endpoint (rejects the web UA with
+    # "useragent mismatch"). Validate against the authenticated web
+    # topsearch endpoint instead: a valid session returns JSON.
     session = build_session(cookies)
     try:
         resp = session.get(
-            "https://www.instagram.com/api/v1/accounts/current_user/",
+            TOPSEARCH_URL,
+            params={"query": "instagram", "context": "blended"},
             headers={**IG_HEADERS, "x-csrftoken": cookies.get("csrftoken", "")},
             timeout=30,
         )
     except Exception as exc:  # noqa: BLE001
         return False, f"request failed: {exc!r}"
 
-    if resp.status_code == 200:
+    ctype = resp.headers.get("content-type", "")
+    if resp.status_code == 200 and "json" in ctype:
         try:
-            uid = resp.json().get("user", {}).get("pk")
-            return True, f"authenticated (user pk={uid})"
+            n = len(resp.json().get("users", []))
+            return True, f"authenticated (topsearch returned {n} users)"
         except Exception:  # noqa: BLE001
-            return True, "authenticated (200, unparsed body)"
+            return True, "authenticated (200 JSON)"
     if resp.status_code in (401, 403):
         return False, f"HTTP {resp.status_code} — cookies invalid/expired or checkpoint"
-    return False, f"unexpected HTTP {resp.status_code}"
+    return False, f"unexpected HTTP {resp.status_code} (ctype={ctype})"
