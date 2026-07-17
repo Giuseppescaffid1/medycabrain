@@ -1,0 +1,24 @@
+# /etc/systemd/system/medycabrain-backend.service
+# Install: sudo cp deploy/medycabrain-backend.service /etc/systemd/system/
+#          sudo systemctl daemon-reload && sudo systemctl enable --now medycabrain-backend
+[Unit]
+Description=medycabrain BEC (Gunicorn)
+After=network.target postgresql.service
+Requires=postgresql.service
+
+[Service]
+User=giuseppe
+Group=giuseppe
+WorkingDirectory=/home/giuseppe/projects/medycabrain/BEC
+EnvironmentFile=/home/giuseppe/projects/medycabrain/BEC/.env
+ExecStart=/home/giuseppe/projects/medycabrain/BEC/venv/bin/gunicorn config.wsgi:application \
+    --bind 127.0.0.1:8010 \
+    --workers 2 --threads 2 --timeout 180 \
+    --max-requests 1000 --max-requests-jitter 50 \
+    --access-logfile /home/giuseppe/projects/medycabrain/BEC/logs/access.log \
+    --error-logfile /home/giuseppe/projects/medycabrain/BEC/logs/error.log
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

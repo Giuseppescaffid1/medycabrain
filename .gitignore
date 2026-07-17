@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+*.egg-info/
+
+# Env / secrets
+.env
+BEC/data/ig_session.json
+BEC/data/ig_session.json.backup*
+BEC/data/raw/
+*.session
+
+# Media (generated)
+BEC/media/audio/
+BEC/media/thumbs/
+BEC/data/tmp/
+
+# Logs
+BEC/logs/*.log
+BEC/logs/
+
+# Whisper / model caches
+*.mp3
+*.mp4
+
+# Node / Vite
+node_modules/
+FEC/dist/
+FEC/.vite/
+
+# OS
+.DS_Store

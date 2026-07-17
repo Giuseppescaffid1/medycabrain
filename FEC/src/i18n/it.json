@@ -1,0 +1,107 @@
+{
+  "app": { "name": "medycabrain", "tagline": "Content Intelligence" },
+  "nav": {
+    "library": "Libreria",
+    "clusters": "Cluster",
+    "workspace": "Workspace",
+    "accounts": "Account",
+    "logout": "Esci"
+  },
+  "login": {
+    "title": "Accedi",
+    "subtitle": "Area riservata al cliente",
+    "username": "Nome utente",
+    "password": "Password",
+    "submit": "Entra",
+    "error": "Credenziali non valide.",
+    "loading": "Accesso in corso…"
+  },
+  "stats": {
+    "accounts": "Account",
+    "reels": "Reel",
+    "transcribed": "Trascritti",
+    "enriched": "Analizzati",
+    "clusters": "Cluster",
+    "favorites": "Preferiti",
+    "inspiration": "Ispirazione"
+  },
+  "library": {
+    "title": "Libreria contenuti",
+    "search": "Cerca in didascalie e trascrizioni…",
+    "empty": "Nessun reel trovato. Aggiungi account e avvia la pipeline.",
+    "loadMore": "Carica altri",
+    "filters": "Filtri",
+    "allAccounts": "Tutti gli account",
+    "allFormats": "Tutti i formati",
+    "allClusters": "Tutti i cluster",
+    "sort": "Ordina",
+    "sortRecent": "Più recenti",
+    "sortViews": "Più visti",
+    "sortLikes": "Più piaciuti",
+    "onlyFavorites": "Solo preferiti",
+    "onlyInspiration": "Solo ispirazione",
+    "reset": "Azzera"
+  },
+  "reel": {
+    "views": "visualizzazioni",
+    "likes": "mi piace",
+    "comments": "commenti",
+    "openInstagram": "Apri su Instagram",
+    "transcript": "Trascrizione",
+    "noTranscript": "Trascrizione non ancora disponibile.",
+    "summary": "Riassunto",
+    "topics": "Argomenti",
+    "hook": "Gancio",
+    "hookAnalysis": "Analisi del gancio",
+    "audience": "Pubblico",
+    "format": "Formato",
+    "arguments": "Argomenti / affermazioni",
+    "notEnriched": "Analisi non ancora disponibile.",
+    "annotation": "Le mie note",
+    "favorite": "Preferito",
+    "inspiration": "Ispirazione",
+    "note": "Nota",
+    "notePlaceholder": "Aggiungi una nota…",
+    "tags": "Etichette",
+    "addTag": "Aggiungi etichetta…",
+    "save": "Salva"
+  },
+  "clusters": {
+    "title": "Cluster tematici",
+    "subtitle": "Di cosa parlano i competitor",
+    "empty": "Nessun cluster ancora. Servono almeno 8 reel analizzati.",
+    "reels": "reel",
+    "keywords": "Parole chiave",
+    "arguments": "Argomenti del tema",
+    "saidInNReels": "detto in {{count}} reel",
+    "backToClusters": "Torna ai cluster"
+  },
+  "workspace": {
+    "title": "Workspace",
+    "favorites": "Preferiti",
+    "inspiration": "Ispirazione",
+    "notes": "Con note",
+    "tags": "Per etichetta",
+    "empty": "Niente qui ancora."
+  },
+  "accounts": {
+    "title": "Account monitorati",
+    "add": "Aggiungi account",
+    "addPlaceholder": "username Instagram (senza @)",
+    "username": "Username",
+    "reels": "Reel",
+    "followers": "Follower",
+    "lastScraped": "Ultimo aggiornamento",
+    "status": "Stato",
+    "active": "Attivo",
+    "inactive": "Inattivo",
+    "never": "Mai",
+    "remove": "Rimuovi",
+    "confirmRemove": "Rimuovere questo account dal monitoraggio? I reel già raccolti restano."
+  },
+  "common": {
+    "loading": "Caricamento…",
+    "error": "Si è verificato un errore.",
+    "close": "Chiudi"
+  }
+}

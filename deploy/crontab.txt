@@ -1,0 +1,6 @@
+# medycabrain pipeline cron (giuseppe user)
+# Install: crontab -e  and paste these two lines.
+# Full pipeline nightly (03:30 Rome — low-traffic, night scraping).
+30 3 * * * cd /home/giuseppe/projects/medycabrain/BEC && venv/bin/python manage.py run_pipeline >> logs/pipeline.log 2>&1
+# Midday top-up: scrape + process new reels, skip the recluster.
+15 14 * * * cd /home/giuseppe/projects/medycabrain/BEC && venv/bin/python manage.py run_pipeline --skip-cluster >> logs/pipeline.log 2>&1
