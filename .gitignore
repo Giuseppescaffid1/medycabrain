@@ -32,3 +32,6 @@ FEC/.vite/
 
 # OS
 .DS_Store
+
+# Django collected static (generated)
+BEC/staticfiles/

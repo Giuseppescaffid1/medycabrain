@@ -36,8 +36,15 @@ logger = logging.getLogger(__name__)
 
 _embedder = None
 MIN_DOCS = 8
+MIN_AGG_SIZE = 2  # agglomerative clusters smaller than this become noise
 LABEL_MATCH_THRESHOLD = 0.80
 ARG_ASSIGN_THRESHOLD = 0.35
+
+
+def _is_fallback_label(label: str) -> bool:
+    """True for generic auto-labels like 'Tema 3' that must not be reused."""
+    import re
+    return bool(re.fullmatch(r"\s*Tema\s+\d+\s*", label or ""))
 
 
 def _get_embedder():
@@ -116,16 +123,30 @@ def _cluster(matrix: np.ndarray) -> tuple[np.ndarray, np.ndarray, str, dict]:
         except Exception as exc:  # noqa: BLE001
             logger.warning("[cluster] HDBSCAN failed: %r — falling back", exc)
 
-    # Agglomerative fallback (cosine distance on normalized vecs)
+    # Agglomerative fallback (cosine distance on normalized vecs).
+    # Single-niche corpora (e.g. all-menopause) sit at high mutual cosine
+    # similarity, so a loose threshold collapses everything into one blob.
+    # A tighter default splits real sub-themes; tune via scraper_config.
+    from collections import Counter
+
+    from core.models import ScraperConfig
     from sklearn.cluster import AgglomerativeClustering
 
-    k_threshold = 0.45
+    cfg_th = ScraperConfig.get("cluster_distance_threshold", {"value": 0.30})
+    k_threshold = cfg_th.get("value", 0.30) if isinstance(cfg_th, dict) else cfg_th
     labels = AgglomerativeClustering(
         n_clusters=None, metric="cosine", linkage="average",
         distance_threshold=k_threshold,
     ).fit_predict(matrix)
+
+    # Fold singleton clusters into noise (-1) so every named theme is
+    # backed by at least MIN_AGG_SIZE reels.
+    sizes = Counter(labels)
+    labels = np.array([l if sizes[l] >= MIN_AGG_SIZE else -1 for l in labels])
     probs = np.ones(n, dtype=np.float32)
-    return labels, probs, "agglomerative", {"distance_threshold": k_threshold}
+    n_noise = int(np.sum(labels == -1))
+    return labels, probs, "agglomerative", {
+        "distance_threshold": k_threshold, "min_size": MIN_AGG_SIZE, "noise": n_noise}
 
 
 def _name_cluster(sample_texts: list[str]) -> dict:
@@ -134,7 +155,9 @@ def _name_cluster(sample_texts: list[str]) -> dict:
     samples = "\n\n".join(f"- {t[:300]}" for t in sample_texts[:5])
     user = prompts.CLUSTER_NAME_USER_TEMPLATE.format(samples=samples)
     try:
-        data = client.chat_json(prompts.CLUSTER_NAME_SYSTEM, user, max_tokens=300)
+        # Extra retries: naming runs right after the argument-extraction burst,
+        # so HF can be rate-limited here.
+        data = client.chat_json(prompts.CLUSTER_NAME_SYSTEM, user, max_tokens=300, retries=4)
         return data if isinstance(data, dict) else {}
     except Exception as exc:  # noqa: BLE001
         logger.warning("[cluster] naming failed: %r", exc)
@@ -183,15 +206,19 @@ def run(ctx) -> dict:
         centroid = matrix[idxs].mean(axis=0)
         centroid /= (np.linalg.norm(centroid) or 1.0)
 
-        # Label stability: reuse a prior label if centroids are close.
+        # Label stability: reuse a prior label if centroids are close — but
+        # never propagate a generic "Tema N" fallback from an earlier run.
         reused = None
         for pcent, pinfo in prior:
-            if float(np.dot(centroid, pcent)) >= LABEL_MATCH_THRESHOLD:
+            if (float(np.dot(centroid, pcent)) >= LABEL_MATCH_THRESHOLD
+                    and not _is_fallback_label(pinfo.get("label_it", ""))):
                 reused = pinfo
                 break
         if reused:
             naming = reused
         else:
+            import time as _t
+            _t.sleep(1.0)  # space out naming calls to avoid HF rate limits
             sample_texts = [
                 _reel_text(reels[i], getattr(reels[i], "enrichment", None)) for i in idxs[:5]
             ]
