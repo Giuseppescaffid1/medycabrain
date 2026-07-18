@@ -35,3 +35,6 @@ FEC/.vite/
 
 # Django collected static (generated)
 BEC/staticfiles/
+
+# Plane API token
+.plane.env
