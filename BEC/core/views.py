@@ -195,4 +195,63 @@ class StatsView(APIView):
             "inspiration": models.ReelAnnotation.objects.filter(is_inspiration=True).count(),
             "clusters": current.n_clusters if current else 0,
             "last_cluster_run": current.created_at if current else None,
+            "knowledge_docs": models.KnowledgeDocument.objects.filter(is_active=True).count(),
+            "owned_reels": models.Reel.objects.filter(
+                account__owner_type="owned", is_active=True).count(),
         })
+
+
+# ── Knowledge bank / second brain (MEDYC-10, MEDYC-13) ─────────────────────────
+
+class KnowledgeDocumentViewSet(viewsets.ReadOnlyModelViewSet):
+    """Browse the blog documents in the Medyca knowledge bank."""
+
+    permission_classes = [IsAuthenticated]
+    ordering_fields = ["published_at", "created_at", "title"]
+    ordering = ["-published_at"]
+    search_fields = ["title", "content_text", "summary_it"]
+
+    def get_queryset(self):
+        return models.KnowledgeDocument.objects.filter(is_active=True)
+
+    def get_serializer_class(self):
+        if self.action == "retrieve":
+            return serializers.KnowledgeDocDetailSerializer
+        return serializers.KnowledgeDocListSerializer
+
+
+class KnowledgeSearchView(APIView):
+    """Semantic retrieval over the knowledge bank (blog + owned reels).
+
+    The endpoint agents call to ground copy/articles in Medyca's own material.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        query = (request.data.get("query") or request.data.get("q") or "").strip()
+        if not query:
+            return Response({"detail": "query richiesta."}, status=400)
+        top_k = int(request.data.get("top_k", 6))
+        from core.knowledge import semantic_search
+        return Response({"query": query, "results": semantic_search(query, top_k=top_k)})
+
+    def get(self, request):
+        request._full_data = {"query": request.query_params.get("q", ""),
+                              "top_k": request.query_params.get("top_k", 6)}
+        return self.post(request)
+
+
+class KnowledgeAskView(APIView):
+    """RAG over the knowledge bank: retrieve + grounded Italian answer with
+    citations. The "second brain" Q&A / agent task interface."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        query = (request.data.get("query") or request.data.get("q") or "").strip()
+        if not query:
+            return Response({"detail": "query richiesta."}, status=400)
+        top_k = int(request.data.get("top_k", 6))
+        from core.knowledge import answer
+        return Response(answer(query, top_k=top_k))

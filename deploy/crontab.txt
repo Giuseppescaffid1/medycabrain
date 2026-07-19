@@ -1,6 +1,14 @@
 # medycabrain pipeline cron (giuseppe user)
-# Install: crontab -e  and paste these two lines.
-# Full pipeline nightly (03:30 Rome — low-traffic, night scraping).
+# Install: crontab -e  and paste these lines.
+
+# Full pipeline nightly (03:30 Rome). Scrapes competitor + owned Instagram
+# accounts, processes, enriches, embeds the knowledge bank, reclusters.
+# Covers MEDYC-11 (weekly social import happens daily here).
 30 3 * * * cd /home/giuseppe/projects/medycabrain/BEC && venv/bin/python manage.py run_pipeline >> logs/pipeline.log 2>&1
+
 # Midday top-up: scrape + process new reels, skip the recluster.
 15 14 * * * cd /home/giuseppe/projects/medycabrain/BEC && venv/bin/python manage.py run_pipeline --skip-cluster >> logs/pipeline.log 2>&1
+
+# Weekly blog crawl (Mon 04:00) — new medyca.it/blog articles into the
+# knowledge bank, then enrich + embed. Covers MEDYC-12.
+0 4 * * 1 cd /home/giuseppe/projects/medycabrain/BEC && venv/bin/python manage.py ingest_blog --crawl https://www.medyca.it/blog --enrich >> logs/blog.log 2>&1

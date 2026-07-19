@@ -34,6 +34,13 @@ class ClusterRunAdmin(admin.ModelAdmin):
     list_filter = ("status", "is_current")
 
 
+@admin.register(models.KnowledgeDocument)
+class KnowledgeDocumentAdmin(admin.ModelAdmin):
+    list_display = ("title", "source_type", "enrich_status", "embed_status", "published_at")
+    list_filter = ("source_type", "enrich_status", "embed_status")
+    search_fields = ("title", "source_url", "content_text")
+
+
 admin.site.register(models.Transcript)
 admin.site.register(models.Enrichment)
 admin.site.register(models.TopicCluster)

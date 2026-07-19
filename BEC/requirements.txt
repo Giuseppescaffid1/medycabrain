@@ -16,3 +16,4 @@ scikit-learn==1.5.2
 numpy==1.26.4
 Pillow==10.4.0
 requests==2.32.3
+trafilatura==2.1.0

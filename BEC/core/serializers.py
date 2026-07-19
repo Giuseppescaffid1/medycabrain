@@ -119,3 +119,22 @@ class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ["id", "username"]
+
+
+class KnowledgeDocListSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = models.KnowledgeDocument
+        fields = [
+            "id", "source_type", "source_url", "title", "author",
+            "published_at", "summary_it", "topics", "enrich_status", "created_at",
+        ]
+
+
+class KnowledgeDocDetailSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = models.KnowledgeDocument
+        fields = [
+            "id", "source_type", "source_url", "title", "author", "published_at",
+            "summary_it", "topics", "content_md", "enrich_status", "embed_status",
+            "created_at", "updated_at",
+        ]

@@ -43,6 +43,13 @@ class TrackedAccount(models.Model):
     profile_pic_url = models.TextField(blank=True, default="")
     bio = models.TextField(blank=True, default="")
     followers_count = models.IntegerField(null=True, blank=True)
+    # 'competitor' feeds the inspiration library; 'owned' (e.g. @medyca.menopausa)
+    # feeds the Medyca knowledge bank / second brain.
+    owner_type = models.CharField(
+        max_length=16,
+        choices=[("competitor", "competitor"), ("owned", "owned")],
+        default="competitor",
+    )
     is_active = models.BooleanField(default=True)
     notes = models.TextField(blank=True, default="")
     # scrape_state: {"end_cursor": str, "consecutive_failures": int,
@@ -261,6 +268,50 @@ class ReelAnnotation(models.Model):
 
     def __str__(self):
         return f"annotation:{self.reel.shortcode}"
+
+
+class KnowledgeDocument(models.Model):
+    """A text document in the Medyca knowledge bank — e.g. a blog article
+    from medyca.it, fetched and stored as Markdown, then enriched + embedded.
+
+    Together with the OWNED reels (owner_type='owned'), these documents form
+    the knowledge bank the "second brain" and downstream agents draw on.
+    """
+
+    SOURCE_CHOICES = [("blog", "Blog"), ("manual", "Manual"), ("other", "Other")]
+
+    source_type = models.CharField(max_length=16, choices=SOURCE_CHOICES, default="blog")
+    source_url = models.URLField(max_length=500, unique=True)
+    title = models.CharField(max_length=300, blank=True, default="")
+    content_md = models.TextField(blank=True, default="")       # readable article as Markdown
+    content_text = models.TextField(blank=True, default="")     # plain text for search/embeddings
+    author = models.CharField(max_length=200, blank=True, default="")
+    published_at = models.DateTimeField(null=True, blank=True)
+
+    # Enrichment (LLM) + embedding, mirroring the reel pipeline
+    summary_it = models.TextField(blank=True, default="")
+    topics = models.JSONField(default=list, blank=True)
+    embedding = models.JSONField(default=list, blank=True)
+    embedding_model = models.CharField(max_length=128, blank=True, default="")
+
+    enrich_status = models.CharField(max_length=16, choices=STATUS_CHOICES, default=PENDING)
+    embed_status = models.CharField(max_length=16, choices=STATUS_CHOICES, default=PENDING)
+    last_error = models.TextField(blank=True, default="")
+
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "knowledge_documents"
+        ordering = ["-published_at", "-created_at"]
+        indexes = [
+            models.Index(fields=["enrich_status"]),
+            models.Index(fields=["embed_status"]),
+        ]
+
+    def __str__(self):
+        return self.title or self.source_url
 
 
 class ScraperConfig(models.Model):
