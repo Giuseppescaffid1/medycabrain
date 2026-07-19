@@ -120,7 +120,8 @@ DOMANDA:
 FONTI:
 {sources}
 
-Rispondi alla domanda basandoti solo sulle fonti. Cita con [n]."""
+Istruzioni: rispondi alla domanda basandoti SOLO sulle fonti, citando con [n].
+Scrivi la risposta ESCLUSIVAMENTE in lingua italiana."""
 
 
 def answer(query: str, top_k: int = 6) -> dict:
@@ -140,7 +141,7 @@ def answer(query: str, top_k: int = 6) -> dict:
         text = client.chat(
             ANSWER_SYSTEM,
             ANSWER_USER.format(query=query, sources=sources_txt),
-            max_tokens=700, temperature=0.2,
+            max_tokens=500, temperature=0.2,
         )
     except Exception as exc:  # noqa: BLE001
         text = f"(Errore nella generazione: {exc!r})"

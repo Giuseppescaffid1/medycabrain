@@ -10,6 +10,7 @@ const Clusters = lazy(() => import("./pages/Clusters"));
 const ClusterDetail = lazy(() => import("./pages/ClusterDetail"));
 const Workspace = lazy(() => import("./pages/Workspace"));
 const Accounts = lazy(() => import("./pages/Accounts"));
+const KnowledgeBank = lazy(() => import("./pages/KnowledgeBank"));
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
@@ -31,6 +32,7 @@ function ProtectedRoutes() {
           <Route path="/clusters" element={<Clusters />} />
           <Route path="/clusters/:id" element={<ClusterDetail />} />
           <Route path="/workspace" element={<Workspace />} />
+          <Route path="/knowledge" element={<KnowledgeBank />} />
           <Route path="/accounts" element={<Accounts />} />
           <Route path="*" element={<Navigate to="/library" replace />} />
         </Routes>

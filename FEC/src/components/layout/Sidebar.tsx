@@ -6,6 +6,7 @@ import { cn } from "../../lib/utils";
 const LINKS = [
   { to: "/library", key: "library", icon: "🎬" },
   { to: "/clusters", key: "clusters", icon: "🧭" },
+  { to: "/knowledge", key: "knowledge", icon: "🧠" },
   { to: "/workspace", key: "workspace", icon: "⭐" },
   { to: "/accounts", key: "accounts", icon: "👤" },
 ];

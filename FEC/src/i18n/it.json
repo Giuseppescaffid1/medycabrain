@@ -3,9 +3,29 @@
   "nav": {
     "library": "Libreria",
     "clusters": "Cluster",
+    "knowledge": "Knowledge Bank",
     "workspace": "Workspace",
     "accounts": "Account",
     "logout": "Esci"
+  },
+  "kb": {
+    "title": "Knowledge Bank Medyca",
+    "subtitle": "Il second brain sui contenuti di Medyca: blog e post social.",
+    "browse": "Sfoglia",
+    "search": "Cerca",
+    "ask": "Chiedi",
+    "filterPlaceholder": "Filtra per titolo o parola…",
+    "searchPlaceholder": "Cerca per significato (es. \"protezione delle ossa\")…",
+    "searchHint": "Scrivi almeno 3 caratteri per la ricerca semantica.",
+    "askPlaceholder": "Fai una domanda alla knowledge bank di Medyca…",
+    "askButton": "Chiedi al second brain",
+    "askNote": "La risposta è generata in locale e può richiedere qualche minuto.",
+    "thinking": "Sto pensando…",
+    "sources": "Fonti",
+    "relevance": "rilevanza",
+    "empty": "Nessun documento. Importa gli articoli del blog con ingest_blog.",
+    "noResults": "Nessun risultato.",
+    "reels": "Reel Medyca"
   },
   "login": {
     "title": "Accedi",

@@ -63,19 +63,18 @@ def _hf_chat(system: str, user: str, max_tokens: int, temperature: float) -> str
         raise LLMError(msg) from exc
 
 
-def _ollama_chat(system: str, user: str, max_tokens: int, temperature: float) -> str:
-    resp = requests.post(
-        f"{settings.OLLAMA_URL}/api/chat",
-        json={
-            "model": settings.OLLAMA_MODEL,
-            "messages": [{"role": "system", "content": system},
-                         {"role": "user", "content": user}],
-            "stream": False,
-            "format": "json",  # nudge valid JSON for our extraction prompts
-            "options": {"temperature": temperature, "num_predict": max_tokens},
-        },
-        timeout=180,
-    )
+def _ollama_chat(system: str, user: str, max_tokens: int, temperature: float,
+                 json_mode: bool = False) -> str:
+    payload = {
+        "model": settings.OLLAMA_MODEL,
+        "messages": [{"role": "system", "content": system},
+                     {"role": "user", "content": user}],
+        "stream": False,
+        "options": {"temperature": temperature, "num_predict": max_tokens},
+    }
+    if json_mode:  # only for structured-extraction prompts, not free-text answers
+        payload["format"] = "json"
+    resp = requests.post(f"{settings.OLLAMA_URL}/api/chat", json=payload, timeout=240)
     resp.raise_for_status()
     return resp.json().get("message", {}).get("content", "")
 
@@ -92,19 +91,27 @@ def _providers() -> list[str]:
 
 
 def chat(system: str, user: str, max_tokens: int = 800, temperature: float = 0.2,
-         retries: int = 2) -> str:
-    """Return raw assistant text, trying providers in order with retries."""
+         retries: int = 2, json_mode: bool = False) -> str:
+    """Return raw assistant text, trying providers in order with retries.
+
+    json_mode nudges Ollama to emit valid JSON — set only for extraction
+    prompts, never for free-text answers (it degrades prose quality).
+    """
     global _hf_disabled
     providers = _providers()
     if not providers:
         raise LLMError("no LLM provider available (no HF token, Ollama disabled)")
 
+    def _call(provider):
+        if provider == "hf":
+            return _hf_chat(system, user, max_tokens, temperature)
+        return _ollama_chat(system, user, max_tokens, temperature, json_mode=json_mode)
+
     last_err = None
     for provider in providers:
-        fn = _hf_chat if provider == "hf" else _ollama_chat
         for attempt in range(retries + 1):
             try:
-                return fn(system, user, max_tokens, temperature)
+                return _call(provider)
             except LLMCreditError as exc:
                 logger.warning("[llm] HF credits depleted — disabling HF, falling back")
                 _hf_disabled = True
@@ -119,6 +126,7 @@ def chat(system: str, user: str, max_tokens: int = 800, temperature: float = 0.2
 
 
 def chat_json(system: str, user: str, **kwargs) -> dict | list:
+    kwargs.setdefault("json_mode", True)
     return parse_json(chat(system, user, **kwargs))
 
 
