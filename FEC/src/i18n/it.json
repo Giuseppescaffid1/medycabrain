@@ -1,19 +1,36 @@
 {
   "app": { "name": "medycabrain", "tagline": "Content Intelligence" },
   "nav": {
+    "medyca": "Medyca",
+    "competitor": "Competitor",
+    "tools": "Strumenti",
     "library": "Libreria",
     "clusters": "Cluster",
-    "knowledge": "Knowledge Bank",
+    "secondBrain": "Second Brain",
     "workspace": "Workspace",
     "accounts": "Account",
     "logout": "Esci"
   },
-  "kb": {
-    "title": "Knowledge Bank Medyca",
-    "subtitle": "Il second brain sui contenuti di Medyca: blog e post social.",
-    "browse": "Sfoglia",
-    "search": "Cerca",
+  "scope": {
+    "medyca": "Medyca",
+    "competitor": "Competitor"
+  },
+  "sb": {
+    "title": "Second Brain",
+    "subtitle": "Idee di contenuto dai dati, e ricerca sulla knowledge bank di Medyca.",
+    "ideas": "Idee di contenuto",
+    "browse": "Documenti",
+    "searchTab": "Cerca",
     "ask": "Chiedi",
+    "ideasIntro": "Argomenti proposti dal confronto tra i competitor e ciò che Medyca già copre (Instagram + blog).",
+    "generate": "Genera nuove idee",
+    "generating": "Sto generando…",
+    "noIdeas": "Nessuna idea. Premi \"Genera nuove idee\" per crearne.",
+    "gap": "Gap",
+    "saved": "Salvata",
+    "angle": "Angolo",
+    "save": "Salva",
+    "dismiss": "Scarta",
     "filterPlaceholder": "Filtra per titolo o parola…",
     "searchPlaceholder": "Cerca per significato (es. \"protezione delle ossa\")…",
     "searchHint": "Scrivi almeno 3 caratteri per la ricerca semantica.",
@@ -23,9 +40,8 @@
     "thinking": "Sto pensando…",
     "sources": "Fonti",
     "relevance": "rilevanza",
-    "empty": "Nessun documento. Importa gli articoli del blog con ingest_blog.",
-    "noResults": "Nessun risultato.",
-    "reels": "Reel Medyca"
+    "noDocs": "Nessun documento. Importa gli articoli del blog con ingest_blog.",
+    "noResults": "Nessun risultato."
   },
   "login": {
     "title": "Accedi",

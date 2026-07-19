@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { fetchClusters } from "../api/endpoints";
+import { fetchClusters, type Scope } from "../api/endpoints";
 import type { Cluster } from "../api/types";
 import { Badge, EmptyState, Spinner } from "../components/ui/primitives";
 import { mediaUrl } from "../lib/utils";
@@ -9,12 +9,17 @@ import { mediaUrl } from "../lib/utils";
 export default function Clusters() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const { data, isLoading } = useQuery({ queryKey: ["clusters"], queryFn: fetchClusters });
+  const { scope: scopeParam } = useParams();
+  const scope: Scope = scopeParam === "medyca" ? "medyca" : "competitor";
+  const { data, isLoading } = useQuery({
+    queryKey: ["clusters", scope],
+    queryFn: () => fetchClusters(scope),
+  });
 
   return (
     <div className="flex h-full flex-col">
       <div className="border-b border-zinc-800 px-6 py-4">
-        <h1 className="text-xl font-bold text-white">{t("clusters.title")}</h1>
+        <h1 className="text-xl font-bold text-white">{t(`scope.${scope}`)} · {t("clusters.title")}</h1>
         <p className="text-sm text-zinc-500">{t("clusters.subtitle")}</p>
       </div>
       <div className="flex-1 px-6 py-5">
@@ -25,7 +30,7 @@ export default function Clusters() {
         ) : (
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
             {data.map((c) => (
-              <ClusterCard key={c.id} cluster={c} onClick={() => navigate(`/clusters/${c.id}`)} />
+              <ClusterCard key={c.id} cluster={c} onClick={() => navigate(`/${scope}/clusters/${c.id}`)} />
             ))}
           </div>
         )}

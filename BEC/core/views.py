@@ -120,12 +120,15 @@ class ReelViewSet(viewsets.ReadOnlyModelViewSet):
 
 
 def _current_cluster_labels():
-    """Map reel_id -> cluster label for the current run (for list badges)."""
-    current = models.ClusterRun.objects.filter(is_current=True).first()
-    if not current:
+    """Map reel_id -> cluster label across both scopes' current runs."""
+    current_ids = list(
+        models.ClusterRun.objects.filter(is_current=True).values_list("id", flat=True)
+    )
+    if not current_ids:
         return {}
     rows = (
-        models.ReelClusterAssignment.objects.filter(run=current, cluster__isnull=False)
+        models.ReelClusterAssignment.objects
+        .filter(run_id__in=current_ids, cluster__isnull=False)
         .values_list("reel_id", "cluster__label_it")
     )
     return dict(rows)
@@ -142,13 +145,21 @@ class TagViewSet(viewsets.ModelViewSet):
 
 # ── Clusters ───────────────────────────────────────────────────────────────────
 
+from core.filters import SCOPE_MAP
+
+
 class ClusterViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = serializers.ClusterSerializer
     permission_classes = [IsAuthenticated]
     pagination_class = None
 
     def get_queryset(self):
-        current = models.ClusterRun.objects.filter(is_current=True).first()
+        # Detail fetch is by id — don't scope-restrict it.
+        if self.action == "retrieve":
+            return models.TopicCluster.objects.all()
+        scope = SCOPE_MAP.get(self.request.query_params.get("scope", "competitor").lower(),
+                              "competitor")
+        current = models.ClusterRun.objects.filter(scope=scope, is_current=True).first()
         if not current:
             return models.TopicCluster.objects.none()
         return current.clusters.all().order_by("-size")
@@ -156,12 +167,12 @@ class ClusterViewSet(viewsets.ReadOnlyModelViewSet):
     @action(detail=True, methods=["get"], url_path="arguments")
     def arguments(self, request, pk=None):
         """Deduped arguments assigned to this cluster with source-reel counts."""
-        current = models.ClusterRun.objects.filter(is_current=True).first()
-        if not current:
+        cluster = models.TopicCluster.objects.filter(id=pk).select_related("run").first()
+        if not cluster:
             return Response([])
         assignments = (
             models.ArgumentAssignment.objects
-            .filter(run=current, cluster_id=pk)
+            .filter(run=cluster.run, cluster_id=pk)
             .select_related("argument", "argument__reel")
         )
         # Simple dedup by normalized text (semantic dedup happens in the agent;
@@ -185,19 +196,25 @@ class StatsView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        current = models.ClusterRun.objects.filter(is_current=True).first()
+        def scope_block(owner):
+            reels = models.Reel.objects.filter(is_active=True, account__owner_type=owner)
+            run = models.ClusterRun.objects.filter(scope=owner, is_current=True).first()
+            return {
+                "accounts": models.TrackedAccount.objects.filter(
+                    is_active=True, owner_type=owner).count(),
+                "reels": reels.count(),
+                "transcribed": reels.filter(transcribe_status=models.DONE).count(),
+                "enriched": reels.filter(enrich_status=models.DONE).count(),
+                "clusters": run.n_clusters if run else 0,
+                "last_cluster_run": run.created_at if run else None,
+            }
         return Response({
-            "accounts": models.TrackedAccount.objects.filter(is_active=True).count(),
-            "reels": models.Reel.objects.filter(is_active=True).count(),
-            "transcribed": models.Reel.objects.filter(transcribe_status=models.DONE).count(),
-            "enriched": models.Reel.objects.filter(enrich_status=models.DONE).count(),
+            "competitor": scope_block("competitor"),
+            "medyca": scope_block("owned"),
+            "knowledge_docs": models.KnowledgeDocument.objects.filter(is_active=True).count(),
             "favorites": models.ReelAnnotation.objects.filter(is_favorite=True).count(),
             "inspiration": models.ReelAnnotation.objects.filter(is_inspiration=True).count(),
-            "clusters": current.n_clusters if current else 0,
-            "last_cluster_run": current.created_at if current else None,
-            "knowledge_docs": models.KnowledgeDocument.objects.filter(is_active=True).count(),
-            "owned_reels": models.Reel.objects.filter(
-                account__owner_type="owned", is_active=True).count(),
+            "content_ideas": models.ContentIdea.objects.exclude(status="dismissed").count(),
         })
 
 
@@ -255,3 +272,31 @@ class KnowledgeAskView(APIView):
         top_k = int(request.data.get("top_k", 6))
         from core.knowledge import answer
         return Response(answer(query, top_k=top_k))
+
+
+class ContentIdeaViewSet(viewsets.ModelViewSet):
+    """The content-ideation Second Brain: browse / save / dismiss ideas, and
+    generate a fresh batch from competitor coverage vs Medyca's own."""
+
+    serializer_class = serializers.ContentIdeaSerializer
+    permission_classes = [IsAuthenticated]
+    http_method_names = ["get", "patch", "post", "head", "options"]
+
+    def get_queryset(self):
+        qs = models.ContentIdea.objects.all()
+        status_f = self.request.query_params.get("status")
+        if status_f:
+            qs = qs.filter(status=status_f)
+        else:
+            qs = qs.exclude(status="dismissed")
+        return qs
+
+    @action(detail=False, methods=["post"], url_path="generate")
+    def generate(self, request):
+        n = int(request.data.get("n", 8))
+        from core.ideation import generate_ideas
+        try:
+            created = generate_ideas(n=n)
+        except Exception as exc:  # noqa: BLE001
+            return Response({"detail": str(exc)}, status=400)
+        return Response(serializers.ContentIdeaSerializer(created, many=True).data)

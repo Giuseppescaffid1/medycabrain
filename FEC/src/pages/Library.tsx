@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 import { useInfiniteQuery } from "@tanstack/react-query";
+import { useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { fetchReels, type ReelFilters } from "../api/endpoints";
+import { fetchReels, type ReelFilters, type Scope } from "../api/endpoints";
 import { ReelCard } from "../components/reels/ReelCard";
 import { ReelDetailDrawer } from "../components/reels/ReelDetailDrawer";
 import { FilterBar } from "../components/filters/FilterBar";
@@ -11,14 +12,16 @@ import { useDebounced } from "../lib/useDebounced";
 
 export default function Library() {
   const { t } = useTranslation();
+  const { scope: scopeParam } = useParams();
+  const scope: Scope = scopeParam === "medyca" ? "medyca" : "competitor";
   const [filters, setFilters] = useState<ReelFilters>({ ordering: "-posted_at" });
   const [searchInput, setSearchInput] = useState("");
   const [openReel, setOpenReel] = useState<number | null>(null);
   const debouncedSearch = useDebounced(searchInput, 400);
 
   const effectiveFilters = useMemo(
-    () => ({ ...filters, search: debouncedSearch || undefined }),
-    [filters, debouncedSearch]
+    () => ({ ...filters, scope, search: debouncedSearch || undefined }),
+    [filters, scope, debouncedSearch]
   );
 
   const { data, isLoading, isFetchingNextPage, hasNextPage, fetchNextPage } =
@@ -37,8 +40,10 @@ export default function Library() {
     <div className="flex h-full flex-col">
       <div className="sticky top-0 z-20 space-y-3 border-b border-zinc-800 bg-zinc-950/95 px-6 py-4 backdrop-blur">
         <div className="flex items-center justify-between gap-4">
-          <h1 className="text-xl font-bold text-white">{t("library.title")}</h1>
-          <StatBar />
+          <h1 className="text-xl font-bold text-white">
+            {t(`scope.${scope}`)} · {t("library.title")}
+          </h1>
+          <StatBar scope={scope} />
         </div>
         <input
           value={searchInput}
@@ -46,7 +51,7 @@ export default function Library() {
           placeholder={t("library.search")}
           className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-4 py-2.5 text-sm text-white outline-none focus:border-indigo-500"
         />
-        <FilterBar filters={filters} onChange={setFilters} />
+        <FilterBar filters={filters} onChange={setFilters} scope={scope} />
       </div>
 
       <div className="flex-1 px-6 py-5">

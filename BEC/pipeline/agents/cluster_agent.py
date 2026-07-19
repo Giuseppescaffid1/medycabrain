@@ -164,8 +164,8 @@ def _name_cluster(sample_texts: list[str]) -> dict:
         return {}
 
 
-def _prior_clusters() -> list[tuple[np.ndarray, dict]]:
-    prev = ClusterRun.objects.filter(is_current=True).first()
+def _prior_clusters(scope: str) -> list[tuple[np.ndarray, dict]]:
+    prev = ClusterRun.objects.filter(scope=scope, is_current=True).first()
     if not prev:
         return []
     out = []
@@ -178,12 +178,22 @@ def _prior_clusters() -> list[tuple[np.ndarray, dict]]:
 
 
 def run(ctx) -> dict:
+    """Cluster each scope (competitor + owned) into its own current run."""
+    results = {}
+    for scope in ("competitor", "owned"):
+        results[scope] = _run_scope(scope)
+    return results
+
+
+def _run_scope(scope: str) -> dict:
     reels = list(
-        Reel.objects.filter(enrich_status=DONE, is_active=True)
+        Reel.objects.filter(enrich_status=DONE, is_active=True,
+                            account__owner_type=scope)
         .select_related("enrichment", "transcript", "embedding")
     )
     if len(reels) < MIN_DOCS:
-        return {"skipped": True, "note": f"need >= {MIN_DOCS} enriched reels, have {len(reels)}"}
+        return {"skipped": True, "scope": scope,
+                "note": f"need >= {MIN_DOCS} enriched {scope} reels, have {len(reels)}"}
 
     emb_map = _ensure_reel_embeddings(reels)
     reels = [r for r in reels if r.id in emb_map]
@@ -193,10 +203,10 @@ def run(ctx) -> dict:
     unique = sorted(set(int(l) for l in labels if l != -1))
     n_noise = int(np.sum(labels == -1))
 
-    prior = _prior_clusters()
+    prior = _prior_clusters(scope)
 
     run_obj = ClusterRun.objects.create(
-        algorithm=algo, params=params, n_reels=len(reels),
+        scope=scope, algorithm=algo, params=params, n_reels=len(reels),
         n_clusters=len(unique), n_noise=n_noise, status="running",
     )
 
@@ -248,17 +258,17 @@ def run(ctx) -> dict:
     # ── Layer 2: arguments ──────────────────────────────────────────────────
     arg_assigned = _assign_arguments(run_obj, unique, labels, matrix, reels, label_to_cluster)
 
-    # Flip current atomically
+    # Flip current atomically, within this scope only.
     with transaction.atomic():
-        ClusterRun.objects.filter(is_current=True).update(is_current=False)
+        ClusterRun.objects.filter(scope=scope, is_current=True).update(is_current=False)
         run_obj.status = "done"
         run_obj.is_current = True
         run_obj.save(update_fields=["status", "is_current"])
 
-    _prune_old_runs()
+    _prune_old_runs(scope)
 
-    return {"algorithm": algo, "reels": len(reels), "clusters": len(unique),
-            "noise": n_noise, "arguments_assigned": arg_assigned}
+    return {"scope": scope, "algorithm": algo, "reels": len(reels),
+            "clusters": len(unique), "noise": n_noise, "arguments_assigned": arg_assigned}
 
 
 def _assign_arguments(run_obj, unique, labels, matrix, reels, label_to_cluster) -> int:
@@ -304,6 +314,9 @@ def _assign_arguments(run_obj, unique, labels, matrix, reels, label_to_cluster) 
     return len(rows)
 
 
-def _prune_old_runs(keep: int = 10):
-    ids = list(ClusterRun.objects.order_by("-created_at").values_list("id", flat=True)[:keep])
-    ClusterRun.objects.exclude(id__in=ids).delete()
+def _prune_old_runs(scope: str, keep: int = 10):
+    ids = list(
+        ClusterRun.objects.filter(scope=scope)
+        .order_by("-created_at").values_list("id", flat=True)[:keep]
+    )
+    ClusterRun.objects.filter(scope=scope).exclude(id__in=ids).delete()

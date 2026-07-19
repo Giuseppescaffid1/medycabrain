@@ -166,21 +166,28 @@ class ReelEmbedding(models.Model):
 
 class ClusterRun(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
+    # Clustering is scoped: 'competitor' reels and 'owned' (Medyca) reels are
+    # clustered separately, each with its own current run.
+    scope = models.CharField(
+        max_length=16,
+        choices=[("competitor", "competitor"), ("owned", "owned")],
+        default="competitor",
+    )
     algorithm = models.CharField(max_length=32, blank=True, default="")
     params = models.JSONField(default=dict, blank=True)
     n_reels = models.IntegerField(default=0)
     n_clusters = models.IntegerField(default=0)
     n_noise = models.IntegerField(default=0)
     status = models.CharField(max_length=16, default="running")  # running|done|failed
-    is_current = models.BooleanField(default=False)
+    is_current = models.BooleanField(default=False)  # one current per scope
 
     class Meta:
         db_table = "cluster_runs"
         ordering = ["-created_at"]
-        indexes = [models.Index(fields=["is_current"])]
+        indexes = [models.Index(fields=["scope", "is_current"])]
 
     def __str__(self):
-        return f"run#{self.pk} ({self.status})"
+        return f"run#{self.pk} [{self.scope}] ({self.status})"
 
 
 class TopicCluster(models.Model):
@@ -312,6 +319,38 @@ class KnowledgeDocument(models.Model):
 
     def __str__(self):
         return self.title or self.source_url
+
+
+class ContentIdea(models.Model):
+    """A content angle the second brain proposes for Medyca to produce.
+
+    Derived from what competitors cover (competitor clusters + arguments)
+    vs what Medyca already covers (owned reels + blog). `is_gap` marks
+    arguments competitors push that Medyca hasn't addressed.
+    """
+
+    STATUS_CHOICES = [
+        ("proposed", "Proposed"),
+        ("saved", "Saved"),
+        ("dismissed", "Dismissed"),
+    ]
+
+    argument_it = models.CharField(max_length=300)   # the content argument/topic
+    rationale_it = models.TextField(blank=True, default="")  # why it's worth doing
+    angle_it = models.TextField(blank=True, default="")      # concrete content angle
+    is_gap = models.BooleanField(default=False)              # competitors cover, Medyca doesn't
+    source_refs = models.JSONField(default=list, blank=True)  # [{kind,title,url}]
+    status = models.CharField(max_length=16, choices=STATUS_CHOICES, default="proposed")
+    batch = models.CharField(max_length=40, blank=True, default="")  # generation batch id
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "content_ideas"
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["status"])]
+
+    def __str__(self):
+        return self.argument_it[:60]
 
 
 class ScraperConfig(models.Model):

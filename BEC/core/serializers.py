@@ -25,8 +25,8 @@ class AccountSerializer(serializers.ModelSerializer):
         model = models.TrackedAccount
         fields = [
             "id", "username", "display_name", "ig_user_id", "profile_pic_url",
-            "bio", "followers_count", "is_active", "notes", "last_scraped_at",
-            "reel_count", "created_at",
+            "bio", "followers_count", "owner_type", "is_active", "notes",
+            "last_scraped_at", "reel_count", "created_at",
         ]
         read_only_fields = [
             "ig_user_id", "profile_pic_url", "bio", "followers_count",
@@ -137,4 +137,17 @@ class KnowledgeDocDetailSerializer(serializers.ModelSerializer):
             "id", "source_type", "source_url", "title", "author", "published_at",
             "summary_it", "topics", "content_md", "enrich_status", "embed_status",
             "created_at", "updated_at",
+        ]
+
+
+class ContentIdeaSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = models.ContentIdea
+        fields = [
+            "id", "argument_it", "rationale_it", "angle_it", "is_gap",
+            "source_refs", "status", "batch", "created_at",
+        ]
+        read_only_fields = [
+            "argument_it", "rationale_it", "angle_it", "is_gap",
+            "source_refs", "batch", "created_at",
         ]

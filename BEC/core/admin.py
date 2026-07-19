@@ -41,6 +41,13 @@ class KnowledgeDocumentAdmin(admin.ModelAdmin):
     search_fields = ("title", "source_url", "content_text")
 
 
+@admin.register(models.ContentIdea)
+class ContentIdeaAdmin(admin.ModelAdmin):
+    list_display = ("argument_it", "is_gap", "status", "batch", "created_at")
+    list_filter = ("status", "is_gap")
+    search_fields = ("argument_it", "rationale_it")
+
+
 admin.site.register(models.Transcript)
 admin.site.register(models.Enrichment)
 admin.site.register(models.TopicCluster)

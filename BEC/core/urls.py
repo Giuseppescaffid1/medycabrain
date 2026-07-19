@@ -9,6 +9,7 @@ router.register(r"reels", views.ReelViewSet, basename="reel")
 router.register(r"tags", views.TagViewSet, basename="tag")
 router.register(r"clusters", views.ClusterViewSet, basename="cluster")
 router.register(r"knowledge/documents", views.KnowledgeDocumentViewSet, basename="knowledge-doc")
+router.register(r"second-brain/ideas", views.ContentIdeaViewSet, basename="content-idea")
 
 urlpatterns = [
     path("auth/login/", views.login_view),

@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { fetchAccounts, fetchClusters } from "../../api/endpoints";
+import { fetchAccounts, fetchClusters, type Scope } from "../../api/endpoints";
 import type { ReelFilters } from "../../api/endpoints";
 
 const FORMATS = [
@@ -11,13 +11,20 @@ const FORMATS = [
 export function FilterBar({
   filters,
   onChange,
+  scope = "competitor",
 }: {
   filters: ReelFilters;
   onChange: (f: ReelFilters) => void;
+  scope?: Scope;
 }) {
   const { t } = useTranslation();
-  const { data: accounts } = useQuery({ queryKey: ["accounts"], queryFn: fetchAccounts });
-  const { data: clusters } = useQuery({ queryKey: ["clusters"], queryFn: fetchClusters });
+  const ownerType = scope === "medyca" ? "owned" : "competitor";
+  const { data: allAccounts } = useQuery({ queryKey: ["accounts"], queryFn: fetchAccounts });
+  const accounts = allAccounts?.filter((a) => a.owner_type === ownerType);
+  const { data: clusters } = useQuery({
+    queryKey: ["clusters", scope],
+    queryFn: () => fetchClusters(scope),
+  });
 
   const set = (patch: Partial<ReelFilters>) => onChange({ ...filters, ...patch, page: 1 });
 

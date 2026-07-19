@@ -6,6 +6,7 @@ export interface Account {
   profile_pic_url: string;
   bio: string;
   followers_count: number | null;
+  owner_type: "owned" | "competitor";
   is_active: boolean;
   notes: string;
   last_scraped_at: string | null;
@@ -107,15 +108,22 @@ export interface ClusterArgument {
   reels: string[];
 }
 
-export interface Stats {
+export interface ScopeStats {
   accounts: number;
   reels: number;
   transcribed: number;
   enriched: number;
-  favorites: number;
-  inspiration: number;
   clusters: number;
   last_cluster_run: string | null;
+}
+
+export interface Stats {
+  competitor: ScopeStats;
+  medyca: ScopeStats;
+  knowledge_docs: number;
+  favorites: number;
+  inspiration: number;
+  content_ideas: number;
 }
 
 export interface Paginated<T> {

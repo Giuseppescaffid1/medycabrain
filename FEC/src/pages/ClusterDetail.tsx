@@ -14,7 +14,8 @@ import { Badge, Spinner } from "../components/ui/primitives";
 export default function ClusterDetail() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const { id } = useParams();
+  const { id, scope: scopeParam } = useParams();
+  const scope = scopeParam === "medyca" ? "medyca" : "competitor";
   const clusterId = Number(id);
   const [openReel, setOpenReel] = useState<number | null>(null);
 
@@ -35,7 +36,7 @@ export default function ClusterDetail() {
     <div className="flex h-full flex-col">
       <div className="border-b border-zinc-800 px-6 py-4">
         <button
-          onClick={() => navigate("/clusters")}
+          onClick={() => navigate(`/${scope}/clusters`)}
           className="mb-2 text-xs text-zinc-500 hover:text-zinc-300"
         >
           ← {t("clusters.backToClusters")}

@@ -10,9 +10,12 @@ import type {
   Tag,
 } from "./types";
 
+export type Scope = "medyca" | "competitor";
+
 // ── Reels ──────────────────────────────────────────────────────────────
 export interface ReelFilters {
   search?: string;
+  scope?: Scope;
   account?: number;
   cluster?: number;
   tag?: number;
@@ -77,8 +80,8 @@ export async function deleteAccount(id: number): Promise<void> {
 }
 
 // ── Clusters ───────────────────────────────────────────────────────────
-export async function fetchClusters(): Promise<Cluster[]> {
-  const { data } = await apiClient.get<Cluster[]>("/clusters/");
+export async function fetchClusters(scope: Scope = "competitor"): Promise<Cluster[]> {
+  const { data } = await apiClient.get<Cluster[]>("/clusters/", { params: { scope } });
   return data;
 }
 
