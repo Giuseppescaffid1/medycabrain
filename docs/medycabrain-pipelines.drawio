@@ -1,0 +1,173 @@
+<mxfile host="app.diagrams.net" agent="medycabrain" version="24.0.0">
+  <diagram id="medycabrain-pipelines" name="medycabrain pipelines">
+    <mxGraphModel dx="1400" dy="900" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1500" pageHeight="1000" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+
+        <!-- Title -->
+        <mxCell id="title" value="medycabrain — pipeline di analisi contenuti (Instagram + Blog) e Second Brain" style="text;html=1;align=left;fontSize=16;fontStyle=1;fontColor=#2C4984;" vertex="1" parent="1">
+          <mxGeometry x="40" y="12" width="900" height="26" as="geometry" />
+        </mxCell>
+
+        <!-- ============ BAND: FONTI ============ -->
+        <mxCell id="g_src" value="FONTI" style="rounded=0;fillColor=none;strokeColor=#B0BEC5;dashed=1;verticalAlign=top;align=left;fontColor=#607D8B;fontStyle=2;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="40" y="50" width="800" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="src_med" value="Instagram&#10;@medyca.menopausa&#10;(owned)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F5F5F5;strokeColor=#9E9E9E;fontColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="60" y="80" width="200" height="52" as="geometry" />
+        </mxCell>
+        <mxCell id="src_comp" value="Instagram&#10;account competitor" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F5F5F5;strokeColor=#9E9E9E;fontColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="300" y="80" width="200" height="52" as="geometry" />
+        </mxCell>
+        <mxCell id="src_blog" value="medyca.it/blog&#10;(11 articoli)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#F5F5F5;strokeColor=#9E9E9E;fontColor=#333333;" vertex="1" parent="1">
+          <mxGeometry x="600" y="80" width="200" height="52" as="geometry" />
+        </mxCell>
+
+        <!-- ============ BAND: INGESTION ============ -->
+        <mxCell id="g_ing" value="INGESTION (agenti)" style="rounded=0;fillColor=none;strokeColor=#B0BEC5;dashed=1;verticalAlign=top;align=left;fontColor=#607D8B;fontStyle=2;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="40" y="160" width="800" height="90" as="geometry" />
+        </mxCell>
+        <mxCell id="scraper" value="ScraperAgent&#10;curl_cffi GraphQL (doc_id) + topsearch resolver&#10;fallback: instaloader" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2C4984;strokeColor=#1A3A6D;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="60" y="190" width="440" height="52" as="geometry" />
+        </mxCell>
+        <mxCell id="blogagent" value="ingest_blog&#10;requests + trafilatura → Markdown" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#2C4984;strokeColor=#1A3A6D;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="600" y="190" width="200" height="52" as="geometry" />
+        </mxCell>
+
+        <!-- ============ BAND: PIPELINE DAG ============ -->
+        <mxCell id="g_dag" value="PIPELINE — DAG idempotente (run_pipeline)   —   ogni agente processa solo le righe *_status=pending" style="rounded=0;fillColor=none;strokeColor=#B0BEC5;dashed=1;verticalAlign=top;align=left;fontColor=#607D8B;fontStyle=2;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="40" y="270" width="1120" height="120" as="geometry" />
+        </mxCell>
+        <mxCell id="downloader" value="DownloaderAgent&#10;media/info + ffmpeg&#10;→ mp3 + thumbnail" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#3D70B1;strokeColor=#2C4984;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="60" y="305" width="160" height="64" as="geometry" />
+        </mxCell>
+        <mxCell id="transcriber" value="TranscriberAgent&#10;faster-whisper (IT)&#10;→ trascrizione" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#3D70B1;strokeColor=#2C4984;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="245" y="305" width="160" height="64" as="geometry" />
+        </mxCell>
+        <mxCell id="enrich" value="EnrichAgent&#10;LLM: riassunto, topic,&#10;hook, argomenti" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#3D70B1;strokeColor=#2C4984;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="430" y="305" width="160" height="64" as="geometry" />
+        </mxCell>
+        <mxCell id="cluster" value="ClusterAgent — PER SCOPE&#10;embeddings → HDBSCAN/agglom.&#10;→ temi + argomenti&#10;[owned] · [competitor]" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#3D70B1;strokeColor=#2C4984;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="615" y="300" width="210" height="74" as="geometry" />
+        </mxCell>
+        <mxCell id="knowledge" value="KnowledgeAgent&#10;LLM riassunto/topic&#10;+ embedding (blog)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#3D70B1;strokeColor=#2C4984;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="900" y="305" width="180" height="64" as="geometry" />
+        </mxCell>
+
+        <!-- ============ INFRA (LLM/ML) ============ -->
+        <mxCell id="infra" value="Infrastruttura ML&#10;&#10;Ollama mistral:7b (primario)&#10;HuggingFace (fallback)&#10;faster-whisper&#10;sentence-transformers&#10;(paraphrase-multilingual)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFF3E0;strokeColor=#B7791F;fontColor=#7A5200;align=left;spacingLeft=10;verticalAlign=top;spacingTop=8;" vertex="1" parent="1">
+          <mxGeometry x="1180" y="270" width="220" height="320" as="geometry" />
+        </mxCell>
+
+        <!-- ============ BAND: DATI ============ -->
+        <mxCell id="g_data" value="DATI — PostgreSQL + media" style="rounded=0;fillColor=none;strokeColor=#B0BEC5;dashed=1;verticalAlign=top;align=left;fontColor=#607D8B;fontStyle=2;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="40" y="410" width="1120" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="d_media" value="media&#10;mp3 + thumbnail" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;fillColor=#EEF5FD;strokeColor=#4A6FAC;fontColor=#2C4984;" vertex="1" parent="1">
+          <mxGeometry x="60" y="445" width="140" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="d_reels" value="reels" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#EEF5FD;strokeColor=#4A6FAC;fontColor=#2C4984;" vertex="1" parent="1">
+          <mxGeometry x="60" y="525" width="110" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="d_tr" value="transcripts" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#EEF5FD;strokeColor=#4A6FAC;fontColor=#2C4984;" vertex="1" parent="1">
+          <mxGeometry x="185" y="525" width="110" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="d_enr" value="enrichments&#10;+ reel_arguments" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#EEF5FD;strokeColor=#4A6FAC;fontColor=#2C4984;" vertex="1" parent="1">
+          <mxGeometry x="310" y="520" width="140" height="48" as="geometry" />
+        </mxCell>
+        <mxCell id="d_emb" value="reel_embeddings" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#EEF5FD;strokeColor=#4A6FAC;fontColor=#2C4984;" vertex="1" parent="1">
+          <mxGeometry x="310" y="445" width="140" height="40" as="geometry" />
+        </mxCell>
+        <mxCell id="d_clu" value="cluster_runs (scope)&#10;topic_clusters&#10;reel/argument_assignments" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#EEF5FD;strokeColor=#4A6FAC;fontColor=#2C4984;" vertex="1" parent="1">
+          <mxGeometry x="620" y="445" width="220" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="d_kb" value="knowledge_documents&#10;(blog, Markdown + embedding)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#EEF5FD;strokeColor=#4A6FAC;fontColor=#2C4984;" vertex="1" parent="1">
+          <mxGeometry x="880" y="445" width="200" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="d_ideas" value="content_ideas&#10;(idee di contenuto, gap)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#FDE7E9;strokeColor=#C93B42;fontColor=#8A1F26;" vertex="1" parent="1">
+          <mxGeometry x="620" y="525" width="220" height="44" as="geometry" />
+        </mxCell>
+
+        <!-- ============ BAND: SECOND BRAIN ============ -->
+        <mxCell id="g_sb" value="SECOND BRAIN — intelligenza sui contenuti" style="rounded=0;fillColor=none;strokeColor=#C93B42;dashed=1;verticalAlign=top;align=left;fontColor=#C93B42;fontStyle=2;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="40" y="610" width="1120" height="100" as="geometry" />
+        </mxCell>
+        <mxCell id="sb_search" value="semantic_search&#10;retrieval su blog + reel owned&#10;(coseno su embeddings)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#C93B42;strokeColor=#A93037;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="60" y="640" width="230" height="56" as="geometry" />
+        </mxCell>
+        <mxCell id="sb_idea" value="ideation — motore di idee&#10;competitor (temi+argomenti) vs copertura Medyca (reel+blog)&#10;→ argomenti proposti, GAP evidenziati" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#C93B42;strokeColor=#A93037;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="330" y="640" width="380" height="56" as="geometry" />
+        </mxCell>
+        <mxCell id="sb_ask" value="RAG ask&#10;retrieve + risposta LLM&#10;con citazioni" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#C93B42;strokeColor=#A93037;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="750" y="640" width="200" height="56" as="geometry" />
+        </mxCell>
+
+        <!-- ============ BAND: API + FRONTEND ============ -->
+        <mxCell id="g_fe" value="API + FRONTEND (interno)" style="rounded=0;fillColor=none;strokeColor=#B0BEC5;dashed=1;verticalAlign=top;align=left;fontColor=#607D8B;fontStyle=2;spacingLeft=8;" vertex="1" parent="1">
+          <mxGeometry x="40" y="730" width="1120" height="180" as="geometry" />
+        </mxCell>
+        <mxCell id="api" value="DRF API&#10;/reels?scope · /clusters?scope&#10;/knowledge · /second-brain/ideas" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#455A64;strokeColor=#263238;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="60" y="770" width="270" height="64" as="geometry" />
+        </mxCell>
+        <mxCell id="fe_home" value="Home (brand Medyca)&#10;due card: Medyca · Competitor" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#346FAA;strokeColor=#2C4984;fontColor=#FFFFFF;" vertex="1" parent="1">
+          <mxGeometry x="380" y="770" width="220" height="64" as="geometry" />
+        </mxCell>
+        <mxCell id="fe_med" value="Sezione Medyca&#10;Libreria · Cluster" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EEF5FD;strokeColor=#346FAA;fontColor=#2C4984;" vertex="1" parent="1">
+          <mxGeometry x="640" y="748" width="180" height="42" as="geometry" />
+        </mxCell>
+        <mxCell id="fe_comp" value="Sezione Competitor&#10;Libreria · Cluster" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EEF5FD;strokeColor=#346FAA;fontColor=#2C4984;" vertex="1" parent="1">
+          <mxGeometry x="640" y="812" width="180" height="42" as="geometry" />
+        </mxCell>
+        <mxCell id="fe_sb" value="Second Brain&#10;Idee · Cerca · Chiedi" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FDE7E9;strokeColor=#C93B42;fontColor=#8A1F26;" vertex="1" parent="1">
+          <mxGeometry x="860" y="780" width="180" height="44" as="geometry" />
+        </mxCell>
+
+        <!-- ============ EDGES ============ -->
+        <mxCell id="e1" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#607D8B;endArrow=block;" edge="1" parent="1" source="src_med" target="scraper"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e2" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#607D8B;endArrow=block;" edge="1" parent="1" source="src_comp" target="scraper"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e3" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#607D8B;endArrow=block;" edge="1" parent="1" source="src_blog" target="blogagent"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <mxCell id="e4" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#2C4984;endArrow=block;" edge="1" parent="1" source="scraper" target="downloader"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e5" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#2C4984;endArrow=block;" edge="1" parent="1" source="downloader" target="transcriber"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e6" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#2C4984;endArrow=block;" edge="1" parent="1" source="transcriber" target="enrich"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e7" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#2C4984;endArrow=block;" edge="1" parent="1" source="enrich" target="cluster"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e8" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#2C4984;endArrow=block;" edge="1" parent="1" source="blogagent" target="knowledge"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <!-- pipeline → data -->
+        <mxCell id="e9" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#4A6FAC;endArrow=open;dashed=1;" edge="1" parent="1" source="downloader" target="d_media"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e10" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#4A6FAC;endArrow=open;dashed=1;" edge="1" parent="1" source="transcriber" target="d_tr"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e11" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#4A6FAC;endArrow=open;dashed=1;" edge="1" parent="1" source="enrich" target="d_enr"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e12" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#4A6FAC;endArrow=open;dashed=1;" edge="1" parent="1" source="cluster" target="d_clu"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e12b" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#4A6FAC;endArrow=open;dashed=1;" edge="1" parent="1" source="cluster" target="d_emb"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e13" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#4A6FAC;endArrow=open;dashed=1;" edge="1" parent="1" source="knowledge" target="d_kb"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <!-- data → second brain -->
+        <mxCell id="e14" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#C93B42;endArrow=block;" edge="1" parent="1" source="d_emb" target="sb_search"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e15" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#C93B42;endArrow=block;" edge="1" parent="1" source="d_kb" target="sb_search"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e16" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#C93B42;endArrow=block;" edge="1" parent="1" source="d_clu" target="sb_idea"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e17" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#C93B42;endArrow=block;" edge="1" parent="1" source="d_enr" target="sb_idea"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e18" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#C93B42;endArrow=block;label=proposte;fontColor=#8A1F26;" edge="1" parent="1" source="sb_idea" target="d_ideas"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <!-- second brain / data → api → frontend -->
+        <mxCell id="e19" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#455A64;endArrow=block;" edge="1" parent="1" source="sb_search" target="api"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e20" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#455A64;endArrow=block;" edge="1" parent="1" source="d_ideas" target="api"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e21" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#455A64;endArrow=block;" edge="1" parent="1" source="api" target="fe_home"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e22" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#346FAA;endArrow=block;" edge="1" parent="1" source="fe_home" target="fe_med"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e23" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#346FAA;endArrow=block;" edge="1" parent="1" source="fe_home" target="fe_comp"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e24" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#C93B42;endArrow=block;" edge="1" parent="1" source="fe_home" target="fe_sb"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <!-- infra usage (dotted) -->
+        <mxCell id="e25" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#B7791F;endArrow=open;dashed=1;dashPattern=1 3;" edge="1" parent="1" source="infra" target="cluster"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e26" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#B7791F;endArrow=open;dashed=1;dashPattern=1 3;" edge="1" parent="1" source="infra" target="knowledge"><mxGeometry relative="1" as="geometry" /></mxCell>
+        <mxCell id="e27" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#B7791F;endArrow=open;dashed=1;dashPattern=1 3;" edge="1" parent="1" source="infra" target="sb_idea"><mxGeometry relative="1" as="geometry" /></mxCell>
+
+        <!-- legend -->
+        <mxCell id="legend" value="Legenda:  ■ blu = agenti pipeline   ■ azzurro = tabelle/dati   ■ rosso = Second Brain   ■ ambra = infrastruttura ML&#10;Freccia continua = flusso · tratteggiata = scrittura dati · punteggiata ambra = uso LLM/ML" style="text;html=1;align=left;fontSize=11;fontColor=#607D8B;" vertex="1" parent="1">
+          <mxGeometry x="40" y="930" width="1120" height="40" as="geometry" />
+        </mxCell>
+
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
