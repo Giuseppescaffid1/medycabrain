@@ -353,6 +353,47 @@ class ContentIdea(models.Model):
         return self.argument_it[:60]
 
 
+class Job(models.Model):
+    """A background job run by a detached management command (`run_job`).
+
+    Lets slow work (LLM idea generation) run outside the HTTP request/timeout
+    while the UI polls status and a global status bar shows progress.
+    """
+
+    KIND_CHOICES = [("ideation", "Ideation"), ("pipeline", "Pipeline")]
+    STATUS_CHOICES = [
+        ("queued", "Queued"),
+        ("running", "Running"),
+        ("done", "Done"),
+        ("failed", "Failed"),
+    ]
+
+    kind = models.CharField(max_length=24, choices=KIND_CHOICES)
+    status = models.CharField(max_length=12, choices=STATUS_CHOICES, default="queued")
+    progress = models.IntegerField(default=0)  # 0–100
+    message = models.CharField(max_length=300, blank=True, default="")
+    params = models.JSONField(default=dict, blank=True)
+    result = models.JSONField(default=dict, blank=True)
+    error = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "jobs"
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["status"])]
+
+    def __str__(self):
+        return f"{self.kind} #{self.pk} ({self.status})"
+
+    def set_progress(self, progress: int, message: str = ""):
+        self.progress = max(0, min(100, int(progress)))
+        if message:
+            self.message = message[:300]
+        self.save(update_fields=["progress", "message", "updated_at"])
+
+
 class ScraperConfig(models.Model):
     """Key/value runtime config editable in Django admin (doc_ids, delays…)."""
 

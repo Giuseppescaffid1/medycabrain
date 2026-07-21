@@ -3,7 +3,6 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import {
   fetchIdeas,
-  generateIdeas,
   updateIdeaStatus,
   type ContentIdea,
 } from "../api/secondBrain";
@@ -14,67 +13,171 @@ import {
   type AskResult,
   type KnowledgeHit,
 } from "../api/knowledge";
+import { useJobs } from "../contexts/JobsContext";
 import { Badge, Button, EmptyState, Spinner } from "../components/ui/primitives";
 import { useDebounced } from "../lib/useDebounced";
 import { formatDate } from "../lib/utils";
 
-type Tab = "ideas" | "browse" | "search" | "ask";
+type Mode = "search" | "ask" | "ideas";
 
 export default function SecondBrain() {
   const { t } = useTranslation();
-  const [tab, setTab] = useState<Tab>("ideas");
+  const [mode, setMode] = useState<Mode>("search");
 
-  const tabs: { key: Tab; label: string }[] = [
-    { key: "ideas", label: t("sb.ideas") },
-    { key: "browse", label: t("sb.browse") },
-    { key: "search", label: t("sb.searchTab") },
-    { key: "ask", label: t("sb.ask") },
+  const modes: { key: Mode; label: string; icon: string }[] = [
+    { key: "search", label: t("sb.search"), icon: "🔎" },
+    { key: "ask", label: t("sb.ask"), icon: "💬" },
+    { key: "ideas", label: t("sb.ideas"), icon: "💡" },
   ];
 
   return (
     <div className="flex h-full flex-col">
-      <div className="border-b border-zinc-800 px-6 py-4">
+      <div className="border-b border-zinc-800 px-6 pb-4 pt-5">
         <h1 className="text-xl font-bold text-white">{t("sb.title")}</h1>
         <p className="text-sm text-zinc-500">{t("sb.subtitle")}</p>
-        <div className="mt-3 flex flex-wrap gap-2">
-          {tabs.map((tb) => (
+        <div className="mt-4 inline-flex rounded-xl border border-zinc-800 bg-zinc-900 p-1">
+          {modes.map((m) => (
             <button
-              key={tb.key}
-              onClick={() => setTab(tb.key)}
+              key={m.key}
+              onClick={() => setMode(m.key)}
               className={
-                "rounded-lg px-3 py-1.5 text-sm font-medium transition " +
-                (tab === tb.key
-                  ? "bg-indigo-600/30 text-indigo-200 ring-1 ring-indigo-500"
-                  : "bg-zinc-900 text-zinc-400 hover:text-zinc-200")
+                "flex items-center gap-2 rounded-lg px-4 py-1.5 text-sm font-medium transition " +
+                (mode === m.key
+                  ? "bg-indigo-600 text-white"
+                  : "text-zinc-400 hover:text-zinc-200")
               }
             >
-              {tb.label}
+              <span>{m.icon}</span>
+              {m.label}
             </button>
           ))}
         </div>
       </div>
-      <div className="flex-1 overflow-y-auto px-6 py-5">
-        {tab === "ideas" && <IdeasTab />}
-        {tab === "browse" && <BrowseTab />}
-        {tab === "search" && <SearchTab />}
-        {tab === "ask" && <AskTab />}
+
+      <div className="flex-1 overflow-y-auto px-6 py-6">
+        {mode === "search" && <SearchMode />}
+        {mode === "ask" && <AskMode />}
+        {mode === "ideas" && <IdeasMode />}
       </div>
     </div>
   );
 }
 
-// ── Content ideas ────────────────────────────────────────────────────────
-function IdeasTab() {
+// ── Search-first: semantic search with browse-when-empty ─────────────────
+function SearchMode() {
+  const { t } = useTranslation();
+  const [q, setQ] = useState("");
+  const debounced = useDebounced(q, 350);
+  const isSearching = debounced.trim().length > 2;
+
+  const search = useQuery({
+    queryKey: ["kb-search", debounced],
+    queryFn: () => searchKnowledge(debounced, 8),
+    enabled: isSearching,
+  });
+  const browse = useQuery({
+    queryKey: ["kb-docs"],
+    queryFn: () => fetchKnowledgeDocs(),
+    enabled: !isSearching,
+  });
+
+  return (
+    <div className="mx-auto max-w-3xl">
+      <div className="relative">
+        <span className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-lg text-zinc-500">🔎</span>
+        <input
+          autoFocus
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder={t("sb.searchPlaceholder")}
+          className="w-full rounded-xl border border-zinc-700 bg-zinc-900 py-3.5 pl-12 pr-4 text-base text-white outline-none focus:border-indigo-500"
+        />
+      </div>
+      <p className="mt-2 px-1 text-xs text-zinc-600">
+        {isSearching ? t("sb.searchingIn") : t("sb.browseHint")}
+      </p>
+
+      <div className="mt-5">
+        {isSearching ? (
+          search.isLoading ? <Spinner /> : <HitList hits={search.data ?? []} />
+        ) : browse.isLoading ? (
+          <Spinner />
+        ) : !browse.data || browse.data.length === 0 ? (
+          <EmptyState message={t("sb.noDocs")} />
+        ) : (
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            {browse.data.map((d) => (
+              <a key={d.id} href={d.source_url} target="_blank" rel="noreferrer"
+                className="flex flex-col gap-2 rounded-xl border border-zinc-800 bg-zinc-900 p-4 transition hover:border-indigo-600/60">
+                <div className="flex items-center gap-2">
+                  <Badge className="bg-emerald-600/20 text-emerald-300">blog</Badge>
+                  <span className="text-xs text-zinc-500">{formatDate(d.published_at)}</span>
+                </div>
+                <h3 className="font-semibold text-white">{d.title.replace(/ — Medyca$/, "")}</h3>
+                {d.summary_it && <p className="line-clamp-2 text-sm text-zinc-400">{d.summary_it}</p>}
+                {d.topics?.length > 0 && (
+                  <div className="mt-auto flex flex-wrap gap-1.5">
+                    {d.topics.slice(0, 4).map((tp) => <Badge key={tp}>{tp}</Badge>)}
+                  </div>
+                )}
+              </a>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Ask (RAG) ────────────────────────────────────────────────────────────
+function AskMode() {
+  const { t } = useTranslation();
+  const [q, setQ] = useState("");
+  const ask = useMutation<AskResult, unknown, string>({ mutationFn: (query) => askKnowledge(query) });
+  return (
+    <div className="mx-auto max-w-3xl">
+      <form onSubmit={(e) => { e.preventDefault(); if (q.trim()) ask.mutate(q.trim()); }} className="flex flex-col gap-3">
+        <textarea
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder={t("sb.askPlaceholder")}
+          rows={3}
+          className="w-full resize-none rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-sm text-white outline-none focus:border-indigo-500"
+        />
+        <div className="flex items-center gap-3">
+          <Button type="submit" disabled={ask.isPending || q.trim().length < 3}>
+            {ask.isPending ? t("sb.thinking") : t("sb.askButton")}
+          </Button>
+          <span className="text-xs text-zinc-600">{t("sb.askNote")}</span>
+        </div>
+      </form>
+      {ask.isPending && <div className="mt-6"><Spinner label={t("sb.thinking")} /></div>}
+      {ask.isError && <p className="mt-6 text-sm text-red-400">{t("common.error")}</p>}
+      {ask.data && (
+        <div className="mt-6 flex flex-col gap-4">
+          <div className="rounded-xl border border-indigo-600/40 bg-indigo-600/10 p-5">
+            <p className="whitespace-pre-wrap text-sm text-zinc-100">{ask.data.answer}</p>
+          </div>
+          <div>
+            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">{t("sb.sources")}</h3>
+            <HitList hits={ask.data.sources} numbered />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Ideas (async generation via the global job) ──────────────────────────
+function IdeasMode() {
   const { t } = useTranslation();
   const qc = useQueryClient();
+  const { jobs, startIdeation } = useJobs();
   const ideas = useQuery({ queryKey: ["ideas"], queryFn: () => fetchIdeas() });
-  const generate = useMutation({
-    mutationFn: () => generateIdeas(8),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["ideas"] }),
-  });
+  const generating = jobs.some((j) => j.kind === "ideation" && (j.status === "queued" || j.status === "running"));
+
   const setStatus = useMutation({
-    mutationFn: (v: { id: number; status: "saved" | "dismissed" }) =>
-      updateIdeaStatus(v.id, v.status),
+    mutationFn: (v: { id: number; status: "saved" | "dismissed" }) => updateIdeaStatus(v.id, v.status),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["ideas"] }),
   });
 
@@ -82,12 +185,15 @@ function IdeasTab() {
     <div className="mx-auto max-w-4xl">
       <div className="mb-5 flex items-center justify-between gap-4">
         <p className="text-sm text-zinc-500">{t("sb.ideasIntro")}</p>
-        <Button onClick={() => generate.mutate()} disabled={generate.isPending}>
-          {generate.isPending ? t("sb.generating") : t("sb.generate")}
+        <Button onClick={() => startIdeation(8)} disabled={generating}>
+          {generating ? t("sb.generating") : t("sb.generate")}
         </Button>
       </div>
-      {generate.isPending && <Spinner label={t("sb.generating")} />}
-      {generate.isError && <p className="text-sm text-red-400">{t("common.error")}</p>}
+      {generating && (
+        <p className="mb-4 rounded-lg border border-indigo-600/40 bg-indigo-600/10 px-4 py-2 text-sm text-indigo-200">
+          {t("sb.generatingNote")}
+        </p>
+      )}
 
       {ideas.isLoading ? (
         <Spinner />
@@ -109,23 +215,13 @@ function IdeasTab() {
   );
 }
 
-function IdeaCard({
-  idea,
-  onSave,
-  onDismiss,
-}: {
-  idea: ContentIdea;
-  onSave: () => void;
-  onDismiss: () => void;
-}) {
+function IdeaCard({ idea, onSave, onDismiss }: { idea: ContentIdea; onSave: () => void; onDismiss: () => void }) {
   const { t } = useTranslation();
   return (
     <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-4">
       <div className="mb-1 flex flex-wrap items-center gap-2">
         {idea.is_gap && <Badge className="bg-amber-600/20 text-amber-300">{t("sb.gap")}</Badge>}
-        {idea.status === "saved" && (
-          <Badge className="bg-emerald-600/20 text-emerald-300">{t("sb.saved")}</Badge>
-        )}
+        {idea.status === "saved" && <Badge className="bg-emerald-600/20 text-emerald-300">{t("sb.saved")}</Badge>}
       </div>
       <h3 className="text-base font-semibold text-white">{idea.argument_it}</h3>
       {idea.rationale_it && <p className="mt-1 text-sm text-zinc-400">{idea.rationale_it}</p>}
@@ -153,105 +249,6 @@ function IdeaCard({
   );
 }
 
-// ── Browse / Search / Ask over the knowledge bank ────────────────────────
-function BrowseTab() {
-  const { t } = useTranslation();
-  const [q, setQ] = useState("");
-  const debounced = useDebounced(q, 400);
-  const docs = useQuery({ queryKey: ["kb-docs", debounced], queryFn: () => fetchKnowledgeDocs(debounced) });
-  return (
-    <div>
-      <input
-        value={q}
-        onChange={(e) => setQ(e.target.value)}
-        placeholder={t("sb.filterPlaceholder")}
-        className="mb-5 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-4 py-2.5 text-sm text-white outline-none focus:border-indigo-500"
-      />
-      {docs.isLoading ? <Spinner /> :
-        !docs.data || docs.data.length === 0 ? <EmptyState message={t("sb.noDocs")} /> :
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-          {docs.data.map((d) => (
-            <a key={d.id} href={d.source_url} target="_blank" rel="noreferrer"
-              className="flex flex-col gap-2 rounded-xl border border-zinc-800 bg-zinc-900 p-4 transition hover:border-indigo-600/60">
-              <div className="flex items-center gap-2">
-                <Badge className="bg-emerald-600/20 text-emerald-300">blog</Badge>
-                <span className="text-xs text-zinc-500">{formatDate(d.published_at)}</span>
-              </div>
-              <h3 className="font-semibold text-white">{d.title.replace(/ — Medyca$/, "")}</h3>
-              {d.summary_it && <p className="line-clamp-2 text-sm text-zinc-400">{d.summary_it}</p>}
-              {d.topics?.length > 0 && (
-                <div className="mt-auto flex flex-wrap gap-1.5">
-                  {d.topics.slice(0, 4).map((tp) => <Badge key={tp}>{tp}</Badge>)}
-                </div>
-              )}
-            </a>
-          ))}
-        </div>}
-    </div>
-  );
-}
-
-function SearchTab() {
-  const { t } = useTranslation();
-  const [q, setQ] = useState("");
-  const debounced = useDebounced(q, 400);
-  const res = useQuery({
-    queryKey: ["kb-search", debounced],
-    queryFn: () => searchKnowledge(debounced),
-    enabled: debounced.trim().length > 2,
-  });
-  return (
-    <div>
-      <input
-        value={q}
-        onChange={(e) => setQ(e.target.value)}
-        placeholder={t("sb.searchPlaceholder")}
-        className="mb-5 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-4 py-2.5 text-sm text-white outline-none focus:border-indigo-500"
-      />
-      {debounced.trim().length <= 2 ? <EmptyState message={t("sb.searchHint")} /> :
-        res.isLoading ? <Spinner /> : <HitList hits={res.data ?? []} />}
-    </div>
-  );
-}
-
-function AskTab() {
-  const { t } = useTranslation();
-  const [q, setQ] = useState("");
-  const ask = useMutation<AskResult, unknown, string>({ mutationFn: (query) => askKnowledge(query) });
-  return (
-    <div className="mx-auto max-w-3xl">
-      <form onSubmit={(e) => { e.preventDefault(); if (q.trim()) ask.mutate(q.trim()); }} className="flex flex-col gap-3">
-        <textarea
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder={t("sb.askPlaceholder")}
-          rows={3}
-          className="w-full resize-none rounded-lg border border-zinc-700 bg-zinc-900 px-4 py-3 text-sm text-white outline-none focus:border-indigo-500"
-        />
-        <div className="flex items-center gap-3">
-          <Button type="submit" disabled={ask.isPending || q.trim().length < 3}>
-            {ask.isPending ? t("sb.thinking") : t("sb.askButton")}
-          </Button>
-          <span className="text-xs text-zinc-600">{t("sb.askNote")}</span>
-        </div>
-      </form>
-      {ask.isPending && <div className="mt-6"><Spinner label={t("sb.thinking")} /></div>}
-      {ask.isError && <p className="mt-6 text-sm text-red-400">{t("common.error")}</p>}
-      {ask.data && (
-        <div className="mt-6 flex flex-col gap-4">
-          <div className="rounded-xl border border-indigo-600/40 bg-indigo-600/10 p-5">
-            <p className="whitespace-pre-wrap text-sm text-zinc-100">{ask.data.answer}</p>
-          </div>
-          <div>
-            <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">{t("sb.sources")}</h3>
-            <HitList hits={ask.data.sources} numbered />
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
 function HitList({ hits, numbered }: { hits: KnowledgeHit[]; numbered?: boolean }) {
   const { t } = useTranslation();
   if (hits.length === 0) return <EmptyState message={t("sb.noResults")} />;
@@ -265,7 +262,7 @@ function HitList({ hits, numbered }: { hits: KnowledgeHit[]; numbered?: boolean 
               {i + 1}
             </span>
           )}
-          <div className="flex flex-col gap-1">
+          <div className="flex min-w-0 flex-col gap-1">
             <div className="flex items-center gap-2">
               <Badge className={h.kind === "blog" ? "bg-emerald-600/20 text-emerald-300" : "bg-pink-600/20 text-pink-300"}>
                 {h.kind === "blog" ? "blog" : "reel"}

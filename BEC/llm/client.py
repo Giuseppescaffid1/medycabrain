@@ -64,7 +64,7 @@ def _hf_chat(system: str, user: str, max_tokens: int, temperature: float) -> str
 
 
 def _ollama_chat(system: str, user: str, max_tokens: int, temperature: float,
-                 json_mode: bool = False) -> str:
+                 json_mode: bool = False, timeout: int = 240) -> str:
     payload = {
         "model": settings.OLLAMA_MODEL,
         "messages": [{"role": "system", "content": system},
@@ -74,7 +74,7 @@ def _ollama_chat(system: str, user: str, max_tokens: int, temperature: float,
     }
     if json_mode:  # only for structured-extraction prompts, not free-text answers
         payload["format"] = "json"
-    resp = requests.post(f"{settings.OLLAMA_URL}/api/chat", json=payload, timeout=240)
+    resp = requests.post(f"{settings.OLLAMA_URL}/api/chat", json=payload, timeout=timeout)
     resp.raise_for_status()
     return resp.json().get("message", {}).get("content", "")
 
@@ -91,11 +91,12 @@ def _providers() -> list[str]:
 
 
 def chat(system: str, user: str, max_tokens: int = 800, temperature: float = 0.2,
-         retries: int = 2, json_mode: bool = False) -> str:
+         retries: int = 2, json_mode: bool = False, timeout: int = 240) -> str:
     """Return raw assistant text, trying providers in order with retries.
 
     json_mode nudges Ollama to emit valid JSON — set only for extraction
     prompts, never for free-text answers (it degrades prose quality).
+    timeout applies to the Ollama call (long jobs pass a bigger value).
     """
     global _hf_disabled
     providers = _providers()
@@ -105,7 +106,8 @@ def chat(system: str, user: str, max_tokens: int = 800, temperature: float = 0.2
     def _call(provider):
         if provider == "hf":
             return _hf_chat(system, user, max_tokens, temperature)
-        return _ollama_chat(system, user, max_tokens, temperature, json_mode=json_mode)
+        return _ollama_chat(system, user, max_tokens, temperature,
+                            json_mode=json_mode, timeout=timeout)
 
     last_err = None
     for provider in providers:

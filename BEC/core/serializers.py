@@ -140,6 +140,15 @@ class KnowledgeDocDetailSerializer(serializers.ModelSerializer):
         ]
 
 
+class JobSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = models.Job
+        fields = [
+            "id", "kind", "status", "progress", "message", "result",
+            "error", "created_at", "updated_at", "finished_at",
+        ]
+
+
 class ContentIdeaSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.ContentIdea

@@ -1,7 +1,9 @@
 import { Suspense, lazy } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { useAuth } from "./contexts/AuthContext";
+import { JobsProvider } from "./contexts/JobsContext";
 import { Sidebar } from "./components/layout/Sidebar";
+import { StatusBar } from "./components/layout/StatusBar";
 import { Spinner } from "./components/ui/primitives";
 
 const Login = lazy(() => import("./pages/Login"));
@@ -53,12 +55,15 @@ export default function App() {
     );
   }
   return (
-    <Suspense fallback={<Spinner />}>
-      <Routes>
-        <Route path="/login" element={<Navigate to="/" replace />} />
-        <Route path="/" element={<Home />} />
-        <Route path="/*" element={<AppRoutes />} />
-      </Routes>
-    </Suspense>
+    <JobsProvider>
+      <Suspense fallback={<Spinner />}>
+        <Routes>
+          <Route path="/login" element={<Navigate to="/" replace />} />
+          <Route path="/" element={<Home />} />
+          <Route path="/*" element={<AppRoutes />} />
+        </Routes>
+      </Suspense>
+      <StatusBar />
+    </JobsProvider>
   );
 }

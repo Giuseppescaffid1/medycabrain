@@ -98,13 +98,24 @@ Restituisci un JSON:
 """
 
 
-def generate_ideas(n: int = 8) -> list[ContentIdea]:
-    """Generate + persist n content ideas. Returns the created rows."""
+def generate_ideas(n: int = 8, job=None) -> list[ContentIdea]:
+    """Generate + persist n content ideas. Returns the created rows.
+
+    When `job` is given, updates its progress/message as it goes so the UI
+    status bar can track a long (Ollama, CPU) run.
+    """
+    def progress(pct, msg):
+        if job is not None:
+            job.set_progress(pct, msg)
+
+    progress(10, "Raccolgo i dati di competitor e Medyca…")
     comp = _competitor_signal()
     medyca = _medyca_coverage()
 
     if not comp["clusters"] and not comp["arguments"]:
-        raise RuntimeError("Nessun dato competitor: esegui prima il clustering competitor.")
+        raise RuntimeError(
+            "Nessun dato competitor disponibile: esegui prima il clustering competitor."
+        )
 
     user = IDEATION_USER.format(
         comp_clusters="\n".join(f"- {c}" for c in comp["clusters"]) or "(nessuno)",
@@ -112,24 +123,30 @@ def generate_ideas(n: int = 8) -> list[ContentIdea]:
         medyca_topics=", ".join(medyca) or "(nessuno)",
         n=n,
     )
-    data = client.chat_json(IDEATION_SYSTEM, user, max_tokens=1200, retries=3)
+    progress(25, "Genero le idee con il modello locale (può richiedere qualche minuto)…")
+    # Long timeout: this is a background job, so wall-time doesn't hurt UX.
+    data = client.chat_json(IDEATION_SYSTEM, user, max_tokens=1200, retries=2, timeout=600)
     ideas = data.get("idee") if isinstance(data, dict) else data
     if not isinstance(ideas, list):
         ideas = []
+    ideas = [i for i in ideas if isinstance(i, dict) and str(i.get("argument", "")).strip()][:n]
+    if not ideas:
+        raise RuntimeError("Il modello non ha restituito idee valide. Riprova.")
 
-    # A batch id groups this generation (no Date.now available; use max pk + count).
+    # A batch id groups this generation (Date.now is unavailable in workflows,
+    # but this is a normal process — still keep it deterministic-ish).
     last = ContentIdea.objects.order_by("-id").values_list("id", flat=True).first() or 0
     batch = f"batch-{last + 1}"
 
     created = []
     from core.knowledge import semantic_search
-    for item in ideas[:n]:
-        if not isinstance(item, dict):
-            continue
+    total = len(ideas)
+    for i, item in enumerate(ideas):
         arg = str(item.get("argument", "")).strip()
         if len(arg) < 4:
             continue
-        # Attach supporting sources from the knowledge bank.
+        progress(60 + int(35 * (i / max(total, 1))),
+                 f"Collego le fonti alle idee ({i + 1}/{total})…")
         try:
             hits = semantic_search(arg, top_k=3)
         except Exception:  # noqa: BLE001
@@ -144,5 +161,6 @@ def generate_ideas(n: int = 8) -> list[ContentIdea]:
             status="proposed",
             batch=batch,
         ))
+    progress(100, f"Generate {len(created)} idee.")
     logger.info("[ideation] generated %d ideas (batch %s)", len(created), batch)
     return created

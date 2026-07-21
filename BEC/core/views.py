@@ -1,3 +1,5 @@
+import os
+
 from django.contrib.auth import authenticate
 from django.contrib.postgres.search import SearchQuery, SearchVector
 from django.db.models import Count, Q
@@ -293,10 +295,45 @@ class ContentIdeaViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=["post"], url_path="generate")
     def generate(self, request):
+        """Kick off idea generation as a detached background job (returns 202)."""
         n = int(request.data.get("n", 8))
-        from core.ideation import generate_ideas
-        try:
-            created = generate_ideas(n=n)
-        except Exception as exc:  # noqa: BLE001
-            return Response({"detail": str(exc)}, status=400)
-        return Response(serializers.ContentIdeaSerializer(created, many=True).data)
+        job = models.Job.objects.create(kind="ideation", status="queued",
+                                        params={"n": n}, message="In coda…")
+        _spawn_job(job.id)
+        return Response(serializers.JobSerializer(job).data, status=status.HTTP_202_ACCEPTED)
+
+
+def _spawn_job(job_id: int):
+    """Spawn `manage.py run_job --job <id>` as a detached process (survives the
+    request and gunicorn worker recycling). Mirrors the scraper's run_spider."""
+    import subprocess
+    import sys
+
+    from django.conf import settings
+
+    subprocess.Popen(
+        [sys.executable, "manage.py", "run_job", "--job", str(job_id)],
+        cwd=str(settings.BASE_DIR),
+        env={**os.environ, "PYTHONUNBUFFERED": "1"},
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+
+
+class JobViewSet(viewsets.ReadOnlyModelViewSet):
+    """Poll background job status (for the global status bar)."""
+
+    serializer_class = serializers.JobSerializer
+    permission_classes = [IsAuthenticated]
+    pagination_class = None
+
+    def get_queryset(self):
+        qs = models.Job.objects.all()
+        if self.request.query_params.get("active"):
+            qs = qs.filter(status__in=["queued", "running"])
+        elif self.action == "list":
+            # recent jobs only (avoid unbounded list); retrieve stays unfiltered
+            recent_ids = list(qs.values_list("id", flat=True)[:20])
+            qs = qs.filter(id__in=recent_ids)
+        return qs

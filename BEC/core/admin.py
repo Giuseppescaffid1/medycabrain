@@ -48,6 +48,12 @@ class ContentIdeaAdmin(admin.ModelAdmin):
     search_fields = ("argument_it", "rationale_it")
 
 
+@admin.register(models.Job)
+class JobAdmin(admin.ModelAdmin):
+    list_display = ("id", "kind", "status", "progress", "message", "created_at")
+    list_filter = ("kind", "status")
+
+
 admin.site.register(models.Transcript)
 admin.site.register(models.Enrichment)
 admin.site.register(models.TopicCluster)
