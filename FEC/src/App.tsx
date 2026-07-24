@@ -11,6 +11,7 @@ const Home = lazy(() => import("./pages/Home"));
 const Library = lazy(() => import("./pages/Library"));
 const Clusters = lazy(() => import("./pages/Clusters"));
 const ClusterDetail = lazy(() => import("./pages/ClusterDetail"));
+const Timeline = lazy(() => import("./pages/Timeline"));
 const Workspace = lazy(() => import("./pages/Workspace"));
 const Accounts = lazy(() => import("./pages/Accounts"));
 const SecondBrain = lazy(() => import("./pages/SecondBrain"));
@@ -30,6 +31,7 @@ function AppRoutes() {
       <Suspense fallback={<Spinner />}>
         <Routes>
           <Route path="/:scope/library" element={<Library />} />
+          <Route path="/:scope/timeline" element={<Timeline />} />
           <Route path="/:scope/clusters" element={<Clusters />} />
           <Route path="/:scope/clusters/:id" element={<ClusterDetail />} />
           <Route path="/second-brain" element={<SecondBrain />} />

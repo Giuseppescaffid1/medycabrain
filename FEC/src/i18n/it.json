@@ -5,6 +5,7 @@
     "competitor": "Competitor",
     "tools": "Strumenti",
     "library": "Libreria",
+    "timeline": "Timeline",
     "clusters": "Cluster",
     "secondBrain": "Second Brain",
     "workspace": "Workspace",
@@ -14,6 +15,15 @@
   "scope": {
     "medyca": "Medyca",
     "competitor": "Competitor"
+  },
+  "timeline": {
+    "title": "Timeline pubblicazioni",
+    "subtitle": "Cosa è stato pubblicato e quando. Clicca un mese per vedere i reel.",
+    "perMonth": "Reel per mese",
+    "published": "pubblicati",
+    "allRecent": "Tutti (dai più recenti)",
+    "showAll": "Mostra tutti",
+    "empty": "Nessun reel con data di pubblicazione."
   },
   "sb": {
     "title": "Second Brain",

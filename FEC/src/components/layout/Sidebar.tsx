@@ -35,10 +35,12 @@ export function Sidebar() {
       <nav className="flex flex-1 flex-col gap-0.5">
         <Section label={t("nav.medyca")} />
         <NavLink to="/medyca/library" className={linkClass}>🎬 {t("nav.library")}</NavLink>
+        <NavLink to="/medyca/timeline" className={linkClass}>📅 {t("nav.timeline")}</NavLink>
         <NavLink to="/medyca/clusters" className={linkClass}>🧭 {t("nav.clusters")}</NavLink>
 
         <Section label={t("nav.competitor")} />
         <NavLink to="/competitor/library" className={linkClass}>🎬 {t("nav.library")}</NavLink>
+        <NavLink to="/competitor/timeline" className={linkClass}>📅 {t("nav.timeline")}</NavLink>
         <NavLink to="/competitor/clusters" className={linkClass}>🧭 {t("nav.clusters")}</NavLink>
 
         <Section label={t("nav.tools")} />
