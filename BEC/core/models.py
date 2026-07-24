@@ -248,6 +248,53 @@ class ArgumentAssignment(models.Model):
         unique_together = [("run", "argument")]
 
 
+class DocClusterAssignment(models.Model):
+    """A blog KnowledgeDocument's membership in a topic cluster.
+
+    Lets the Second Brain cluster span ALL Medyca assets — reels AND blog
+    articles together (Alberto's model: the second brain is the thematic
+    layer over every asset). Only meaningful for the 'owned' scope.
+    """
+
+    run = models.ForeignKey(ClusterRun, on_delete=models.CASCADE, related_name="doc_assignments")
+    document = models.ForeignKey("KnowledgeDocument", on_delete=models.CASCADE, related_name="cluster_assignments")
+    cluster = models.ForeignKey(
+        TopicCluster, on_delete=models.CASCADE, null=True, blank=True, related_name="doc_assignments"
+    )
+    probability = models.FloatField(default=0.0)
+
+    class Meta:
+        db_table = "doc_cluster_assignments"
+        unique_together = [("run", "document")]
+
+
+class BlogDraft(models.Model):
+    """Output of the cluster-driven blog workflow (Alberto's headline).
+
+    For a theme cluster: 'expand' lists what the reels cover that the
+    existing blog article doesn't yet; 'draft' is a full new article
+    grounded ONLY in the cluster's reel transcripts (not invented).
+    """
+
+    MODE_CHOICES = [("expand", "Expand existing"), ("draft", "New draft")]
+    STATUS_CHOICES = [("proposed", "Proposed"), ("saved", "Saved"), ("dismissed", "Dismissed")]
+
+    mode = models.CharField(max_length=12, choices=MODE_CHOICES)
+    cluster_label = models.CharField(max_length=160, blank=True, default="")
+    title = models.CharField(max_length=300, blank=True, default="")
+    content_md = models.TextField(blank=True, default="")
+    source_refs = models.JSONField(default=list, blank=True)  # [{kind,title,url}]
+    status = models.CharField(max_length=12, choices=STATUS_CHOICES, default="proposed")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "blog_drafts"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.mode}: {self.title or self.cluster_label}"
+
+
 # ── Workspace (single shared client user → no per-user FK) ─────────────────────
 
 class Tag(models.Model):
@@ -360,7 +407,7 @@ class Job(models.Model):
     while the UI polls status and a global status bar shows progress.
     """
 
-    KIND_CHOICES = [("ideation", "Ideation"), ("pipeline", "Pipeline")]
+    KIND_CHOICES = [("ideation", "Ideation"), ("pipeline", "Pipeline"), ("blog", "Blog")]
     STATUS_CHOICES = [
         ("queued", "Queued"),
         ("running", "Running"),

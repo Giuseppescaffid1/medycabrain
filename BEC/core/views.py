@@ -191,6 +191,36 @@ class ClusterViewSet(viewsets.ReadOnlyModelViewSet):
         out.sort(key=lambda x: x["reel_count"], reverse=True)
         return Response(out)
 
+    @action(detail=True, methods=["post"], url_path="blog")
+    def blog(self, request, pk=None):
+        """Cluster-driven blog: expand the cluster's existing article, or draft
+        a new one grounded in its reels. Runs as a detached background job."""
+        cluster = models.TopicCluster.objects.filter(id=pk).first()
+        if not cluster:
+            return Response({"detail": "Cluster non trovato."}, status=404)
+        job = models.Job.objects.create(
+            kind="blog", status="queued", params={"cluster_id": int(pk)},
+            message=f"In coda: blog per «{cluster.label_it}»")
+        _spawn_job(job.id)
+        return Response(serializers.JobSerializer(job).data, status=status.HTTP_202_ACCEPTED)
+
+
+class BlogDraftViewSet(viewsets.ModelViewSet):
+    """Browse / save / dismiss the cluster-driven blog drafts + expansions."""
+
+    serializer_class = serializers.BlogDraftSerializer
+    permission_classes = [IsAuthenticated]
+    http_method_names = ["get", "patch", "head", "options"]
+
+    def get_queryset(self):
+        qs = models.BlogDraft.objects.all()
+        status_f = self.request.query_params.get("status")
+        if status_f:
+            qs = qs.filter(status=status_f)
+        else:
+            qs = qs.exclude(status="dismissed")
+        return qs
+
 
 # ── Stats ──────────────────────────────────────────────────────────────────────
 

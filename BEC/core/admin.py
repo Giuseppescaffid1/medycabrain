@@ -54,6 +54,12 @@ class JobAdmin(admin.ModelAdmin):
     list_filter = ("kind", "status")
 
 
+@admin.register(models.BlogDraft)
+class BlogDraftAdmin(admin.ModelAdmin):
+    list_display = ("title", "mode", "cluster_label", "status", "created_at")
+    list_filter = ("mode", "status")
+
+
 admin.site.register(models.Transcript)
 admin.site.register(models.Enrichment)
 admin.site.register(models.TopicCluster)

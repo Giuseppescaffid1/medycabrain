@@ -58,4 +58,7 @@ class Command(BaseCommand):
             n = int(job.params.get("n", 8))
             created = generate_ideas(n=n, job=job)
             return {"idea_ids": [c.id for c in created], "count": len(created)}
+        if job.kind == "blog":
+            from core.blog_workflow import run_cluster_blog
+            return run_cluster_blog(int(job.params["cluster_id"]), job=job)
         raise CommandError(f"unknown job kind: {job.kind}")

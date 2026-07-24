@@ -101,10 +101,14 @@ class ReelDetailSerializer(serializers.ModelSerializer):
 
 class ClusterSerializer(serializers.ModelSerializer):
     preview_thumbs = serializers.SerializerMethodField()
+    has_blog = serializers.SerializerMethodField()
+    reel_count = serializers.SerializerMethodField()
+    doc_count = serializers.SerializerMethodField()
 
     class Meta:
         model = models.TopicCluster
-        fields = ["id", "label_it", "description_it", "size", "keywords", "position", "preview_thumbs"]
+        fields = ["id", "label_it", "description_it", "size", "keywords", "position",
+                  "preview_thumbs", "has_blog", "reel_count", "doc_count"]
 
     def get_preview_thumbs(self, obj):
         thumbs = (
@@ -113,6 +117,24 @@ class ClusterSerializer(serializers.ModelSerializer):
             .values_list("thumbnail_file", flat=True)[:3]
         )
         return list(thumbs)
+
+    def get_has_blog(self, obj):
+        return obj.doc_assignments.filter(document__isnull=False).exists()
+
+    def get_reel_count(self, obj):
+        return obj.reel_assignments.count()
+
+    def get_doc_count(self, obj):
+        return obj.doc_assignments.count()
+
+
+class BlogDraftSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = models.BlogDraft
+        fields = ["id", "mode", "cluster_label", "title", "content_md",
+                  "source_refs", "status", "created_at"]
+        read_only_fields = ["mode", "cluster_label", "title", "content_md",
+                            "source_refs", "created_at"]
 
 
 class UserSerializer(serializers.ModelSerializer):

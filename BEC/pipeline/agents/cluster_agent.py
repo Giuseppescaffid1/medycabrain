@@ -191,13 +191,29 @@ def _run_scope(scope: str) -> dict:
                             account__owner_type=scope)
         .select_related("enrichment", "transcript", "embedding")
     )
-    if len(reels) < MIN_DOCS:
-        return {"skipped": True, "scope": scope,
-                "note": f"need >= {MIN_DOCS} enriched {scope} reels, have {len(reels)}"}
-
     emb_map = _ensure_reel_embeddings(reels)
     reels = [r for r in reels if r.id in emb_map]
-    matrix = np.vstack([emb_map[r.id] for r in reels])
+
+    # Assets = reels (both scopes) + blog documents (owned scope only), so the
+    # Second Brain clusters span every Medyca asset, not just reels.
+    assets = [{"kind": "reel", "obj": r, "vec": emb_map[r.id],
+               "text": _reel_text(r, getattr(r, "enrichment", None))} for r in reels]
+    docs = []
+    if scope == "owned":
+        from core.models import KnowledgeDocument
+        docs = [d for d in KnowledgeDocument.objects.filter(is_active=True).exclude(embedding=[])]
+        for d in docs:
+            assets.append({
+                "kind": "doc", "obj": d,
+                "vec": np.asarray(d.embedding, dtype=np.float32),
+                "text": f"{d.title}\n{d.summary_it}\n{' '.join(d.topics)}",
+            })
+
+    if len(assets) < MIN_DOCS:
+        return {"skipped": True, "scope": scope,
+                "note": f"need >= {MIN_DOCS} enriched {scope} assets, have {len(assets)}"}
+
+    matrix = np.vstack([a["vec"] for a in assets])
 
     labels, probs, algo, params = _cluster(matrix)
     unique = sorted(set(int(l) for l in labels if l != -1))
@@ -228,10 +244,8 @@ def _run_scope(scope: str) -> dict:
             naming = reused
         else:
             import time as _t
-            _t.sleep(1.0)  # space out naming calls to avoid HF rate limits
-            sample_texts = [
-                _reel_text(reels[i], getattr(reels[i], "enrichment", None)) for i in idxs[:5]
-            ]
+            _t.sleep(1.0)  # space out naming calls to avoid rate limits
+            sample_texts = [assets[i]["text"] for i in idxs[:5]]
             naming = _name_cluster(sample_texts)
 
         cluster = TopicCluster.objects.create(
@@ -245,18 +259,27 @@ def _run_scope(scope: str) -> dict:
         )
         label_to_cluster[lab] = cluster
 
-    # Reel assignments
-    assignments = []
-    for i, reel in enumerate(reels):
-        lab = int(labels[i])
-        cluster = label_to_cluster.get(lab)
-        assignments.append(ReelClusterAssignment(
-            run=run_obj, reel=reel, cluster=cluster, probability=float(probs[i]),
-        ))
-    ReelClusterAssignment.objects.bulk_create(assignments)
+    # Assign each asset (reel or blog doc) to its cluster.
+    from core.models import DocClusterAssignment
+    reel_rows, doc_rows = [], []
+    for i, a in enumerate(assets):
+        cluster = label_to_cluster.get(int(labels[i]))
+        if a["kind"] == "reel":
+            reel_rows.append(ReelClusterAssignment(
+                run=run_obj, reel=a["obj"], cluster=cluster, probability=float(probs[i])))
+        else:
+            doc_rows.append(DocClusterAssignment(
+                run=run_obj, document=a["obj"], cluster=cluster, probability=float(probs[i])))
+    ReelClusterAssignment.objects.bulk_create(reel_rows)
+    DocClusterAssignment.objects.bulk_create(doc_rows)
+    params["n_docs"] = len(doc_rows)
 
-    # ── Layer 2: arguments ──────────────────────────────────────────────────
-    arg_assigned = _assign_arguments(run_obj, unique, labels, matrix, reels, label_to_cluster)
+    # ── Layer 2: arguments (reels only) ─────────────────────────────────────
+    reel_idx = [i for i, a in enumerate(assets) if a["kind"] == "reel"]
+    reel_list = [assets[i]["obj"] for i in reel_idx]
+    reel_labels = np.array([labels[i] for i in reel_idx])
+    reel_matrix = matrix[reel_idx] if reel_idx else matrix
+    arg_assigned = _assign_arguments(run_obj, unique, reel_labels, reel_matrix, reel_list, label_to_cluster)
 
     # Flip current atomically, within this scope only.
     with transaction.atomic():
