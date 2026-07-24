@@ -137,11 +137,12 @@ TMP_DIR = DATA_DIR / "tmp"
 # ── LLM / Whisper / embeddings ─────────────────────────────────────────────────
 HF_API_TOKEN = os.environ.get("HF_API_TOKEN", "")
 HF_LLM_MODEL = os.environ.get("HF_LLM_MODEL", "Qwen/Qwen2.5-7B-Instruct")
-# Zero-cost local fallback (used when HF is absent or out of credits).
+# Local-first: Ollama runs a quantized Qwen2.5-7B (zero cost, good Italian).
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://127.0.0.1:11434")
-OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "mistral:7b-instruct-q4_K_M")
-# Provider order: try each until one answers.
-LLM_PROVIDER_ORDER = os.environ.get("LLM_PROVIDER_ORDER", "hf,ollama").split(",")
+OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "qwen2.5:7b-instruct-q4_K_M")
+# Provider order: try each until one answers. Default local-only; HF is
+# dormant (add ",hf" to call it — e.g. after refilling credits).
+LLM_PROVIDER_ORDER = os.environ.get("LLM_PROVIDER_ORDER", "ollama").split(",")
 WHISPER_MODEL = os.environ.get("WHISPER_MODEL", "small")
 WHISPER_COMPUTE_TYPE = os.environ.get("WHISPER_COMPUTE_TYPE", "int8")
 WHISPER_CPU_THREADS = int(os.environ.get("WHISPER_CPU_THREADS", "4"))
