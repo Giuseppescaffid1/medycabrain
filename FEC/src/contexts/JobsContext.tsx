@@ -15,12 +15,15 @@ import {
   startIdeationJob,
   type Job,
 } from "../api/jobs";
+import { analyzeInput, generateDraft } from "../api/strategy";
 
 interface JobsState {
   /** Jobs to surface in the status bar (active + recently finished). */
   jobs: Job[];
   startIdeation: (n?: number) => Promise<void>;
   startClusterBlog: (clusterId: number) => Promise<void>;
+  startStrategy: (input: string, sourceKind?: string) => Promise<void>;
+  startDraft: (briefId: number) => Promise<void>;
   dismiss: (id: number) => void;
 }
 
@@ -59,6 +62,9 @@ export function JobsProvider({ children }: { children: ReactNode }) {
           finishedAt.current[j.id] = Date.now();
           setJobs((p) => p.map((x) => (x.id === j.id ? final : x)));
           if (final.kind === "ideation") qc.invalidateQueries({ queryKey: ["ideas"] });
+          if (final.kind === "blog") qc.invalidateQueries({ queryKey: ["blog-drafts"] });
+          if (final.kind === "strategy" || final.kind === "strategy_draft")
+            qc.invalidateQueries({ queryKey: ["briefs"] });
           qc.invalidateQueries({ queryKey: ["stats"] });
         } catch {
           /* ignore */
@@ -105,12 +111,22 @@ export function JobsProvider({ children }: { children: ReactNode }) {
     registerJob(await startClusterBlogJob(clusterId));
   }, [registerJob]);
 
+  const startStrategy = useCallback(async (input: string, sourceKind = "input") => {
+    registerJob(await analyzeInput(input, sourceKind));
+  }, [registerJob]);
+
+  const startDraft = useCallback(async (briefId: number) => {
+    registerJob(await generateDraft(briefId));
+  }, [registerJob]);
+
   const dismiss = useCallback((id: number) => {
     setJobs((prev) => prev.filter((j) => j.id !== id));
   }, []);
 
   return (
-    <JobsContext.Provider value={{ jobs, startIdeation, startClusterBlog, dismiss }}>
+    <JobsContext.Provider
+      value={{ jobs, startIdeation, startClusterBlog, startStrategy, startDraft, dismiss }}
+    >
       {children}
     </JobsContext.Provider>
   );
