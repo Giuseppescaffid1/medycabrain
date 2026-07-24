@@ -9,6 +9,7 @@
     "timeline": "Timeline",
     "clusters": "Cluster",
     "secondBrain": "Second Brain",
+    "knowledgeBank": "Knowledge Bank",
     "workspace": "Workspace",
     "accounts": "Account",
     "logout": "Esci"
@@ -67,6 +68,29 @@
     "saved": "Salvato",
     "save": "Salva",
     "dismiss": "Scarta"
+  },
+  "kb": {
+    "title": "Knowledge Bank",
+    "subtitle": "Tutti i contenuti di Medyca su cui lavora il Second Brain: articoli del blog e reel con trascrizione.",
+    "browse": "Sfoglia",
+    "search": "Cerca",
+    "ask": "Chiedi",
+    "articles": "Articoli blog",
+    "reels": "Reel Medyca",
+    "content": "Contenuto",
+    "date": "Data",
+    "views": "View",
+    "transcript": "Trascrizione",
+    "noDocs": "Nessun articolo. Importa il blog con ingest_blog.",
+    "searchPlaceholder": "Cerca per significato in tutta la knowledge bank…",
+    "searchHint": "Scrivi almeno 3 caratteri per la ricerca semantica.",
+    "askPlaceholder": "Fai una domanda alla knowledge bank di Medyca…",
+    "askButton": "Chiedi all'AI",
+    "askNote": "Risposta generata in locale, con citazioni. Può richiedere qualche minuto.",
+    "thinking": "Sto pensando…",
+    "sources": "Fonti",
+    "relevance": "rilevanza",
+    "noResults": "Nessun risultato."
   },
   "jobs": {
     "ideation": "Generazione idee di contenuto",

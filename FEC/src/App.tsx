@@ -16,6 +16,7 @@ const Analytics = lazy(() => import("./pages/Analytics"));
 const Workspace = lazy(() => import("./pages/Workspace"));
 const Accounts = lazy(() => import("./pages/Accounts"));
 const SecondBrain = lazy(() => import("./pages/SecondBrain"));
+const KnowledgeBank = lazy(() => import("./pages/KnowledgeBank"));
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
@@ -37,6 +38,7 @@ function AppRoutes() {
           <Route path="/:scope/clusters" element={<Clusters />} />
           <Route path="/:scope/clusters/:id" element={<ClusterDetail />} />
           <Route path="/second-brain" element={<SecondBrain />} />
+          <Route path="/knowledge-bank" element={<KnowledgeBank />} />
           <Route path="/workspace" element={<Workspace />} />
           <Route path="/accounts" element={<Accounts />} />
           <Route path="*" element={<Navigate to="/" replace />} />
