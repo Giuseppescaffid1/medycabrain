@@ -21,8 +21,8 @@ export interface StrategyBrief {
   created_at: string;
 }
 export interface CoverageMap {
-  covered: { id: number; label: string; reels: number; docs: number }[];
-  opportunities: { id: number; label: string; reels: number; similarity: number }[];
+  covered: { id: number | string; label: string; reels: number; docs: number; custom?: boolean }[];
+  opportunities: { id: number | string; label: string; reels: number; similarity: number; custom?: boolean }[];
 }
 
 export async function analyzeInput(input_text: string, source_kind = "input"): Promise<Job> {

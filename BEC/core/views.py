@@ -445,6 +445,19 @@ class CoverageMapView(APIView):
                 opportunities.append({"id": c.id, "label": c.label_it,
                                       "reels": c.reel_assignments.count(),
                                       "similarity": round(best, 2)})
+        # Client-supplied custom topics: owned content -> covered, competitor
+        # signal only (or nothing yet) -> opportunity. Marked custom for the UI.
+        for topic in models.CustomTopic.objects.filter(is_active=True):
+            own_reels = topic.matches.filter(scope="owned", reel__isnull=False).count()
+            own_docs = topic.matches.filter(document__isnull=False).count()
+            comp = topic.matches.filter(scope="competitor").count()
+            if own_reels + own_docs > 0:
+                covered.append({"id": f"ct{topic.id}", "label": topic.label,
+                                "reels": own_reels, "docs": own_docs, "custom": True})
+            else:
+                opportunities.append({"id": f"ct{topic.id}", "label": topic.label,
+                                      "reels": comp, "similarity": 0.0, "custom": True})
+
         opportunities.sort(key=lambda x: x["reels"], reverse=True)
         return Response({"covered": covered, "opportunities": opportunities})
 
@@ -501,6 +514,20 @@ class SecondBrainGraphView(APIView):
                     add(did, "blog", a.document.title.replace(" — Medyca", ""), "blog", parent=cid)
                     link(cid, did, "", "structure")
 
+        # Client-supplied custom topics (overlay themes)
+        for topic in models.CustomTopic.objects.filter(is_active=True):
+            tid = f"custom:{topic.id}"
+            n = topic.matches.filter(scope=scope).count()
+            add(tid, "custom", topic.label, f"{n} contenuti · cliente", parent="root")
+            link("root", tid, "cliente", "flow")
+            for m in (topic.matches.filter(scope=scope, reel__isnull=False)
+                      .select_related("reel").order_by("-similarity")[:4]):
+                r = m.reel
+                rid = f"reel:{r.shortcode}"
+                add(rid, "reel", (r.caption or r.shortcode)[:40],
+                    f"{r.view_count or 0} view", parent=tid)
+                link(tid, rid, "", "structure")
+
         # Competitor opportunities (gaps) — from the coverage map
         if scope == "owned":
             comp_run = models.ClusterRun.objects.filter(scope="competitor", is_current=True).first()
@@ -518,6 +545,56 @@ class SecondBrainGraphView(APIView):
                     link("root", oid, "gap", "link")
 
         return Response({"nodes": nodes, "edges": edges})
+
+
+
+class CustomTopicViewSet(viewsets.ModelViewSet):
+    """Client-supplied themes to map ("tiroide", "osteoporosi", "Bijuva"…).
+
+    Creation embeds the label+keywords and computes matches synchronously so
+    the client sees immediately how much content exists on the theme. The
+    nightly cluster step refreshes matches for new content.
+    """
+
+    permission_classes = [IsAuthenticated]
+    serializer_class = serializers.CustomTopicSerializer
+    http_method_names = ["get", "post", "delete", "head", "options"]
+
+    def get_queryset(self):
+        return models.CustomTopic.objects.filter(is_active=True).annotate(
+            medyca_matches=Count("matches", filter=Q(matches__scope="owned", matches__reel__isnull=False)),
+            competitor_matches=Count("matches", filter=Q(matches__scope="competitor")),
+            doc_matches=Count("matches", filter=Q(matches__document__isnull=False)),
+        )
+
+    def perform_create(self, serializer):
+        from core import custom_topics
+        topic = serializer.save()
+        custom_topics.embed_topic(topic)
+        custom_topics.recompute_matches([topic])
+
+    @action(detail=True, methods=["get"])
+    def matches(self, request, pk=None):
+        """Matched assets for one topic, filtered by ?scope=."""
+        topic = self.get_object()
+        scope = SCOPE_MAP.get(request.query_params.get("scope", "medyca").lower(), "owned")
+        qs = (topic.matches.filter(scope=scope)
+              .select_related("reel__account", "reel__enrichment", "document"))
+        # Verbatim mentions first (strongest evidence), then by similarity.
+        ordered = sorted(qs, key=lambda m: (m.via == "semantic", -m.similarity))
+        reels, docs = [], []
+        for m in ordered:
+            if m.reel:
+                data = serializers.ReelListSerializer(m.reel).data
+                data["similarity"] = m.similarity
+                data["via"] = m.via
+                reels.append(data)
+            elif m.document:
+                d = m.document
+                docs.append({"id": d.id, "title": d.title, "url": d.source_url,
+                             "summary_it": d.summary_it, "similarity": m.similarity,
+                             "via": m.via})
+        return Response({"reels": reels, "docs": docs})
 
 
 class JobViewSet(viewsets.ReadOnlyModelViewSet):

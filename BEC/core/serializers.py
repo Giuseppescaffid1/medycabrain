@@ -193,3 +193,15 @@ class ContentIdeaSerializer(serializers.ModelSerializer):
             "argument_it", "rationale_it", "angle_it", "is_gap",
             "source_refs", "batch", "created_at",
         ]
+
+
+class CustomTopicSerializer(serializers.ModelSerializer):
+    medyca_matches = serializers.IntegerField(read_only=True, required=False)
+    competitor_matches = serializers.IntegerField(read_only=True, required=False)
+    doc_matches = serializers.IntegerField(read_only=True, required=False)
+
+    class Meta:
+        model = models.CustomTopic
+        fields = ["id", "label", "keywords", "is_active", "created_at",
+                  "medyca_matches", "competitor_matches", "doc_matches"]
+        read_only_fields = ["created_at"]

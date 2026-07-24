@@ -12,6 +12,7 @@ router.register(r"knowledge/documents", views.KnowledgeDocumentViewSet, basename
 router.register(r"second-brain/ideas", views.ContentIdeaViewSet, basename="content-idea")
 router.register(r"second-brain/blog-drafts", views.BlogDraftViewSet, basename="blog-draft")
 router.register(r"second-brain/briefs", views.StrategyBriefViewSet, basename="strategy-brief")
+router.register(r"custom-topics", views.CustomTopicViewSet, basename="custom-topic")
 router.register(r"jobs", views.JobViewSet, basename="job")
 
 urlpatterns = [

@@ -6,6 +6,7 @@ import type { Cluster } from "../api/types";
 import { motion } from "framer-motion";
 import { Badge, EmptyState, Skeleton } from "../components/ui/primitives";
 import { PageTransition, staggerContainer, staggerItem } from "../components/ui/motion";
+import { CustomTopics } from "../components/clusters/CustomTopics";
 import { mediaUrl } from "../lib/utils";
 
 export default function Clusters() {
@@ -26,6 +27,10 @@ export default function Clusters() {
           <p className="text-sm text-muted">{t("clusters.subtitle")}</p>
         </div>
         <div className="flex-1 px-4 py-4 sm:px-6 sm:py-5">
+          <CustomTopics scope={scope} />
+          <h2 className="mb-3 text-xs font-bold uppercase tracking-wider text-muted">
+            {t("topics.autoTitle")}
+          </h2>
           {isLoading ? (
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
               {Array.from({ length: 6 }).map((_, i) => (

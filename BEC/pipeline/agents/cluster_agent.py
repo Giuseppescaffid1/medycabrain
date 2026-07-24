@@ -182,6 +182,13 @@ def run(ctx) -> dict:
     results = {}
     for scope in ("competitor", "owned"):
         results[scope] = _run_scope(scope)
+    # Refresh client-supplied custom-topic matches over the (possibly new)
+    # reel/doc embeddings produced above.
+    try:
+        from core import custom_topics
+        results["custom_topics"] = custom_topics.recompute_matches()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("[cluster] custom-topic refresh failed: %r", exc)
     return results
 
 

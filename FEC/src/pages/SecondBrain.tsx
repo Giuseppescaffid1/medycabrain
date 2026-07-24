@@ -79,7 +79,7 @@ export default function SecondBrain() {
                 {coverage.data?.covered.map((c) => (
                   <button key={c.id} onClick={() => run(c.label, "theme")}
                     className="rounded-full border border-border bg-white px-3 py-1.5 text-sm font-semibold text-navy transition hover:border-success">
-                    {c.label} <span className="text-xs text-muted/80">· {c.reels + c.docs}</span>
+                    {c.custom && <span title="Tema del cliente">👤 </span>}{c.label} <span className="text-xs text-muted/80">· {c.reels + c.docs}</span>
                   </button>
                 ))}
                 {coverage.data && coverage.data.covered.length === 0 && (
@@ -97,7 +97,7 @@ export default function SecondBrain() {
                 {coverage.data?.opportunities.map((o) => (
                   <button key={o.id} onClick={() => run(o.label, "theme")}
                     className="rounded-full border border-warning/40 bg-warning/10 px-3 py-1.5 text-sm font-semibold text-warning transition hover:border-warning">
-                    {o.label} <span className="text-xs text-warning/70">· {o.reels}</span>
+                    {o.custom && <span title="Tema del cliente">👤 </span>}{o.label} <span className="text-xs text-warning/70">· {o.reels}</span>
                   </button>
                 ))}
                 {coverage.data && coverage.data.opportunities.length === 0 && (

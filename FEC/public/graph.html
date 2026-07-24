@@ -166,14 +166,14 @@ const STARS=[];
 for(let i=0;i<220;i++)STARS.push({x:(Math.random()-.5)*2600,y:(Math.random()-.5)*2000});
 
 /* ── medycabrain node mapping (groups: hub, stage, theme, reel, blog, opportunity) ── */
-const MHUE={stage:"#7FA6D9",theme:"#C77FD4",reel:"#7FA6D9",blog:"#67C99A",opportunity:"#E77C81"};
+const MHUE={stage:"#7FA6D9",theme:"#C77FD4",reel:"#7FA6D9",blog:"#67C99A",opportunity:"#E77C81",custom:"#F0B25C"};
 function isHub(n){return n.group==="hub"||n.group==="stage"||n.group==="theme";}
 function isCenter(n){return n.group==="hub";}
 function segOf(n){return n.parent||null;}
 function deptOf(n){return n.group;}
 function hueOf(n){return n.group==="hub"?AMBER:(MHUE[n.group]||"#8AA");}
 function shapeOf(n){
-  if(n.group==="hub"||n.group==="theme")return "badge";
+  if(n.group==="hub"||n.group==="theme"||n.group==="custom")return "badge";
   if(n.group==="stage")return "badge";
   if(n.group==="opportunity")return "donut";
   if(n.group==="blog")return "hex";
@@ -182,6 +182,7 @@ function shapeOf(n){
 function radiusOf(n){
   if(n.group==="hub")return 27;
   if(n.group==="theme")return 17;
+  if(n.group==="custom")return 15;
   if(n.group==="stage")return 15;
   if(n.group==="opportunity")return 11;
   return 7;

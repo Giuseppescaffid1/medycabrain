@@ -495,3 +495,44 @@ class ScraperConfig(models.Model):
             return cls.objects.get(key=key).value
         except cls.DoesNotExist:
             return default
+
+
+class CustomTopic(models.Model):
+    """A client-supplied theme to map content against (e.g. "tiroide",
+    "osteoporosi", "andropausa", "Bijuva"). Unlike auto-discovered
+    TopicClusters these persist across cluster runs; matches are recomputed
+    on creation and refreshed at every nightly cluster step."""
+
+    label = models.CharField(max_length=120, unique=True)
+    keywords = models.JSONField(default=list, blank=True)
+    embedding = models.JSONField(default=list, blank=True)
+    is_active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "custom_topics"
+        ordering = ["label"]
+
+    def __str__(self):
+        return self.label
+
+
+class CustomTopicMatch(models.Model):
+    """An asset (reel or blog doc) semantically matched to a CustomTopic."""
+
+    topic = models.ForeignKey(CustomTopic, on_delete=models.CASCADE, related_name="matches")
+    reel = models.ForeignKey(
+        Reel, on_delete=models.CASCADE, null=True, blank=True,
+        related_name="custom_topic_matches")
+    document = models.ForeignKey(
+        "KnowledgeDocument", on_delete=models.CASCADE, null=True, blank=True,
+        related_name="custom_topic_matches")
+    scope = models.CharField(max_length=16, default="competitor")  # owned|competitor
+    similarity = models.FloatField(default=0.0)
+    # How the asset matched: semantic (embedding), keyword (verbatim mention),
+    # or both. Verbatim mentions matter for drug/brand names (e.g. "Bijuva").
+    via = models.CharField(max_length=16, default="semantic")
+
+    class Meta:
+        db_table = "custom_topic_matches"
+        indexes = [models.Index(fields=["topic", "scope"])]

@@ -180,6 +180,18 @@
     "addTag": "Aggiungi etichetta…",
     "save": "Salva"
   },
+  "topics": {
+    "title": "Temi del cliente",
+    "hint": "Aggiungi un tema che ti interessa (es. tiroide, osteoporosi, andropausa, Bijuva): il motore mappa subito reel e articoli che ne parlano, e li tiene aggiornati ogni notte.",
+    "placeholder": "Es. tiroide, osteoporosi, Bijuva…",
+    "add": "Aggiungi tema",
+    "mapping": "Sto mappando i contenuti sul tema…",
+    "addError": "Impossibile aggiungere il tema (forse esiste già).",
+    "empty": "Nessun tema personalizzato ancora. Aggiungine uno qui sopra.",
+    "noMatches": "Nessun contenuto trovato su questo tema in questo ambito: è un tema scoperto — un'opportunità.",
+    "confirmRemove": "Rimuovere il tema \"{{label}}\"? I contenuti restano.",
+    "autoTitle": "Temi scoperti automaticamente"
+  },
   "clusters": {
     "title": "Cluster tematici",
     "subtitle": "Di cosa parlano i competitor",
