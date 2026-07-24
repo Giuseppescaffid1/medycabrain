@@ -1,8 +1,9 @@
-import { Suspense, lazy } from "react";
+import { Suspense, lazy, useState } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { useAuth } from "./contexts/AuthContext";
 import { JobsProvider } from "./contexts/JobsContext";
-import { Sidebar } from "./components/layout/Sidebar";
+import { MobileDrawer, Sidebar } from "./components/layout/Sidebar";
+import { MobileHeader } from "./components/layout/MobileHeader";
 import { StatusBar } from "./components/layout/StatusBar";
 import { Spinner } from "./components/ui/primitives";
 
@@ -20,10 +21,15 @@ const KnowledgeBank = lazy(() => import("./pages/KnowledgeBank"));
 const BrainMap = lazy(() => import("./pages/BrainMap"));
 
 function Shell({ children }: { children: React.ReactNode }) {
+  const [navOpen, setNavOpen] = useState(false);
   return (
-    <div className="flex h-screen overflow-hidden">
-      <Sidebar />
-      <main className="flex-1 overflow-y-auto">{children}</main>
+    <div className="flex h-dvh overflow-hidden bg-white">
+      <Sidebar className="hidden lg:flex" />
+      <MobileDrawer open={navOpen} onClose={() => setNavOpen(false)} />
+      <div className="flex min-w-0 flex-1 flex-col">
+        <MobileHeader onMenu={() => setNavOpen(true)} />
+        <main className="min-w-0 flex-1 overflow-y-auto">{children}</main>
+      </div>
     </div>
   );
 }

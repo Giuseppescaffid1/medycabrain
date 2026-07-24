@@ -17,11 +17,14 @@ export function StatBar({ scope = "competitor" }: { scope?: Scope }) {
   ];
 
   return (
-    <div className="flex flex-wrap gap-3">
+    <div className="-mx-4 flex flex-nowrap gap-2 overflow-x-auto px-4 sm:mx-0 sm:flex-wrap sm:gap-3 sm:px-0">
       {items.map((it) => (
-        <div key={it.label} className="rounded-lg border border-zinc-800 bg-zinc-900/50 px-3 py-1.5">
-          <span className="text-sm font-semibold text-white">{it.value}</span>
-          <span className="ml-1.5 text-xs text-zinc-500">{it.label}</span>
+        <div
+          key={it.label}
+          className="shrink-0 whitespace-nowrap rounded-full border border-border bg-surface px-3 py-1.5"
+        >
+          <span className="text-sm font-bold text-navy">{it.value}</span>
+          <span className="ml-1.5 text-xs font-semibold text-muted">{it.label}</span>
         </div>
       ))}
     </div>

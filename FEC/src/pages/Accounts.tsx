@@ -7,7 +7,8 @@ import {
   fetchAccounts,
   updateAccount,
 } from "../api/endpoints";
-import { Badge, Button, Spinner } from "../components/ui/primitives";
+import { Badge, Button, Skeleton, fieldCls } from "../components/ui/primitives";
+import { PageTransition } from "../components/ui/motion";
 import { formatCount, formatDate } from "../lib/utils";
 
 export default function Accounts() {
@@ -41,12 +42,13 @@ export default function Accounts() {
   const clean = (u: string) => u.trim().replace(/^@/, "").replace(/\/$/, "");
 
   return (
+    <PageTransition>
     <div className="flex h-full flex-col">
-      <div className="border-b border-zinc-800 px-6 py-4">
-        <h1 className="text-xl font-bold text-white">{t("accounts.title")}</h1>
+      <div className="border-b border-border px-4 py-4 sm:px-6">
+        <h1 className="text-xl font-bold text-heading">{t("accounts.title")}</h1>
       </div>
 
-      <div className="flex-1 px-6 py-5">
+      <div className="flex-1 px-4 py-4 sm:px-6 sm:py-5">
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -58,20 +60,20 @@ export default function Accounts() {
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             placeholder={t("accounts.addPlaceholder")}
-            className="flex-1 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white outline-none focus:border-indigo-500"
+            className={fieldCls + " min-w-0 flex-1"}
           />
-          <Button type="submit" disabled={add.isPending}>
+          <Button type="submit" loading={add.isPending}>
             {t("accounts.add")}
           </Button>
         </form>
-        {error && <p className="mb-4 text-sm text-red-400">{error}</p>}
+        {error && <p className="mb-4 text-sm font-semibold text-danger">⚠ {error}</p>}
 
         {isLoading ? (
-          <Spinner />
+          <Skeleton className="h-64" />
         ) : (
-          <div className="overflow-hidden rounded-xl border border-zinc-800">
-            <table className="w-full text-sm">
-              <thead className="bg-zinc-900 text-left text-xs uppercase text-zinc-500">
+          <div className="overflow-x-auto rounded-xl border border-border bg-white shadow-card">
+            <table className="w-full min-w-[640px] text-sm">
+              <thead className="bg-surface text-left text-xs font-bold uppercase tracking-wider text-muted">
                 <tr>
                   <th className="px-4 py-3">{t("accounts.username")}</th>
                   <th className="px-4 py-3">{t("accounts.reels")}</th>
@@ -81,9 +83,9 @@ export default function Accounts() {
                   <th className="px-4 py-3"></th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-zinc-800">
+              <tbody className="divide-y divide-border">
                 {data?.map((a) => (
-                  <tr key={a.id} className="text-zinc-300">
+                  <tr key={a.id} className="text-navy">
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">
                         {a.profile_pic_url && (
@@ -94,16 +96,16 @@ export default function Accounts() {
                           />
                         )}
                         <div>
-                          <div className="font-medium text-white">@{a.username}</div>
+                          <div className="font-semibold text-navy">@{a.username}</div>
                           {a.display_name && (
-                            <div className="text-xs text-zinc-500">{a.display_name}</div>
+                            <div className="text-xs text-muted">{a.display_name}</div>
                           )}
                         </div>
                       </div>
                     </td>
-                    <td className="px-4 py-3">{a.reel_count ?? 0}</td>
-                    <td className="px-4 py-3">{formatCount(a.followers_count)}</td>
-                    <td className="px-4 py-3 text-xs text-zinc-500">
+                    <td className="px-4 py-3 text-right tabular-nums">{a.reel_count ?? 0}</td>
+                    <td className="px-4 py-3 text-right tabular-nums">{formatCount(a.followers_count)}</td>
+                    <td className="px-4 py-3 text-xs text-muted">
                       {a.last_scraped_at ? formatDate(a.last_scraped_at) : t("accounts.never")}
                     </td>
                     <td className="px-4 py-3">
@@ -111,8 +113,8 @@ export default function Accounts() {
                         <Badge
                           className={
                             a.is_active
-                              ? "bg-green-600/20 text-green-400"
-                              : "bg-zinc-700 text-zinc-400"
+                              ? "bg-success/10 text-success"
+                              : "bg-surface text-muted"
                           }
                         >
                           {a.is_active ? t("accounts.active") : t("accounts.inactive")}
@@ -124,7 +126,7 @@ export default function Accounts() {
                         onClick={() => {
                           if (confirm(t("accounts.confirmRemove"))) remove.mutate(a.id);
                         }}
-                        className="text-xs text-zinc-500 hover:text-red-400"
+                        className="text-xs font-semibold text-muted hover:text-danger"
                       >
                         {t("accounts.remove")}
                       </button>
@@ -137,5 +139,6 @@ export default function Accounts() {
         )}
       </div>
     </div>
+    </PageTransition>
   );
 }

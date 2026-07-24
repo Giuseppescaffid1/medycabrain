@@ -38,3 +38,4 @@ BEC/staticfiles/
 
 # Plane API token
 .plane.env
+BEC/data/ig_session.json.bak*

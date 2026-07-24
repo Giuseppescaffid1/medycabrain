@@ -43,26 +43,26 @@ export function ReelDetailDrawer({
       {reelId != null && (
         <>
           <motion.div
-            className="fixed inset-0 z-40 bg-black/60"
+            className="fixed inset-0 z-40 bg-navy/30"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             onClick={onClose}
           />
           <motion.div
-            className="fixed right-0 top-0 z-50 flex h-full w-full max-w-xl flex-col overflow-y-auto border-l border-zinc-800 bg-zinc-950 shadow-2xl"
+            className="fixed right-0 top-0 z-50 flex h-full w-full max-w-xl flex-col overflow-y-auto border-l border-border bg-white shadow-float"
             initial={{ x: "100%" }}
             animate={{ x: 0 }}
             exit={{ x: "100%" }}
             transition={{ type: "tween", duration: 0.25 }}
           >
-            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-zinc-800 bg-zinc-950/90 px-5 py-3 backdrop-blur">
-              <span className="text-sm font-medium text-zinc-400">
+            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-border bg-white/85 px-5 py-3 backdrop-blur">
+              <span className="text-sm font-semibold text-muted">
                 {reel ? `@${reel.account.username}` : ""}
               </span>
               <button
                 onClick={onClose}
-                className="rounded-lg px-3 py-1 text-sm text-zinc-400 hover:bg-zinc-800"
+                className="rounded-full px-3 py-1.5 text-sm font-semibold text-muted transition hover:bg-surface hover:text-navy"
               >
                 ✕ {t("common.close")}
               </button>
@@ -87,11 +87,11 @@ function DrawerBody({ reel, onChange }: { reel: ReelDetail; onChange: () => void
   return (
     <div className="flex flex-col gap-5 p-5">
       <div className="flex gap-4">
-        <div className="aspect-[9/16] w-28 shrink-0 overflow-hidden rounded-lg bg-zinc-800">
+        <div className="aspect-[9/16] w-28 shrink-0 overflow-hidden rounded-xl bg-surface">
           {thumb && <img src={thumb} alt="" className="h-full w-full object-cover" />}
         </div>
         <div className="flex flex-col gap-2">
-          <div className="flex flex-wrap gap-3 text-xs text-zinc-400">
+          <div className="flex flex-wrap gap-3 text-xs font-semibold text-muted">
             <span>▶ {formatCount(reel.view_count)} {t("reel.views")}</span>
             <span>♥ {formatCount(reel.like_count)} {t("reel.likes")}</span>
             <span>💬 {formatCount(reel.comment_count)} {t("reel.comments")}</span>
@@ -105,7 +105,7 @@ function DrawerBody({ reel, onChange }: { reel: ReelDetail; onChange: () => void
             href={reel.instagram_url}
             target="_blank"
             rel="noreferrer"
-            className="mt-1 inline-block text-sm text-indigo-400 hover:underline"
+            className="mt-1 inline-block text-sm font-semibold text-secondary hover:underline"
           >
             ↗ {t("reel.openInstagram")}
           </a>
@@ -113,13 +113,13 @@ function DrawerBody({ reel, onChange }: { reel: ReelDetail; onChange: () => void
       </div>
 
       {reel.caption && (
-        <p className="whitespace-pre-wrap text-sm text-zinc-300">{reel.caption}</p>
+        <p className="whitespace-pre-wrap text-sm text-navy">{reel.caption}</p>
       )}
 
       {reel.enrichment ? (
         <EnrichmentCard reel={reel} />
       ) : (
-        <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-3 text-xs text-zinc-500">
+        <div className="rounded-xl border border-border bg-surface p-3 text-xs text-muted">
           {t("reel.notEnriched")}
         </div>
       )}
@@ -132,8 +132,8 @@ function DrawerBody({ reel, onChange }: { reel: ReelDetail; onChange: () => void
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-4">
-      <h3 className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">
+    <div className="rounded-xl border border-border bg-surface p-4 shadow-card">
+      <h3 className="mb-2 text-xs font-bold uppercase tracking-wider text-muted">
         {title}
       </h3>
       {children}
@@ -148,7 +148,7 @@ function EnrichmentCard({ reel }: { reel: ReelDetail }) {
     <div className="flex flex-col gap-3">
       {e.summary_it && (
         <Section title={t("reel.summary")}>
-          <p className="text-sm text-zinc-300">{e.summary_it}</p>
+          <p className="text-sm text-navy">{e.summary_it}</p>
         </Section>
       )}
       {e.topics?.length > 0 && (
@@ -162,20 +162,20 @@ function EnrichmentCard({ reel }: { reel: ReelDetail }) {
       )}
       {e.hook_text && (
         <Section title={t("reel.hook")}>
-          <p className="text-sm italic text-zinc-300">“{e.hook_text}”</p>
+          <p className="text-sm italic text-navy">“{e.hook_text}”</p>
           {e.hook_analysis_it && (
-            <p className="mt-1 text-xs text-zinc-500">{e.hook_analysis_it}</p>
+            <p className="mt-1 text-xs text-muted">{e.hook_analysis_it}</p>
           )}
         </Section>
       )}
       {e.target_audience_it && (
         <Section title={t("reel.audience")}>
-          <p className="text-sm text-zinc-300">{e.target_audience_it}</p>
+          <p className="text-sm text-navy">{e.target_audience_it}</p>
         </Section>
       )}
       {reel.arguments?.length > 0 && (
         <Section title={t("reel.arguments")}>
-          <ul className="list-disc space-y-1 pl-4 text-sm text-zinc-300">
+          <ul className="list-disc space-y-1 pl-4 text-sm text-navy">
             {reel.arguments.map((a, i) => (
               <li key={i}>{a}</li>
             ))}
@@ -191,17 +191,17 @@ function TranscriptView({ reel }: { reel: ReelDetail }) {
   if (!reel.transcript || !reel.transcript.text) {
     return (
       <Section title={t("reel.transcript")}>
-        <p className="text-xs text-zinc-500">{t("reel.noTranscript")}</p>
+        <p className="text-xs text-muted">{t("reel.noTranscript")}</p>
       </Section>
     );
   }
   return (
     <Section title={t("reel.transcript")}>
-      <div className="max-h-64 space-y-1 overflow-y-auto text-sm text-zinc-300">
+      <div className="max-h-64 space-y-1 overflow-y-auto text-sm text-navy">
         {reel.transcript.segments?.length > 0 ? (
           reel.transcript.segments.map((s, i) => (
             <div key={i} className="flex gap-2">
-              <span className="shrink-0 font-mono text-[10px] text-zinc-600">
+              <span className="shrink-0 font-mono text-[10px] text-muted/70">
                 {formatTime(s.start)}
               </span>
               <span>{s.text}</span>
@@ -253,19 +253,19 @@ function AnnotationPanel({ reel, onChange }: { reel: ReelDetail; onChange: () =>
         </div>
 
         <div>
-          <label className="mb-1 block text-xs text-zinc-500">{t("reel.note")}</label>
+          <label className="mb-1 block text-xs font-semibold text-muted">{t("reel.note")}</label>
           <textarea
             value={note}
             onChange={(e) => setNote(e.target.value)}
             onBlur={() => note !== (ann?.note ?? "") && mutate.mutate({ note })}
             placeholder={t("reel.notePlaceholder")}
             rows={2}
-            className="w-full resize-none rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-white outline-none focus:border-indigo-500"
+            className="w-full resize-none rounded-xl border border-border bg-white px-3 py-2 text-sm text-navy outline-none transition focus:border-secondary"
           />
         </div>
 
         <div>
-          <label className="mb-1 block text-xs text-zinc-500">{t("reel.tags")}</label>
+          <label className="mb-1 block text-xs font-semibold text-muted">{t("reel.tags")}</label>
           <div className="mb-2 flex flex-wrap gap-1.5">
             {ann?.tags?.map((tg) => (
               <button
@@ -291,7 +291,7 @@ function AnnotationPanel({ reel, onChange }: { reel: ReelDetail; onChange: () =>
                 }
               }}
               placeholder={t("reel.addTag")}
-              className="flex-1 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-sm text-white outline-none focus:border-indigo-500"
+              className="flex-1 rounded-full border border-border bg-white px-4 py-1.5 text-sm text-navy outline-none transition focus:border-secondary"
             />
             <Button
               variant="ghost"
@@ -324,10 +324,10 @@ function ToggleChip({
     <button
       onClick={onClick}
       className={
-        "rounded-lg px-3 py-1.5 text-sm font-medium transition " +
+        "rounded-full border px-3 py-1.5 text-sm font-semibold transition " +
         (active
-          ? "bg-indigo-600/30 text-indigo-200 ring-1 ring-indigo-500"
-          : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700")
+          ? "border-secondary bg-surface text-heading"
+          : "border-border bg-white text-muted hover:text-navy")
       }
     >
       {children}

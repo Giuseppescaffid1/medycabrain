@@ -1,11 +1,11 @@
 <!doctype html>
 <html lang="en"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Second Brain · observatory</title>
+<title>Medyca · Second Brain</title>
 <style>
   :root{
-    --accent:#E9A15C; --bg:#050506; --text-dim:rgba(255,255,255,0.38);
-    --card:rgba(14,14,18,0.82); --line:rgba(255,255,255,0.08);
+    --accent:#E77C81; --bg:#101D36; --text-dim:rgba(238,245,253,0.45);
+    --card:rgba(18,32,58,0.85); --line:rgba(213,227,242,0.12);
   }
   *{box-sizing:border-box}
   html,body{margin:0;height:100%;background:var(--bg);overflow:hidden;
@@ -22,7 +22,7 @@
   #menu{position:fixed;top:16px;right:18px;z-index:7;background:transparent;color:var(--accent);
     border:1px solid var(--accent);border-radius:8px;padding:7px 12px;font-size:11px;letter-spacing:.12em;
     cursor:pointer;font-weight:600}
-  #menu:hover{background:rgba(233,161,92,.12)}
+  #menu:hover{background:rgba(231,124,129,.12)}
   /* control panel */
   #panel{position:fixed;top:58px;right:18px;z-index:6;width:206px;background:var(--card);
     border:1px solid var(--line);border-radius:10px;backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
@@ -51,17 +51,17 @@
   .ghost:hover{border-color:var(--accent);color:#fff}
   .bake{background:transparent;border:1px solid var(--accent);color:var(--accent);border-radius:7px;padding:8px;
     font-size:10px;letter-spacing:.1em;cursor:pointer;font-family:inherit;font-weight:600}
-  .bake:hover{background:rgba(233,161,92,.12)}
+  .bake:hover{background:rgba(231,124,129,.12)}
   .logout{position:fixed;bottom:12px;right:20px;z-index:6;color:rgba(255,255,255,.3);font-size:10px;
     text-decoration:none;letter-spacing:.1em}
   .logout:hover{color:#fff}
   /* tooltip */
-  #tip{position:fixed;z-index:9;pointer-events:none;background:rgba(10,10,14,.94);border:1px solid var(--line);
+  #tip{position:fixed;z-index:9;pointer-events:none;background:rgba(14,26,48,.94);border:1px solid var(--line);
     border-radius:8px;padding:8px 11px;font-size:12px;display:none;max-width:260px}
   #tip .t1{font-weight:600;color:#fff}
   #tip .t2{font-size:10px;color:rgba(255,255,255,.5);margin-top:3px;letter-spacing:.03em}
   /* reader */
-  #reader{position:fixed;top:0;right:0;height:100%;width:440px;max-width:90vw;background:rgba(10,11,16,.97);
+  #reader{position:fixed;top:0;right:0;height:100%;width:440px;max-width:90vw;background:rgba(14,26,48,.97);
     border-left:1px solid var(--line);transform:translateX(100%);transition:transform .2s;z-index:8;overflow:auto;
     padding:20px 22px;backdrop-filter:blur(8px)}
   #reader.open{transform:translateX(0)}
@@ -74,7 +74,7 @@
   #reader h2{border-top:1px solid var(--line);padding-top:12px}
   #reader .um{color:var(--text-dim);font-size:.75rem;font-style:italic;margin:2px 0 8px}
   #reader .ln{white-space:pre-wrap;font-family:ui-monospace,Menlo,monospace;font-size:.81rem;line-height:1.5;color:#d3d8e2}
-  #reader pre{background:#07080d;border:1px solid var(--line);border-radius:8px;padding:11px 13px;overflow:auto}
+  #reader pre{background:#0B1428;border:1px solid var(--line);border-radius:8px;padding:11px 13px;overflow:auto}
   #reader pre code{font-family:ui-monospace,Menlo,monospace;font-size:.79rem;color:#d3d8e2}
   #reader code.inl{background:rgba(255,255,255,.08);padding:1px 5px;border-radius:4px;font-family:ui-monospace,Menlo,monospace;font-size:.79rem}
   #reader a.ptr{display:inline-flex;gap:5px;background:rgba(255,255,255,.06);border:1px solid var(--line);border-radius:6px;
@@ -106,14 +106,14 @@
 <canvas id="c"></canvas>
 <div id="wordmark">
   <div class="row">
-    <svg width="20" height="22" viewBox="0 0 20 22"><path d="M10 1 L19 6 V16 L10 21 L1 16 V6 Z" fill="none" stroke="#E9A15C" stroke-width="1.4"/></svg>
-    <div><span class="w1">SECOND</span> <span class="w2">BRAIN</span></div>
+    <svg width="20" height="22" viewBox="0 0 20 22"><path d="M10 1 L19 6 V16 L10 21 L1 16 V6 Z" fill="none" stroke="#E77C81" stroke-width="1.4"/></svg>
+    <div><span class="w1">MEDYCA</span> <span class="w2">SECOND BRAIN</span></div>
   </div>
-  <div class="by">reverse-engineering reference · live from ~/brain</div>
+  <div class="by">pipeline · temi · reel · blog · opportunità</div>
 </div>
 <button id="menu">☰ MENU</button>
 <div id="panel">
-  <input class="search" id="q" placeholder="Search files… ( / )" autocomplete="off">
+  <input class="search" id="q" placeholder="Cerca… ( / )" autocomplete="off">
   <div>
     <div class="sect">Layout</div>
     <div class="seg" id="segLayout" style="margin-top:6px">
@@ -137,12 +137,12 @@
   <div class="row2"><button class="ghost" id="expand">Expand all</button><button class="ghost" id="collapse">Collapse all</button></div>
   <button class="bake" id="bake">Bake settings</button>
 </div>
-<a class="logout" href="/logout">SIGN OUT</a>
+
 <div id="tip"><div class="t1"></div><div class="t2"></div></div>
 <div id="reader"><span class="x" onclick="closeReader()">&times;</span><div id="rbody"></div></div>
 <script>
 "use strict";
-const AMBER="#E9A15C";
+const AMBER="#E77C81";
 const HUE={applications:"#7FA6D9",community:"#5B8DD9",personal:"#E8D267",content:"#C77FD4",
   business:"#B9A6E8",product:"#7FD4D0",skills:"#E8763C",routines:"#E0B84A",memory:"#A88FD9"};
 const SEG_DEPT={apis:"applications",errors:"content",workflows:"product",snippets:"business",
@@ -166,7 +166,7 @@ const STARS=[];
 for(let i=0;i<220;i++)STARS.push({x:(Math.random()-.5)*2600,y:(Math.random()-.5)*2000});
 
 /* ── medycabrain node mapping (groups: hub, stage, theme, reel, blog, opportunity) ── */
-const MHUE={stage:"#7FA6D9",theme:"#C77FD4",reel:"#7FA6D9",blog:"#67C99A",opportunity:"#E9A15C"};
+const MHUE={stage:"#7FA6D9",theme:"#C77FD4",reel:"#7FA6D9",blog:"#67C99A",opportunity:"#E77C81"};
 function isHub(n){return n.group==="hub"||n.group==="stage"||n.group==="theme";}
 function isCenter(n){return n.group==="hub";}
 function segOf(n){return n.parent||null;}
@@ -296,7 +296,7 @@ function shapePath(n,x,y,r){
 }
 function draw(){
   ctx.setTransform(dpr,0,0,dpr,0,0);
-  ctx.fillStyle="#050506";ctx.fillRect(0,0,cssW,cssH);
+  ctx.fillStyle="#101D36";ctx.fillRect(0,0,cssW,cssH);
   ctx.save();ctx.translate(cam.x,cam.y);ctx.scale(cam.scale,cam.scale);
   drawHexGrid();drawStars();
   const fset=focusSet(lockId||focusId);

@@ -29,10 +29,10 @@ export function FilterBar({
   const set = (patch: Partial<ReelFilters>) => onChange({ ...filters, ...patch, page: 1 });
 
   const selectCls =
-    "rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-200 outline-none focus:border-indigo-500";
+    "h-10 shrink-0 rounded-full border border-border bg-white px-4 text-sm text-navy outline-none transition focus:border-secondary";
 
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="-mx-4 flex flex-nowrap items-center gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:px-0 sm:pb-0">
       <select
         className={selectCls}
         value={filters.account ?? ""}
@@ -93,7 +93,7 @@ export function FilterBar({
         onClick={() =>
           onChange({ search: filters.search, ordering: "-posted_at", page: 1 })
         }
-        className="rounded-lg px-3 py-2 text-sm text-zinc-500 hover:text-zinc-300"
+        className="h-10 shrink-0 whitespace-nowrap rounded-full px-3 text-sm font-semibold text-muted transition hover:bg-surface hover:text-navy"
       >
         {t("library.reset")}
       </button>
@@ -114,10 +114,10 @@ function ChipToggle({
     <button
       onClick={onClick}
       className={
-        "rounded-lg px-3 py-2 text-sm font-medium transition " +
+        "h-10 shrink-0 whitespace-nowrap rounded-full border px-4 text-sm font-semibold transition " +
         (active
-          ? "bg-indigo-600/30 text-indigo-200 ring-1 ring-indigo-500"
-          : "bg-zinc-900 text-zinc-400 ring-1 ring-zinc-700 hover:text-zinc-200")
+          ? "border-secondary bg-surface text-heading"
+          : "border-border bg-white text-muted hover:text-navy")
       }
     >
       {children}

@@ -2,12 +2,14 @@ import { useMemo, useState } from "react";
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
+import { motion } from "framer-motion";
 import { fetchReels, type ReelFilters, type Scope } from "../api/endpoints";
 import { ReelCard } from "../components/reels/ReelCard";
 import { ReelDetailDrawer } from "../components/reels/ReelDetailDrawer";
 import { FilterBar } from "../components/filters/FilterBar";
 import { StatBar } from "../components/layout/StatBar";
-import { Button, EmptyState, Spinner } from "../components/ui/primitives";
+import { Button, EmptyState, Skeleton, fieldCls } from "../components/ui/primitives";
+import { PageTransition, staggerContainer, staggerItem } from "../components/ui/motion";
 import { useDebounced } from "../lib/useDebounced";
 
 export default function Library() {
@@ -37,54 +39,67 @@ export default function Library() {
   const total = data?.pages[0]?.count ?? 0;
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="sticky top-0 z-20 space-y-3 border-b border-zinc-800 bg-zinc-950/95 px-6 py-4 backdrop-blur">
-        <div className="flex items-center justify-between gap-4">
-          <h1 className="text-xl font-bold text-white">
-            {t(`scope.${scope}`)} · {t("library.title")}
-          </h1>
-          <StatBar scope={scope} />
+    <PageTransition>
+      <div className="flex h-full flex-col">
+        <div className="sticky top-0 z-20 space-y-3 border-b border-border bg-white/85 px-4 py-4 backdrop-blur sm:px-6">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+            <h1 className="text-xl font-bold text-heading">
+              {t(`scope.${scope}`)} · {t("library.title")}
+            </h1>
+            <StatBar scope={scope} />
+          </div>
+          <input
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            placeholder={t("library.search")}
+            className={fieldCls + " w-full"}
+          />
+          <FilterBar filters={filters} onChange={setFilters} scope={scope} />
         </div>
-        <input
-          value={searchInput}
-          onChange={(e) => setSearchInput(e.target.value)}
-          placeholder={t("library.search")}
-          className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-4 py-2.5 text-sm text-white outline-none focus:border-indigo-500"
-        />
-        <FilterBar filters={filters} onChange={setFilters} scope={scope} />
-      </div>
 
-      <div className="flex-1 px-6 py-5">
-        {isLoading ? (
-          <Spinner label={t("common.loading")} />
-        ) : reels.length === 0 ? (
-          <EmptyState message={t("library.empty")} />
-        ) : (
-          <>
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5">
-              {reels.map((reel) => (
-                <ReelCard key={reel.id} reel={reel} onClick={() => setOpenReel(reel.id)} />
+        <div className="flex-1 px-4 py-4 sm:px-6 sm:py-5">
+          {isLoading ? (
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4 xl:grid-cols-5">
+              {Array.from({ length: 10 }).map((_, i) => (
+                <Skeleton key={i} className="aspect-[9/16]" />
               ))}
             </div>
-            <div className="mt-6 flex items-center justify-center gap-4">
-              <span className="text-xs text-zinc-500">
-                {reels.length} / {total}
-              </span>
-              {hasNextPage && (
-                <Button
-                  variant="ghost"
-                  onClick={() => fetchNextPage()}
-                  disabled={isFetchingNextPage}
-                >
-                  {isFetchingNextPage ? t("common.loading") : t("library.loadMore")}
-                </Button>
-              )}
-            </div>
-          </>
-        )}
-      </div>
+          ) : reels.length === 0 ? (
+            <EmptyState message={t("library.empty")} />
+          ) : (
+            <>
+              <motion.div
+                variants={staggerContainer}
+                initial="initial"
+                animate="animate"
+                className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4 xl:grid-cols-5"
+              >
+                {reels.map((reel, i) => (
+                  <motion.div key={reel.id} className="h-full" variants={i < 20 ? staggerItem : undefined}>
+                    <ReelCard reel={reel} onClick={() => setOpenReel(reel.id)} />
+                  </motion.div>
+                ))}
+              </motion.div>
+              <div className="mt-6 flex items-center justify-center gap-4">
+                <span className="text-xs font-semibold text-muted">
+                  {reels.length} / {total}
+                </span>
+                {hasNextPage && (
+                  <Button
+                    variant="secondary"
+                    onClick={() => fetchNextPage()}
+                    loading={isFetchingNextPage}
+                  >
+                    {t("library.loadMore")}
+                  </Button>
+                )}
+              </div>
+            </>
+          )}
+        </div>
 
-      <ReelDetailDrawer reelId={openReel} onClose={() => setOpenReel(null)} />
-    </div>
+        <ReelDetailDrawer reelId={openReel} onClose={() => setOpenReel(null)} />
+      </div>
+    </PageTransition>
   );
 }

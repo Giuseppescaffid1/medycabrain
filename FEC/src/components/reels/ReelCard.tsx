@@ -16,9 +16,9 @@ export function ReelCard({
   return (
     <button
       onClick={onClick}
-      className="group flex flex-col overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900 text-left transition hover:border-indigo-600/60"
+      className="group flex h-full w-full flex-col overflow-hidden rounded-xl border border-border bg-white text-left shadow-card transition duration-200 hover:border-secondary hover:shadow-float"
     >
-      <div className="relative aspect-[9/16] w-full overflow-hidden bg-zinc-800">
+      <div className="relative aspect-[9/16] w-full overflow-hidden bg-surface">
         {thumb ? (
           <img
             src={thumb}
@@ -27,7 +27,7 @@ export function ReelCard({
             className="h-full w-full object-cover transition group-hover:scale-105"
           />
         ) : (
-          <div className="flex h-full items-center justify-center text-3xl text-zinc-700">
+          <div className="flex h-full items-center justify-center text-3xl text-border">
             🎬
           </div>
         )}
@@ -38,7 +38,7 @@ export function ReelCard({
           <span className="absolute right-2 top-9 text-lg drop-shadow">💡</span>
         )}
         <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-2">
-          <div className="flex items-center gap-2 text-xs text-zinc-200">
+          <div className="flex items-center gap-2 text-xs text-white">
             <span>▶ {formatCount(reel.view_count)}</span>
             <span>♥ {formatCount(reel.like_count)}</span>
           </div>
@@ -46,23 +46,23 @@ export function ReelCard({
       </div>
       <div className="flex flex-1 flex-col gap-2 p-3">
         <div className="flex items-center justify-between gap-2">
-          <span className="truncate text-xs font-medium text-indigo-300">
+          <span className="truncate text-xs font-semibold text-secondary">
             @{reel.account_username}
           </span>
           {reel.content_format && (
             <Badge className="shrink-0">{formatLabel(reel.content_format)}</Badge>
           )}
         </div>
-        <p className="line-clamp-3 text-xs text-zinc-400">
+        <p className="line-clamp-3 text-xs text-muted">
           {reel.summary_it || reel.caption || "—"}
         </p>
         {reel.cluster_label && (
-          <Badge className={cn("mt-auto self-start bg-indigo-600/20 text-indigo-300")}>
+          <Badge className={cn("mt-auto self-start bg-surface text-heading")}>
             {reel.cluster_label}
           </Badge>
         )}
         {reel.transcribe_status !== "done" && (
-          <span className="text-[10px] text-zinc-600">
+          <span className="text-[10px] text-muted/80">
             {reel.enrich_status === "done"
               ? ""
               : reel.transcribe_status === "done"

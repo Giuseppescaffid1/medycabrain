@@ -13,7 +13,9 @@
     "knowledgeBank": "Knowledge Bank",
     "workspace": "Workspace",
     "accounts": "Account",
-    "logout": "Esci"
+    "logout": "Esci",
+    "menu": "Apri menu",
+    "closeMenu": "Chiudi menu"
   },
   "scope": {
     "medyca": "Medyca",

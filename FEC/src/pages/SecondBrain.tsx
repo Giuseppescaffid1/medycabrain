@@ -8,7 +8,8 @@ import {
   type StrategyBrief,
 } from "../api/strategy";
 import { useJobs } from "../contexts/JobsContext";
-import { Badge, Button, EmptyState, Spinner } from "../components/ui/primitives";
+import { Badge, Button, EmptyState, Skeleton, fieldCls } from "../components/ui/primitives";
+import { PageTransition } from "../components/ui/motion";
 
 /**
  * Second Brain = motore di strategia contenuti. L'utente scrive un tema (o
@@ -36,13 +37,14 @@ export default function SecondBrain() {
   };
 
   return (
+    <PageTransition>
     <div className="flex h-full flex-col">
-      <div className="border-b border-zinc-800 px-6 pb-4 pt-5">
-        <h1 className="text-xl font-bold text-white">{t("sb.title")}</h1>
-        <p className="text-sm text-zinc-500">{t("sb.subtitle")}</p>
+      <div className="border-b border-border px-4 pb-4 pt-5 sm:px-6">
+        <h1 className="text-xl font-bold text-heading">{t("sb.title")}</h1>
+        <p className="text-sm text-muted">{t("sb.subtitle")}</p>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-6 py-6">
+      <div className="flex-1 overflow-y-auto px-4 py-5 sm:px-6 sm:py-6">
         <div className="mx-auto max-w-4xl space-y-8">
           {/* ── Input box ─────────────────────────────────────────── */}
           <div>
@@ -50,56 +52,56 @@ export default function SecondBrain() {
               onSubmit={(e) => { e.preventDefault(); run(input); }}
               className="flex flex-col gap-3"
             >
-              <label className="text-sm font-medium text-zinc-300">{t("sb.inputLabel")}</label>
-              <div className="flex gap-2">
+              <label className="text-sm font-semibold text-navy">{t("sb.inputLabel")}</label>
+              <div className="flex flex-col gap-2 sm:flex-row">
                 <input
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   placeholder={t("sb.inputPlaceholder")}
-                  className="flex-1 rounded-xl border border-zinc-700 bg-zinc-900 px-4 py-3 text-base text-white outline-none focus:border-indigo-500"
+                  className={fieldCls + " h-12 min-w-0 flex-1 rounded-2xl text-base"}
                 />
-                <Button type="submit" disabled={analyzing || input.trim().length < 3}>
-                  {analyzing ? t("sb.analyzing") : t("sb.analyze")}
+                <Button type="submit" disabled={input.trim().length < 3} loading={analyzing} className="h-12 shrink-0">
+                  {t("sb.analyze")}
                 </Button>
               </div>
-              <p className="text-xs text-zinc-600">{t("sb.inputHint")}</p>
+              <p className="text-xs text-muted/80">{t("sb.inputHint")}</p>
             </form>
           </div>
 
           {/* ── Coverage map ──────────────────────────────────────── */}
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
-              <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold text-zinc-300">
-                <span className="h-2 w-2 rounded-full bg-emerald-500" /> {t("sb.covered")}
+            <div className="rounded-xl border border-border bg-surface p-4 shadow-card">
+              <h2 className="mb-2 flex items-center gap-2 text-sm font-bold text-navy">
+                <span className="h-2 w-2 rounded-full bg-success" /> {t("sb.covered")}
               </h2>
-              <p className="mb-3 text-xs text-zinc-600">{t("sb.coveredHint")}</p>
+              <p className="mb-3 text-xs text-muted/80">{t("sb.coveredHint")}</p>
               <div className="flex flex-wrap gap-2">
                 {coverage.data?.covered.map((c) => (
                   <button key={c.id} onClick={() => run(c.label, "theme")}
-                    className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-sm text-zinc-300 hover:border-emerald-600/60">
-                    {c.label} <span className="text-xs text-zinc-600">· {c.reels + c.docs}</span>
+                    className="rounded-full border border-border bg-white px-3 py-1.5 text-sm font-semibold text-navy transition hover:border-success">
+                    {c.label} <span className="text-xs text-muted/80">· {c.reels + c.docs}</span>
                   </button>
                 ))}
                 {coverage.data && coverage.data.covered.length === 0 && (
-                  <span className="text-xs text-zinc-600">—</span>
+                  <span className="text-xs text-muted/80">—</span>
                 )}
               </div>
             </div>
 
-            <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-4">
-              <h2 className="mb-2 flex items-center gap-2 text-sm font-semibold text-zinc-300">
-                <span className="h-2 w-2 rounded-full bg-amber-500" /> {t("sb.opportunities")}
+            <div className="rounded-xl border border-border bg-surface p-4 shadow-card">
+              <h2 className="mb-2 flex items-center gap-2 text-sm font-bold text-navy">
+                <span className="h-2 w-2 rounded-full bg-warning" /> {t("sb.opportunities")}
               </h2>
-              <p className="mb-3 text-xs text-zinc-600">{t("sb.opportunitiesHint")}</p>
+              <p className="mb-3 text-xs text-muted/80">{t("sb.opportunitiesHint")}</p>
               <div className="flex flex-wrap gap-2">
                 {coverage.data?.opportunities.map((o) => (
                   <button key={o.id} onClick={() => run(o.label, "theme")}
-                    className="rounded-lg border border-amber-700/40 bg-amber-950/30 px-3 py-1.5 text-sm text-amber-200 hover:border-amber-500/70">
-                    {o.label} <span className="text-xs text-amber-700">· {o.reels}</span>
+                    className="rounded-full border border-warning/40 bg-warning/10 px-3 py-1.5 text-sm font-semibold text-warning transition hover:border-warning">
+                    {o.label} <span className="text-xs text-warning/70">· {o.reels}</span>
                   </button>
                 ))}
                 {coverage.data && coverage.data.opportunities.length === 0 && (
-                  <span className="text-xs text-zinc-600">—</span>
+                  <span className="text-xs text-muted/80">—</span>
                 )}
               </div>
             </div>
@@ -107,11 +109,11 @@ export default function SecondBrain() {
 
           {/* ── Briefs ────────────────────────────────────────────── */}
           <div>
-            <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-zinc-500">
+            <h2 className="mb-3 text-xs font-bold uppercase tracking-wider text-muted">
               {t("sb.briefs")}
             </h2>
             {briefs.isLoading ? (
-              <Spinner />
+              <Skeleton className="h-40" />
             ) : !briefs.data || briefs.data.length === 0 ? (
               <EmptyState message={t("sb.noBriefs")} />
             ) : (
@@ -132,13 +134,14 @@ export default function SecondBrain() {
         </div>
       </div>
     </div>
+    </PageTransition>
   );
 }
 
 const COVERAGE_BADGE: Record<string, string> = {
-  covered: "bg-emerald-600/20 text-emerald-300",
-  partial: "bg-indigo-600/20 text-indigo-300",
-  gap: "bg-amber-600/20 text-amber-300",
+  covered: "bg-success/10 text-success",
+  partial: "bg-secondary/10 text-secondary",
+  gap: "bg-warning/10 text-warning",
 };
 
 function BriefCard({
@@ -158,24 +161,24 @@ function BriefCard({
   const [tab, setTab] = useState<"brief" | "draft">("brief");
 
   return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-4">
+    <div className="rounded-xl border border-border bg-surface p-4 shadow-card">
       <div className="mb-2 flex flex-wrap items-center gap-2">
         <Badge className={COVERAGE_BADGE[brief.coverage]}>{t(`sb.cov.${brief.coverage}`)}</Badge>
-        {brief.status === "saved" && <Badge className="bg-emerald-600/20 text-emerald-300">{t("sb.saved")}</Badge>}
-        <span className="text-xs text-zinc-500">
+        {brief.status === "saved" && <Badge className="bg-success/10 text-success">{t("sb.saved")}</Badge>}
+        <span className="text-xs font-semibold text-muted">
           {t("sb.mSources", { m: brief.medyca_sources.length, c: brief.competitor_sources.length })}
         </span>
       </div>
-      <h3 className="text-base font-semibold text-white">{brief.input_text}</h3>
+      <h3 className="text-base font-bold text-heading">{brief.input_text}</h3>
 
       {brief.draft_md && (
-        <div className="mt-2 inline-flex rounded-lg border border-zinc-800 bg-zinc-950 p-0.5">
+        <div className="mt-2 inline-flex rounded-full border border-border bg-white p-0.5">
           <TabBtn active={tab === "brief"} onClick={() => setTab("brief")}>{t("sb.tabBrief")}</TabBtn>
           <TabBtn active={tab === "draft"} onClick={() => setTab("draft")}>{t("sb.tabDraft")}</TabBtn>
         </div>
       )}
 
-      <div className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-zinc-300">
+      <div className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-navy">
         {tab === "draft" && brief.draft_md ? brief.draft_md : brief.brief_md}
       </div>
 
@@ -184,14 +187,14 @@ function BriefCard({
         <div className="mt-3 flex flex-wrap gap-1.5">
           {brief.medyca_sources.map((s, i) => (
             <a key={`m${i}`} href={s.url} target="_blank" rel="noreferrer">
-              <Badge className="bg-emerald-600/15 text-emerald-300">
+              <Badge className="bg-success/10 text-success">
                 {s.kind === "blog" ? "📄" : "🎬"} {s.title.slice(0, 32)}{s.weight ? ` · ${s.weight}×` : ""}
               </Badge>
             </a>
           ))}
           {brief.competitor_sources.map((s, i) => (
             <a key={`c${i}`} href={s.url} target="_blank" rel="noreferrer">
-              <Badge className="bg-amber-600/15 text-amber-300">🏷 {s.title.slice(0, 30)}</Badge>
+              <Badge className="bg-warning/10 text-warning">🏷 {s.title.slice(0, 30)}</Badge>
             </a>
           ))}
         </div>
@@ -199,11 +202,11 @@ function BriefCard({
 
       <div className="mt-3 flex flex-wrap gap-2">
         {!brief.draft_md && (
-          <Button variant="ghost" onClick={onDraft} disabled={drafting}>
-            {drafting ? t("sb.drafting") : `✍️ ${t("sb.genDraft")}`}
+          <Button variant="secondary" onClick={onDraft} loading={drafting}>
+            ✍️ {t("sb.genDraft")}
           </Button>
         )}
-        <Button variant="ghost" onClick={() => navigator.clipboard?.writeText(tab === "draft" ? brief.draft_md : brief.brief_md)}>
+        <Button variant="secondary" onClick={() => navigator.clipboard?.writeText(tab === "draft" ? brief.draft_md : brief.brief_md)}>
           📋 {t("sb.copy")}
         </Button>
         <Button variant="ghost" onClick={onSave}>⭐ {t("sb.save")}</Button>
@@ -217,7 +220,7 @@ function TabBtn({ active, onClick, children }: { active: boolean; onClick: () =>
   return (
     <button
       onClick={onClick}
-      className={"rounded-md px-3 py-1 text-xs font-medium " + (active ? "bg-indigo-600 text-white" : "text-zinc-400")}
+      className={"rounded-full px-3 py-1 text-xs font-semibold transition " + (active ? "bg-secondary text-white" : "text-muted hover:text-navy")}
     >
       {children}
     </button>

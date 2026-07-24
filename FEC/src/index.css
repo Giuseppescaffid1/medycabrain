@@ -1,7 +1,37 @@
 @import "tailwindcss";
 
+/*
+ * Medyca brand tokens — source of truth:
+ * .claude/skills/ui-design/references/design-tokens.md
+ * Radii map to native Tailwind utilities: 6px=rounded-md, 12px=rounded-xl,
+ * 24px=rounded-3xl, pill=rounded-full (no remap of the default scale).
+ */
+@theme {
+  --color-ground: #f7fafd;
+  --color-surface: #eef5fd;
+  --color-border: #d5e3f2;
+  --color-navy: #2c4984;
+  --color-heading: #346faa;
+  --color-muted: #52688a;
+  --color-brand: #c93b42;
+  --color-brand-hover: #a93037;
+  --color-secondary: #4a6fac;
+  --color-secondary-hover: #3a5b94;
+  --color-success: #1e7e4a;
+  --color-warning: #b7791f;
+  --color-danger: #c93b42;
+
+  --font-sans: "Nunito Sans", system-ui, -apple-system, "Segoe UI", Roboto,
+    sans-serif;
+
+  --shadow-card: 0 1px 2px rgba(44, 73, 132, 0.08);
+  --shadow-float: 0 4px 16px rgba(44, 73, 132, 0.12);
+
+  --ease-brand: cubic-bezier(0.2, 0, 0, 1);
+}
+
 :root {
-  color-scheme: dark;
+  color-scheme: light;
 }
 
 html,
@@ -12,21 +42,35 @@ body,
 
 body {
   margin: 0;
-  font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  background: #0a0a0b;
-  color: #e5e7eb;
+  font-family: var(--font-sans);
+  background: #ffffff;
+  color: var(--color-navy);
   -webkit-font-smoothing: antialiased;
 }
 
-/* Thin scrollbars */
+/* Thin light scrollbars */
 ::-webkit-scrollbar {
   width: 10px;
   height: 10px;
 }
 ::-webkit-scrollbar-thumb {
-  background: #27272a;
+  background: #c7d8ec;
   border-radius: 6px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #3f3f46;
+  background: #a9c2e0;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-secondary);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }

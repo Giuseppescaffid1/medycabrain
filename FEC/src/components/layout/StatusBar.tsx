@@ -28,17 +28,17 @@ function JobRow({ job, onDismiss }: { job: Job; onDismiss: () => void }) {
   const done = job.status === "done";
 
   const accent = failed
-    ? "border-red-600/50 bg-red-950/80"
+    ? "border-danger/50"
     : done
-      ? "border-emerald-600/50 bg-emerald-950/80"
-      : "border-indigo-600/50 bg-zinc-900/90";
+      ? "border-success/50"
+      : "border-secondary/50";
 
   const label = t(`jobs.${job.kind}`, { defaultValue: t("jobs.pipeline") });
 
   return (
     <div
       className={
-        "pointer-events-auto w-full max-w-2xl rounded-xl border px-4 py-3 shadow-2xl backdrop-blur " +
+        "pointer-events-auto w-full max-w-2xl rounded-xl border bg-white/95 px-4 py-3 shadow-float backdrop-blur " +
         accent
       }
     >
@@ -48,17 +48,17 @@ function JobRow({ job, onDismiss }: { job: Job; onDismiss: () => void }) {
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-3">
-            <span className="truncate text-sm font-semibold text-white">{label}</span>
-            <span className="shrink-0 text-xs text-zinc-400">
+            <span className="truncate text-sm font-bold text-navy">{label}</span>
+            <span className="shrink-0 text-xs font-semibold text-muted">
               {active ? `${job.progress}%` : failed ? t("jobs.failed") : t("jobs.done")}
             </span>
           </div>
-          <div className="mt-1 truncate text-xs text-zinc-400">{job.message}</div>
-          <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-zinc-800">
+          <div className="mt-1 truncate text-xs text-muted">{job.message}</div>
+          <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-surface">
             <div
               className={
                 "h-full rounded-full transition-all duration-500 " +
-                (failed ? "bg-red-500" : done ? "bg-emerald-500" : "bg-indigo-500")
+                (failed ? "bg-danger" : done ? "bg-success" : "bg-secondary")
               }
               style={{ width: `${active ? Math.max(job.progress, 4) : 100}%` }}
             />
@@ -67,7 +67,7 @@ function JobRow({ job, onDismiss }: { job: Job; onDismiss: () => void }) {
         {!active && (
           <button
             onClick={onDismiss}
-            className="shrink-0 rounded px-2 py-1 text-xs text-zinc-500 hover:text-zinc-300"
+            className="shrink-0 rounded-full px-2 py-1 text-xs text-muted hover:text-navy"
             aria-label={t("common.close")}
           >
             ✕

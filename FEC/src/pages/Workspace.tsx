@@ -4,7 +4,8 @@ import { useTranslation } from "react-i18next";
 import { fetchReels, fetchTags, type ReelFilters } from "../api/endpoints";
 import { ReelCard } from "../components/reels/ReelCard";
 import { ReelDetailDrawer } from "../components/reels/ReelDetailDrawer";
-import { EmptyState, Spinner } from "../components/ui/primitives";
+import { EmptyState, Skeleton } from "../components/ui/primitives";
+import { PageTransition } from "../components/ui/motion";
 
 type TabKey = "favorites" | "inspiration" | "tags";
 
@@ -36,19 +37,20 @@ export default function Workspace() {
   ];
 
   return (
+    <PageTransition>
     <div className="flex h-full flex-col">
-      <div className="border-b border-zinc-800 px-6 py-4">
-        <h1 className="mb-3 text-xl font-bold text-white">{t("workspace.title")}</h1>
+      <div className="border-b border-border px-4 py-4 sm:px-6">
+        <h1 className="mb-3 text-xl font-bold text-heading">{t("workspace.title")}</h1>
         <div className="flex flex-wrap gap-2">
           {tabs.map((tb) => (
             <button
               key={tb.key}
               onClick={() => setTab(tb.key)}
               className={
-                "rounded-lg px-3 py-1.5 text-sm font-medium transition " +
+                "rounded-full border px-4 py-1.5 text-sm font-semibold transition " +
                 (tab === tb.key
-                  ? "bg-indigo-600/30 text-indigo-200 ring-1 ring-indigo-500"
-                  : "bg-zinc-900 text-zinc-400 hover:text-zinc-200")
+                  ? "border-secondary bg-surface text-heading"
+                  : "border-border bg-white text-muted hover:text-navy")
               }
             >
               {tb.label}
@@ -64,7 +66,7 @@ export default function Workspace() {
                   onClick={() => setTagId(tg.id)}
                   className={
                     "rounded-full px-3 py-1 text-xs font-medium transition " +
-                    (tagId === tg.id ? "ring-2 ring-indigo-400" : "")
+                    (tagId === tg.id ? "ring-2 ring-secondary" : "")
                   }
                   style={{ backgroundColor: tg.color + "22", color: tg.color }}
                 >
@@ -72,19 +74,23 @@ export default function Workspace() {
                 </button>
               ))
             ) : (
-              <span className="text-xs text-zinc-600">—</span>
+              <span className="text-xs text-muted/80">—</span>
             )}
           </div>
         )}
       </div>
 
-      <div className="flex-1 px-6 py-5">
+      <div className="flex-1 px-4 py-4 sm:px-6 sm:py-5">
         {isLoading ? (
-          <Spinner />
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4 xl:grid-cols-5">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <Skeleton key={i} className="aspect-[9/16]" />
+            ))}
+          </div>
         ) : !data || data.results.length === 0 ? (
           <EmptyState message={t("workspace.empty")} />
         ) : (
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4 xl:grid-cols-5">
             {data.results.map((reel) => (
               <ReelCard key={reel.id} reel={reel} onClick={() => setOpenReel(reel.id)} />
             ))}
@@ -94,5 +100,6 @@ export default function Workspace() {
 
       <ReelDetailDrawer reelId={openReel} onClose={() => setOpenReel(null)} />
     </div>
+    </PageTransition>
   );
 }
