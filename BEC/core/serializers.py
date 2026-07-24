@@ -137,6 +137,17 @@ class BlogDraftSerializer(serializers.ModelSerializer):
                             "source_refs", "created_at"]
 
 
+class StrategyBriefSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = models.StrategyBrief
+        fields = ["id", "input_text", "source_kind", "coverage", "brief_md",
+                  "draft_md", "medyca_sources", "competitor_sources", "metrics",
+                  "status", "created_at"]
+        read_only_fields = ["input_text", "source_kind", "coverage", "brief_md",
+                            "draft_md", "medyca_sources", "competitor_sources",
+                            "metrics", "created_at"]
+
+
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = User

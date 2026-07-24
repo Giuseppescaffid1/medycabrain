@@ -11,6 +11,7 @@ router.register(r"clusters", views.ClusterViewSet, basename="cluster")
 router.register(r"knowledge/documents", views.KnowledgeDocumentViewSet, basename="knowledge-doc")
 router.register(r"second-brain/ideas", views.ContentIdeaViewSet, basename="content-idea")
 router.register(r"second-brain/blog-drafts", views.BlogDraftViewSet, basename="blog-draft")
+router.register(r"second-brain/briefs", views.StrategyBriefViewSet, basename="strategy-brief")
 router.register(r"jobs", views.JobViewSet, basename="job")
 
 urlpatterns = [
@@ -19,6 +20,7 @@ urlpatterns = [
     path("auth/me/", views.me_view),
     path("stats/overview/", views.StatsView.as_view()),
     path("analytics/", views.AnalyticsView.as_view()),
+    path("second-brain/coverage-map/", views.CoverageMapView.as_view()),
     path("knowledge/search/", views.KnowledgeSearchView.as_view()),
     path("knowledge/ask/", views.KnowledgeAskView.as_view()),
     path("", include(router.urls)),

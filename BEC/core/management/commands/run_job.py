@@ -61,4 +61,11 @@ class Command(BaseCommand):
         if job.kind == "blog":
             from core.blog_workflow import run_cluster_blog
             return run_cluster_blog(int(job.params["cluster_id"]), job=job)
+        if job.kind == "strategy":
+            from core.strategy import analyze
+            b = analyze(job.params["input_text"], job.params.get("source_kind", "input"), job=job)
+            return {"brief_id": b.id, "coverage": b.coverage}
+        if job.kind == "strategy_draft":
+            from core.strategy import generate_draft
+            return generate_draft(int(job.params["brief_id"]), job=job)
         raise CommandError(f"unknown job kind: {job.kind}")

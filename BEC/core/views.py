@@ -375,6 +375,80 @@ def _spawn_job(job_id: int):
     )
 
 
+class StrategyBriefViewSet(viewsets.ModelViewSet):
+    """The input-driven strategy engine: analyze an input into a brief, list/
+    save/dismiss briefs, and generate a full draft on-demand."""
+
+    serializer_class = serializers.StrategyBriefSerializer
+    permission_classes = [IsAuthenticated]
+    http_method_names = ["get", "patch", "post", "head", "options"]
+
+    def get_queryset(self):
+        qs = models.StrategyBrief.objects.all()
+        status_f = self.request.query_params.get("status")
+        if status_f:
+            qs = qs.filter(status=status_f)
+        else:
+            qs = qs.exclude(status="dismissed")
+        return qs
+
+    @action(detail=False, methods=["post"], url_path="analyze")
+    def analyze(self, request):
+        """Kick a strategy analysis (free-text input or a theme) as a job."""
+        text = (request.data.get("input_text") or request.data.get("text") or "").strip()
+        if len(text) < 3:
+            return Response({"detail": "Inserisci un tema o una richiesta."}, status=400)
+        job = models.Job.objects.create(
+            kind="strategy", status="queued",
+            params={"input_text": text[:400], "source_kind": request.data.get("source_kind", "input")},
+            message=f"In coda: analisi «{text[:40]}»")
+        _spawn_job(job.id)
+        return Response(serializers.JobSerializer(job).data, status=status.HTTP_202_ACCEPTED)
+
+    @action(detail=True, methods=["post"], url_path="draft")
+    def draft(self, request, pk=None):
+        """Generate the full draft for this brief (on-demand) as a job."""
+        job = models.Job.objects.create(
+            kind="strategy_draft", status="queued", params={"brief_id": int(pk)},
+            message="In coda: bozza completa")
+        _spawn_job(job.id)
+        return Response(serializers.JobSerializer(job).data, status=status.HTTP_202_ACCEPTED)
+
+
+class CoverageMapView(APIView):
+    """Coverage map: Medyca themes (covered) vs competitor themes Medyca hasn't
+    addressed (opportunities). Match Medyca vs competitor cluster centroids by
+    cosine; unmatched competitor clusters = gaps."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        import numpy as np
+        med_run = models.ClusterRun.objects.filter(scope="owned", is_current=True).first()
+        comp_run = models.ClusterRun.objects.filter(scope="competitor", is_current=True).first()
+        med = list(med_run.clusters.all()) if med_run else []
+        comp = list(comp_run.clusters.all()) if comp_run else []
+
+        def vec(c):
+            return np.asarray(c.centroid, dtype=np.float32) if c.centroid else None
+
+        med_vecs = [(c, vec(c)) for c in med if c.centroid]
+        covered = [{"id": c.id, "label": c.label_it, "reels": c.reel_assignments.count(),
+                    "docs": c.doc_assignments.count()} for c in med]
+        opportunities = []
+        for c in comp:
+            cv = vec(c)
+            if cv is None:
+                continue
+            best = max((float(np.dot(cv, mv)) for _, mv in med_vecs if mv is not None), default=0.0)
+            if best < 0.8:  # competitors talk about it, Medyca doesn't (much)
+                opportunities.append({"id": c.id, "label": c.label_it,
+                                      "reels": c.reel_assignments.count(),
+                                      "similarity": round(best, 2)})
+        opportunities.sort(key=lambda x: x["reels"], reverse=True)
+        return Response({"covered": covered, "opportunities": opportunities})
+
+
 class JobViewSet(viewsets.ReadOnlyModelViewSet):
     """Poll background job status (for the global status bar)."""
 

@@ -60,6 +60,12 @@ class BlogDraftAdmin(admin.ModelAdmin):
     list_filter = ("mode", "status")
 
 
+@admin.register(models.StrategyBrief)
+class StrategyBriefAdmin(admin.ModelAdmin):
+    list_display = ("input_text", "coverage", "source_kind", "status", "created_at")
+    list_filter = ("coverage", "source_kind", "status")
+
+
 admin.site.register(models.Transcript)
 admin.site.register(models.Enrichment)
 admin.site.register(models.TopicCluster)

@@ -407,7 +407,10 @@ class Job(models.Model):
     while the UI polls status and a global status bar shows progress.
     """
 
-    KIND_CHOICES = [("ideation", "Ideation"), ("pipeline", "Pipeline"), ("blog", "Blog")]
+    KIND_CHOICES = [
+        ("ideation", "Ideation"), ("pipeline", "Pipeline"), ("blog", "Blog"),
+        ("strategy", "Strategy"), ("strategy_draft", "Strategy draft"),
+    ]
     STATUS_CHOICES = [
         ("queued", "Queued"),
         ("running", "Running"),
@@ -439,6 +442,38 @@ class Job(models.Model):
         if message:
             self.message = message[:300]
         self.save(update_fields=["progress", "message", "updated_at"])
+
+
+class StrategyBrief(models.Model):
+    """Output of the input-driven strategy engine.
+
+    Given an input (a free-text topic/brief, or a clicked theme), the engine
+    analyzes the knowledge bank + competitor signal, weighted by engagement,
+    and produces a strategic brief: what Medyca already covers, the gap vs
+    competitors, and a grounded proposal. A full draft can be generated
+    on-demand from the same sources.
+    """
+
+    COVERAGE_CHOICES = [("covered", "Covered"), ("partial", "Partial"), ("gap", "Gap")]
+    STATUS_CHOICES = [("proposed", "Proposed"), ("saved", "Saved"), ("dismissed", "Dismissed")]
+
+    input_text = models.CharField(max_length=400)
+    source_kind = models.CharField(max_length=16, default="input")  # input | theme
+    coverage = models.CharField(max_length=12, choices=COVERAGE_CHOICES, default="gap")
+    brief_md = models.TextField(blank=True, default="")
+    draft_md = models.TextField(blank=True, default="")   # filled on-demand
+    medyca_sources = models.JSONField(default=list, blank=True)      # [{title,url,weight}]
+    competitor_sources = models.JSONField(default=list, blank=True)  # [{title,url}]
+    metrics = models.JSONField(default=dict, blank=True)   # engagement numbers used
+    status = models.CharField(max_length=12, choices=STATUS_CHOICES, default="proposed")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "strategy_briefs"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return self.input_text[:60]
 
 
 class ScraperConfig(models.Model):
