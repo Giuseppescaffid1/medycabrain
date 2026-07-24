@@ -33,8 +33,7 @@ function JobRow({ job, onDismiss }: { job: Job; onDismiss: () => void }) {
       ? "border-emerald-600/50 bg-emerald-950/80"
       : "border-indigo-600/50 bg-zinc-900/90";
 
-  const label =
-    job.kind === "ideation" ? t("jobs.ideation") : t("jobs.pipeline");
+  const label = t(`jobs.${job.kind}`, { defaultValue: t("jobs.pipeline") });
 
   return (
     <div

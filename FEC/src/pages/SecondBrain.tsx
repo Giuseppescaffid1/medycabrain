@@ -2,9 +2,9 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import {
-  fetchIdeas,
-  updateIdeaStatus,
-  type ContentIdea,
+  fetchBlogDrafts,
+  updateBlogDraftStatus,
+  type BlogDraft,
 } from "../api/secondBrain";
 import {
   askKnowledge,
@@ -13,12 +13,11 @@ import {
   type AskResult,
   type KnowledgeHit,
 } from "../api/knowledge";
-import { useJobs } from "../contexts/JobsContext";
 import { Badge, Button, EmptyState, Spinner } from "../components/ui/primitives";
 import { useDebounced } from "../lib/useDebounced";
 import { formatDate } from "../lib/utils";
 
-type Mode = "search" | "ask" | "ideas";
+type Mode = "search" | "ask" | "blog";
 
 export default function SecondBrain() {
   const { t } = useTranslation();
@@ -27,7 +26,7 @@ export default function SecondBrain() {
   const modes: { key: Mode; label: string; icon: string }[] = [
     { key: "search", label: t("sb.search"), icon: "🔎" },
     { key: "ask", label: t("sb.ask"), icon: "💬" },
-    { key: "ideas", label: t("sb.ideas"), icon: "💡" },
+    { key: "blog", label: t("sb.blog"), icon: "✍️" },
   ];
 
   return (
@@ -57,7 +56,7 @@ export default function SecondBrain() {
       <div className="flex-1 overflow-y-auto px-6 py-6">
         {mode === "search" && <SearchMode />}
         {mode === "ask" && <AskMode />}
-        {mode === "ideas" && <IdeasMode />}
+        {mode === "blog" && <BlogMode />}
       </div>
     </div>
   );
@@ -168,45 +167,32 @@ function AskMode() {
   );
 }
 
-// ── Ideas (async generation via the global job) ──────────────────────────
-function IdeasMode() {
+// ── Blog drafts (cluster-driven; generated from a cluster's page) ─────────
+function BlogMode() {
   const { t } = useTranslation();
   const qc = useQueryClient();
-  const { jobs, startIdeation } = useJobs();
-  const ideas = useQuery({ queryKey: ["ideas"], queryFn: () => fetchIdeas() });
-  const generating = jobs.some((j) => j.kind === "ideation" && (j.status === "queued" || j.status === "running"));
+  const drafts = useQuery({ queryKey: ["blog-drafts"], queryFn: () => fetchBlogDrafts() });
 
   const setStatus = useMutation({
-    mutationFn: (v: { id: number; status: "saved" | "dismissed" }) => updateIdeaStatus(v.id, v.status),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["ideas"] }),
+    mutationFn: (v: { id: number; status: "saved" | "dismissed" }) => updateBlogDraftStatus(v.id, v.status),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["blog-drafts"] }),
   });
 
   return (
     <div className="mx-auto max-w-4xl">
-      <div className="mb-5 flex items-center justify-between gap-4">
-        <p className="text-sm text-zinc-500">{t("sb.ideasIntro")}</p>
-        <Button onClick={() => startIdeation(8)} disabled={generating}>
-          {generating ? t("sb.generating") : t("sb.generate")}
-        </Button>
-      </div>
-      {generating && (
-        <p className="mb-4 rounded-lg border border-indigo-600/40 bg-indigo-600/10 px-4 py-2 text-sm text-indigo-200">
-          {t("sb.generatingNote")}
-        </p>
-      )}
-
-      {ideas.isLoading ? (
+      <p className="mb-5 text-sm text-zinc-500">{t("sb.blogIntro")}</p>
+      {drafts.isLoading ? (
         <Spinner />
-      ) : !ideas.data || ideas.data.length === 0 ? (
-        <EmptyState message={t("sb.noIdeas")} />
+      ) : !drafts.data || drafts.data.length === 0 ? (
+        <EmptyState message={t("sb.noBlog")} />
       ) : (
         <div className="flex flex-col gap-3">
-          {ideas.data.map((idea) => (
-            <IdeaCard
-              key={idea.id}
-              idea={idea}
-              onSave={() => setStatus.mutate({ id: idea.id, status: "saved" })}
-              onDismiss={() => setStatus.mutate({ id: idea.id, status: "dismissed" })}
+          {drafts.data.map((d) => (
+            <BlogCard
+              key={d.id}
+              draft={d}
+              onSave={() => setStatus.mutate({ id: d.id, status: "saved" })}
+              onDismiss={() => setStatus.mutate({ id: d.id, status: "dismissed" })}
             />
           ))}
         </div>
@@ -215,24 +201,28 @@ function IdeasMode() {
   );
 }
 
-function IdeaCard({ idea, onSave, onDismiss }: { idea: ContentIdea; onSave: () => void; onDismiss: () => void }) {
+function BlogCard({ draft, onSave, onDismiss }: { draft: BlogDraft; onSave: () => void; onDismiss: () => void }) {
   const { t } = useTranslation();
+  const [open, setOpen] = useState(false);
   return (
     <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-4">
       <div className="mb-1 flex flex-wrap items-center gap-2">
-        {idea.is_gap && <Badge className="bg-amber-600/20 text-amber-300">{t("sb.gap")}</Badge>}
-        {idea.status === "saved" && <Badge className="bg-emerald-600/20 text-emerald-300">{t("sb.saved")}</Badge>}
+        <Badge className={draft.mode === "draft" ? "bg-amber-600/20 text-amber-300" : "bg-indigo-600/20 text-indigo-300"}>
+          {draft.mode === "draft" ? t("blog.draft") : t("blog.expand")}
+        </Badge>
+        <span className="text-xs text-zinc-500">{t("blog.theme")}: {draft.cluster_label}</span>
+        {draft.status === "saved" && <Badge className="bg-emerald-600/20 text-emerald-300">{t("sb.saved")}</Badge>}
       </div>
-      <h3 className="text-base font-semibold text-white">{idea.argument_it}</h3>
-      {idea.rationale_it && <p className="mt-1 text-sm text-zinc-400">{idea.rationale_it}</p>}
-      {idea.angle_it && (
-        <p className="mt-2 text-sm text-indigo-300">
-          <span className="font-semibold">{t("sb.angle")}:</span> {idea.angle_it}
-        </p>
-      )}
-      {idea.source_refs?.length > 0 && (
+      <h3 className="text-base font-semibold text-white">{draft.title}</h3>
+      <div className={"mt-2 whitespace-pre-wrap text-sm text-zinc-300 " + (open ? "" : "line-clamp-4")}>
+        {draft.content_md}
+      </div>
+      <button onClick={() => setOpen((o) => !o)} className="mt-1 text-xs font-medium text-indigo-400">
+        {open ? t("blog.collapse") : t("blog.readAll")}
+      </button>
+      {draft.source_refs?.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-1.5">
-          {idea.source_refs.map((s, i) => (
+          {draft.source_refs.map((s, i) => (
             <a key={i} href={s.url} target="_blank" rel="noreferrer">
               <Badge className="bg-zinc-800 text-zinc-400 hover:text-zinc-200">
                 {s.kind === "blog" ? "📄" : "🎬"} {s.title.replace(/ — Medyca$/, "").slice(0, 40)}
@@ -242,6 +232,7 @@ function IdeaCard({ idea, onSave, onDismiss }: { idea: ContentIdea; onSave: () =
         </div>
       )}
       <div className="mt-3 flex gap-2">
+        <Button variant="ghost" onClick={() => navigator.clipboard?.writeText(draft.content_md)}>📋 {t("blog.copy")}</Button>
         <Button variant="ghost" onClick={onSave}>⭐ {t("sb.save")}</Button>
         <Button variant="ghost" onClick={onDismiss}>✕ {t("sb.dismiss")}</Button>
       </div>

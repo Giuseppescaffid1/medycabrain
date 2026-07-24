@@ -2,7 +2,7 @@ import { apiClient } from "./client";
 
 export interface Job {
   id: number;
-  kind: "ideation" | "pipeline";
+  kind: "ideation" | "pipeline" | "blog";
   status: "queued" | "running" | "done" | "failed";
   progress: number;
   message: string;
@@ -25,5 +25,11 @@ export async function getJob(id: number): Promise<Job> {
 /** Kick off idea generation — returns immediately with a queued Job (202). */
 export async function startIdeationJob(n = 8): Promise<Job> {
   const { data } = await apiClient.post<Job>("/second-brain/ideas/generate/", { n });
+  return data;
+}
+
+/** Generate/expand a blog article for a cluster — returns a queued Job (202). */
+export async function startClusterBlogJob(clusterId: number): Promise<Job> {
+  const { data } = await apiClient.post<Job>(`/clusters/${clusterId}/blog/`, {});
   return data;
 }

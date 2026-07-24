@@ -100,6 +100,9 @@ export interface Cluster {
   keywords: string[];
   position: number;
   preview_thumbs: string[];
+  has_blog: boolean;
+  reel_count: number;
+  doc_count: number;
 }
 
 export interface ClusterArgument {

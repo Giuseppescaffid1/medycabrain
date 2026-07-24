@@ -9,7 +9,8 @@ import {
 } from "../api/endpoints";
 import { ReelCard } from "../components/reels/ReelCard";
 import { ReelDetailDrawer } from "../components/reels/ReelDetailDrawer";
-import { Badge, Spinner } from "../components/ui/primitives";
+import { Badge, Button, Spinner } from "../components/ui/primitives";
+import { useJobs } from "../contexts/JobsContext";
 
 export default function ClusterDetail() {
   const { t } = useTranslation();
@@ -45,6 +46,7 @@ export default function ClusterDetail() {
         {cluster?.description_it && (
           <p className="mt-1 text-sm text-zinc-400">{cluster.description_it}</p>
         )}
+        {cluster && <BlogPanel cluster={cluster} />}
       </div>
 
       <div className="flex-1 space-y-6 px-6 py-5">
@@ -86,6 +88,37 @@ export default function ClusterDetail() {
       </div>
 
       <ReelDetailDrawer reelId={openReel} onClose={() => setOpenReel(null)} />
+    </div>
+  );
+}
+
+function BlogPanel({ cluster }: { cluster: import("../api/types").Cluster }) {
+  const { t } = useTranslation();
+  const { jobs, startClusterBlog } = useJobs();
+  const running = jobs.some((j) => j.kind === "blog" && (j.status === "queued" || j.status === "running"));
+
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-3 rounded-lg border border-zinc-800 bg-zinc-900/60 px-4 py-2.5">
+      <span className="text-xs text-zinc-400">
+        {cluster.reel_count} reel · {cluster.doc_count} {t("blog.articles")}
+      </span>
+      {cluster.has_blog ? (
+        <Badge className="bg-emerald-600/20 text-emerald-300">{t("blog.hasArticle")}</Badge>
+      ) : (
+        <Badge className="bg-amber-600/20 text-amber-300">{t("blog.noArticle")}</Badge>
+      )}
+      <Button
+        variant="ghost"
+        onClick={() => startClusterBlog(cluster.id)}
+        disabled={running}
+      >
+        {running
+          ? t("blog.generating")
+          : cluster.has_blog
+            ? `✍️ ${t("blog.expand")}`
+            : `✍️ ${t("blog.draft")}`}
+      </Button>
+      <span className="text-xs text-zinc-600">{t("blog.resultInSecondBrain")}</span>
     </div>
   );
 }

@@ -8,12 +8,19 @@ import {
   type ReactNode,
 } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { getJob, listActiveJobs, startIdeationJob, type Job } from "../api/jobs";
+import {
+  getJob,
+  listActiveJobs,
+  startClusterBlogJob,
+  startIdeationJob,
+  type Job,
+} from "../api/jobs";
 
 interface JobsState {
   /** Jobs to surface in the status bar (active + recently finished). */
   jobs: Job[];
   startIdeation: (n?: number) => Promise<void>;
+  startClusterBlog: (clusterId: number) => Promise<void>;
   dismiss: (id: number) => void;
 }
 
@@ -84,20 +91,26 @@ export function JobsProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => () => clearTimer(), []);
 
-  const startIdeation = useCallback(async (n = 8) => {
-    const job = await startIdeationJob(n);
+  const registerJob = useCallback((job: Job) => {
     setJobs((prev) => [job, ...prev.filter((j) => j.id !== job.id)]);
-    // Kick the poller immediately.
     if (!timer.current) timer.current = window.setInterval(poll, POLL_MS);
     poll();
   }, [poll]);
+
+  const startIdeation = useCallback(async (n = 8) => {
+    registerJob(await startIdeationJob(n));
+  }, [registerJob]);
+
+  const startClusterBlog = useCallback(async (clusterId: number) => {
+    registerJob(await startClusterBlogJob(clusterId));
+  }, [registerJob]);
 
   const dismiss = useCallback((id: number) => {
     setJobs((prev) => prev.filter((j) => j.id !== id));
   }, []);
 
   return (
-    <JobsContext.Provider value={{ jobs, startIdeation, dismiss }}>
+    <JobsContext.Provider value={{ jobs, startIdeation, startClusterBlog, dismiss }}>
       {children}
     </JobsContext.Provider>
   );
