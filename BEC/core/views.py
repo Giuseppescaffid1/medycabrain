@@ -449,6 +449,77 @@ class CoverageMapView(APIView):
         return Response({"covered": covered, "opportunities": opportunities})
 
 
+class SecondBrainGraphView(APIView):
+    """Constellation graph of the second brain — the pipeline DAG + the theme
+    clusters with their reels/blog assets + competitor opportunities. Emitted
+    in the {nodes, edges} shape the ~/brain graph.html renderer expects."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        scope = SCOPE_MAP.get(request.query_params.get("scope", "medyca").lower(), "owned")
+        nodes, edges = [], []
+        seen = set()
+
+        def add(nid, group, label, sub="", parent=""):
+            if nid in seen:
+                return
+            seen.add(nid)
+            nodes.append({"id": nid, "group": group, "label": label[:60],
+                          "sub": sub, "parent": parent})
+
+        def link(s, t, rel="", kind="structure"):
+            edges.append({"source": s, "target": t, "rel": rel, "kind": kind})
+
+        add("root", "hub", "Medyca" if scope == "owned" else "Competitor", "Second Brain")
+
+        # Pipeline DAG (the stages)
+        stages = [("scrape", "Scrape"), ("transcribe", "Trascrizione"),
+                  ("enrich", "Analisi LLM"), ("cluster", "Cluster")]
+        prev = "root"
+        for sid, slabel in stages:
+            add(f"stage:{sid}", "stage", slabel, "pipeline")
+            link(prev, f"stage:{sid}", "→", "flow")
+            prev = f"stage:{sid}"
+
+        # Theme clusters + their top assets
+        run = models.ClusterRun.objects.filter(scope=scope, is_current=True).first()
+        if run:
+            for c in run.clusters.all().order_by("-size"):
+                cid = f"cluster:{c.id}"
+                add(cid, "theme", c.label_it, f"{c.reel_assignments.count()} reel", parent="root")
+                link("stage:cluster", cid, "", "structure")
+                reels = models.Reel.objects.filter(
+                    cluster_assignments__cluster=c, is_active=True)[:5]
+                for r in reels:
+                    rid = f"reel:{r.shortcode}"
+                    add(rid, "reel", (r.caption or r.shortcode)[:40],
+                        f"{r.view_count or 0} view", parent=cid)
+                    link(cid, rid, "", "structure")
+                for a in models.DocClusterAssignment.objects.filter(cluster=c).select_related("document")[:3]:
+                    did = f"doc:{a.document_id}"
+                    add(did, "blog", a.document.title.replace(" — Medyca", ""), "blog", parent=cid)
+                    link(cid, did, "", "structure")
+
+        # Competitor opportunities (gaps) — from the coverage map
+        if scope == "owned":
+            comp_run = models.ClusterRun.objects.filter(scope="competitor", is_current=True).first()
+            med = list(run.clusters.all()) if run else []
+            import numpy as np
+            med_vecs = [np.asarray(c.centroid, dtype=np.float32) for c in med if c.centroid]
+            for c in (comp_run.clusters.all() if comp_run else []):
+                if not c.centroid:
+                    continue
+                cv = np.asarray(c.centroid, dtype=np.float32)
+                best = max((float(np.dot(cv, mv)) for mv in med_vecs), default=0.0)
+                if best < 0.8:
+                    oid = f"opp:{c.id}"
+                    add(oid, "opportunity", c.label_it, "opportunità")
+                    link("root", oid, "gap", "link")
+
+        return Response({"nodes": nodes, "edges": edges})
+
+
 class JobViewSet(viewsets.ReadOnlyModelViewSet):
     """Poll background job status (for the global status bar)."""
 

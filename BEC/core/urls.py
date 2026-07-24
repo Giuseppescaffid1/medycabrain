@@ -21,6 +21,7 @@ urlpatterns = [
     path("stats/overview/", views.StatsView.as_view()),
     path("analytics/", views.AnalyticsView.as_view()),
     path("second-brain/coverage-map/", views.CoverageMapView.as_view()),
+    path("second-brain/graph/", views.SecondBrainGraphView.as_view()),
     path("knowledge/search/", views.KnowledgeSearchView.as_view()),
     path("knowledge/ask/", views.KnowledgeAskView.as_view()),
     path("", include(router.urls)),

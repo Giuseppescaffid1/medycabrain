@@ -9,6 +9,7 @@
     "timeline": "Timeline",
     "clusters": "Cluster",
     "secondBrain": "Second Brain",
+    "brainMap": "Mappa (DAG)",
     "knowledgeBank": "Knowledge Bank",
     "workspace": "Workspace",
     "accounts": "Account",
@@ -68,6 +69,10 @@
     "saved": "Salvato",
     "save": "Salva",
     "dismiss": "Scarta"
+  },
+  "map": {
+    "title": "Mappa del Second Brain (DAG)",
+    "subtitle": "Pipeline + temi con reel/blog + opportunità competitor. Trascina per esplorare, scroll per zoom."
   },
   "kb": {
     "title": "Knowledge Bank",

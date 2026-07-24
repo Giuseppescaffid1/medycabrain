@@ -47,6 +47,7 @@ export function Sidebar() {
 
         <Section label={t("nav.tools")} />
         <NavLink to="/second-brain" className={linkClass}>🧠 {t("nav.secondBrain")}</NavLink>
+        <NavLink to="/brain-map" className={linkClass}>🕸️ {t("nav.brainMap")}</NavLink>
         <NavLink to="/knowledge-bank" className={linkClass}>📚 {t("nav.knowledgeBank")}</NavLink>
         <NavLink to="/workspace" className={linkClass}>⭐ {t("nav.workspace")}</NavLink>
         <NavLink to="/accounts" className={linkClass}>👤 {t("nav.accounts")}</NavLink>
