@@ -250,6 +250,30 @@ class StatsView(APIView):
         })
 
 
+# ── Analytics — the visible "numbers" layer (per scope) ────────────────────────
+
+class AnalyticsView(APIView):
+    """One endpoint, several metrics (?metric=&scope=). Mirrors SPI's
+    per-metric analytics but ORM-based. Everything data-driven + weighted."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from core import analytics
+        scope = request.query_params.get("scope", "medyca")
+        metric = request.query_params.get("metric", "overview")
+        fn = {
+            "overview": lambda: analytics.overview(scope),
+            "engagement-over-time": lambda: analytics.engagement_over_time(scope),
+            "top-content": lambda: analytics.top_content(scope),
+            "cluster-performance": lambda: analytics.cluster_performance(scope),
+            "benchmark": lambda: analytics.benchmark(),
+        }.get(metric)
+        if not fn:
+            return Response({"detail": f"unknown metric '{metric}'"}, status=400)
+        return Response(fn())
+
+
 # ── Knowledge bank / second brain (MEDYC-10, MEDYC-13) ─────────────────────────
 
 class KnowledgeDocumentViewSet(viewsets.ReadOnlyModelViewSet):

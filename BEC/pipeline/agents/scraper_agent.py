@@ -95,6 +95,9 @@ def _scrape_account_graphql(account: TrackedAccount, budget: list[int]) -> tuple
     page_size = int(_cfg("page_size", 12))
     max_pages = int(_cfg("max_pages_per_account", 3))
     min_delay = float(_cfg("min_delay_s", 25))
+    # Full backfill: paginate the whole depth even when pages are already known,
+    # to pull the OLDER reels an incremental scrape never reaches.
+    full_backfill = bool(_cfg("full_backfill", False))
 
     # Resolve profile
     profile = ig_client.resolve_user(session, account.username, csrftoken=csrf)
@@ -130,13 +133,15 @@ def _scrape_account_graphql(account: TrackedAccount, budget: list[int]) -> tuple
                     account.username, page_idx + 1, len(nodes), page_new)
 
         # Incremental stop: whole page already known and no new ones.
-        all_known = all(
-            (ig_client.parse_reel_node(n) or ReelMeta(shortcode="")).shortcode in known
-            for n in nodes if n
-        )
-        if nodes and page_new == 0 and all_known:
-            logger.info("[scraper] @%s: full page already known, stopping", account.username)
-            break
+        # Skipped in full-backfill mode so we reach the older, unseen reels.
+        if not full_backfill:
+            all_known = all(
+                (ig_client.parse_reel_node(n) or ReelMeta(shortcode="")).shortcode in known
+                for n in nodes if n
+            )
+            if nodes and page_new == 0 and all_known:
+                logger.info("[scraper] @%s: full page already known, stopping", account.username)
+                break
         if not page_info.get("has_next_page"):
             break
         cursor = page_info.get("end_cursor", "")

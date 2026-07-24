@@ -18,6 +18,7 @@ urlpatterns = [
     path("auth/logout/", views.logout_view),
     path("auth/me/", views.me_view),
     path("stats/overview/", views.StatsView.as_view()),
+    path("analytics/", views.AnalyticsView.as_view()),
     path("knowledge/search/", views.KnowledgeSearchView.as_view()),
     path("knowledge/ask/", views.KnowledgeAskView.as_view()),
     path("", include(router.urls)),
