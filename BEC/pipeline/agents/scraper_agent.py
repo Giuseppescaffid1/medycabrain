@@ -59,7 +59,7 @@ def _upsert_reel(account: TrackedAccount, reel: ReelMeta, raw_path: str) -> bool
     if reel.posted_at_ts:
         posted_at = datetime.fromtimestamp(reel.posted_at_ts, tz=timezone.utc)
 
-    obj, created = Reel.objects.update_or_create(
+    obj, created = Reel.objects.get_or_create(
         shortcode=reel.shortcode,
         defaults={
             "account": account,
@@ -78,10 +78,33 @@ def _upsert_reel(account: TrackedAccount, reel: ReelMeta, raw_path: str) -> bool
         },
     )
     if created:
-        # New reel → schedule the media stage.
         obj.media_status = PENDING
         obj.save(update_fields=["media_status"])
-    return created
+        return True
+
+    # Re-scrape: refresh volatile fields (engagement counts + fresh URLs) but
+    # NEVER clobber the richer media/info-backfilled fields (posted_at, caption,
+    # duration) — the clips node lacks them, so writing them would null out data.
+    obj.account = account
+    if reel.view_count is not None:
+        obj.view_count = reel.view_count
+    if reel.like_count is not None:
+        obj.like_count = reel.like_count
+    if reel.comment_count is not None:
+        obj.comment_count = reel.comment_count
+    if reel.video_url:
+        obj.video_url = reel.video_url
+    if reel.thumbnail_url:
+        obj.thumbnail_url = reel.thumbnail_url
+    if posted_at and not obj.posted_at:
+        obj.posted_at = posted_at
+    if reel.caption and not obj.caption:
+        obj.caption = reel.caption
+    if reel.duration_s and not obj.duration_s:
+        obj.duration_s = reel.duration_s
+    obj.is_active = True
+    obj.save()
+    return False
 
 
 def _scrape_account_graphql(account: TrackedAccount, budget: list[int]) -> tuple[int, bool]:
