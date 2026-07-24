@@ -5,6 +5,7 @@
     "competitor": "Competitor",
     "tools": "Strumenti",
     "library": "Libreria",
+    "analytics": "Analytics",
     "timeline": "Timeline",
     "clusters": "Cluster",
     "secondBrain": "Second Brain",
@@ -15,6 +16,23 @@
   "scope": {
     "medyca": "Medyca",
     "competitor": "Competitor"
+  },
+  "analytics": {
+    "title": "Analytics",
+    "subtitle": "I numeri reali: performance, engagement e temi che funzionano.",
+    "reels": "Reel",
+    "avgViews": "View medie",
+    "totalViews": "View totali",
+    "topTheme": "Tema top",
+    "overTime": "Engagement nel tempo",
+    "views": "View",
+    "clusterPerf": "Performance per tema",
+    "weight": "Peso",
+    "weightHint": "Peso = engagement del reel rispetto alla mediana dell'account (1× = nella media). Verde = sopra la media.",
+    "benchmark": "Medyca vs Competitor",
+    "benchmarkHint": "View medie per reel. I competitor hanno reach più alta: per questo pesiamo tutto in modo normalizzato.",
+    "topContent": "Contenuti che performano di più",
+    "noClusters": "Nessun cluster ancora per questo scope."
   },
   "timeline": {
     "title": "Timeline pubblicazioni",
