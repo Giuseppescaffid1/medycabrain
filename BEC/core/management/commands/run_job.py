@@ -63,7 +63,8 @@ class Command(BaseCommand):
             return run_cluster_blog(int(job.params["cluster_id"]), job=job)
         if job.kind == "strategy":
             from core.strategy import analyze
-            b = analyze(job.params["input_text"], job.params.get("source_kind", "input"), job=job)
+            b = analyze(job.params["input_text"], job.params.get("source_kind", "input"),
+                        job=job, query_vec=job.params.get("qv"))
             return {"brief_id": b.id, "coverage": b.coverage}
         if job.kind == "strategy_draft":
             from core.strategy import generate_draft

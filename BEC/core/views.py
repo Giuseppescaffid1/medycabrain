@@ -1,3 +1,4 @@
+import logging
 import os
 
 from django.contrib.auth import authenticate
@@ -12,6 +13,8 @@ from rest_framework.views import APIView
 
 from . import models, serializers
 from .filters import ReelFilter
+
+logger = logging.getLogger(__name__)
 
 
 # ── Auth ───────────────────────────────────────────────────────────────────────
@@ -430,6 +433,13 @@ class StrategyBriefViewSet(viewsets.ModelViewSet):
             return Response({"detail": "Inserisci un tema o una richiesta."}, status=400)
         params = {"input_text": text[:400],
                   "source_kind": request.data.get("source_kind", "input")}
+        # Embed here, where the model stays warm across requests (~0.2s),
+        # instead of in the job process where it would be a cold 14s load.
+        try:
+            from core.knowledge import _embed_query
+            params["qv"] = _embed_query(text[:400]).tolist()
+        except Exception:  # noqa: BLE001 — job falls back to embedding itself
+            logger.warning("[strategy] query embedding failed; job will embed")
         running = _existing_job("strategy", {"input_text": params["input_text"]})
         if running:
             return Response(serializers.JobSerializer(running).data,

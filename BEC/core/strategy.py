@@ -117,13 +117,21 @@ def _material(hits, with_weight=False) -> str:
     return "\n".join(lines) or "(nessuno)"
 
 
-def analyze(input_text: str, source_kind: str = "input", job=None) -> StrategyBrief:
+def analyze(input_text: str, source_kind: str = "input", job=None,
+            query_vec=None) -> StrategyBrief:
     def progress(p, m):
         if job is not None:
             job.set_progress(p, m)
 
     progress(15, "Cerco cosa Medyca ha già pubblicato…")
-    qv = _embed_query(input_text)
+    # The web process hands us the query vector it already computed with a
+    # warm model: loading sentence-transformers here would cost ~14s in this
+    # short-lived job process, more than the whole rest of the analysis.
+    if query_vec is not None:
+        import numpy as _np
+        qv = _np.asarray(query_vec, dtype=_np.float32)
+    else:
+        qv = _embed_query(input_text)
 
     # Medyca coverage (owned reels + blog), attach engagement weight to reels.
     medyca_hits = _rank(qv, _load_index(), top_k=6)
