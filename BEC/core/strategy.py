@@ -145,7 +145,15 @@ def analyze(input_text: str, source_kind: str = "input", job=None) -> StrategyBr
         medyca=_material(medyca_hits, with_weight=True),
         competitor=_material(comp_hits),
     )
-    brief_md = client.chat(STRATEGY_SYSTEM, user, max_tokens=1100, timeout=600)
+    # Stream: the progress bar advances with the text instead of sitting at a
+    # frozen 55% for minutes, and a slow-but-working generation is not killed.
+    def _tick(partial: str):
+        if job:
+            pct = min(90, 55 + len(partial) // 60)
+            job.set_progress(pct, f"Scrivo il brief… ({len(partial)} caratteri)")
+
+    brief_md = client.chat(STRATEGY_SYSTEM, user, max_tokens=900, timeout=900,
+                           on_token=_tick, priority=True)
 
     progress(90, "Salvo il brief…")
     brief = StrategyBrief.objects.create(
@@ -178,7 +186,13 @@ def generate_draft(brief_id: int, job=None) -> dict:
     progress(30, "Scrivo la bozza completa…")
     medyca = "\n".join(f"- {s['title']}" for s in brief.medyca_sources) or "(nessuna)"
     user = DRAFT_USER.format(topic=brief.input_text, brief=brief.brief_md[:3000], medyca=medyca)
-    draft = client.chat(DRAFT_SYSTEM, user, max_tokens=1400, timeout=700)
+    def _tick_draft(partial: str):
+        if job:
+            pct = min(92, 40 + len(partial) // 60)
+            job.set_progress(pct, f"Scrivo la bozza… ({len(partial)} caratteri)")
+
+    draft = client.chat(DRAFT_SYSTEM, user, max_tokens=1200, timeout=900,
+                        on_token=_tick_draft, priority=True)
     brief.draft_md = (draft or "").strip()
     brief.save(update_fields=["draft_md"])
     progress(100, "Bozza pronta.")

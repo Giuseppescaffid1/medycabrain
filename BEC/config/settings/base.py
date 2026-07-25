@@ -142,7 +142,21 @@ OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://127.0.0.1:11434")
 OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "qwen2.5:7b-instruct-q4_K_M")
 # Provider order: try each until one answers. Default local-only; HF is
 # dormant (add ",hf" to call it — e.g. after refilling credits).
-LLM_PROVIDER_ORDER = os.environ.get("LLM_PROVIDER_ORDER", "ollama").split(",")
+# Fast remote provider (OpenAI-compatible): Groq / Cerebras / OpenRouter /
+# DeepSeek / Together. ~100-300 tok/s vs ~1-3 tok/s for a 7B on this CPU, so
+# it is tried FIRST whenever a key is present. Ollama stays as the offline
+# backstop. Set FAST_LLM_API_KEY in .env to activate.
+FAST_LLM_API_KEY = os.environ.get("FAST_LLM_API_KEY", "")
+FAST_LLM_BASE_URL = os.environ.get("FAST_LLM_BASE_URL", "https://api.groq.com/openai/v1")
+FAST_LLM_MODEL = os.environ.get("FAST_LLM_MODEL", "llama-3.3-70b-versatile")
+
+# Serialize local Ollama calls: the CPU fits exactly one 3B/7B generation.
+# Concurrent calls (nightly pipeline + a client clicking "Analizza") make
+# BOTH time out, which is how the box melted down.
+OLLAMA_LOCK_PATH = os.environ.get("OLLAMA_LOCK_PATH", "/tmp/medycabrain-ollama.lock")
+OLLAMA_LOCK_WAIT = int(os.environ.get("OLLAMA_LOCK_WAIT", "900"))
+
+LLM_PROVIDER_ORDER = os.environ.get("LLM_PROVIDER_ORDER", "fast,ollama").split(",")
 WHISPER_MODEL = os.environ.get("WHISPER_MODEL", "small")
 WHISPER_COMPUTE_TYPE = os.environ.get("WHISPER_COMPUTE_TYPE", "int8")
 WHISPER_CPU_THREADS = int(os.environ.get("WHISPER_CPU_THREADS", "4"))

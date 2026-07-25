@@ -351,10 +351,40 @@ class ContentIdeaViewSet(viewsets.ModelViewSet):
     def generate(self, request):
         """Kick off idea generation as a detached background job (returns 202)."""
         n = int(request.data.get("n", 8))
+        running = _existing_job("ideation", {})
+        if running:
+            return Response(serializers.JobSerializer(running).data,
+                            status=status.HTTP_202_ACCEPTED)
         job = models.Job.objects.create(kind="ideation", status="queued",
                                         params={"n": n}, message="In coda…")
         _spawn_job(job.id)
         return Response(serializers.JobSerializer(job).data, status=status.HTTP_202_ACCEPTED)
+
+
+ACTIVE = ("queued", "running")
+STALE_AFTER = 25 * 60  # a job with no progress for 25 min is dead, not slow
+
+
+def _reap_stale_jobs():
+    """Fail jobs whose worker died or hung, so the UI never shows a bar that
+    can no longer move (and so dedupe doesn't block on a ghost)."""
+    from django.utils import timezone
+    cutoff = timezone.now() - timezone.timedelta(seconds=STALE_AFTER)
+    models.Job.objects.filter(status__in=ACTIVE, updated_at__lt=cutoff).update(
+        status="failed", message="Interrotto: nessun avanzamento")
+
+
+def _existing_job(kind: str, params: dict):
+    """Return an already-running identical job, if any.
+
+    Local inference fits one generation at a time, so launching the same
+    analysis twice makes both slower and neither finishes sooner.
+    """
+    _reap_stale_jobs()
+    for job in models.Job.objects.filter(kind=kind, status__in=ACTIVE):
+        if all(job.params.get(k) == v for k, v in params.items()):
+            return job
+    return None
 
 
 def _spawn_job(job_id: int):
@@ -398,9 +428,14 @@ class StrategyBriefViewSet(viewsets.ModelViewSet):
         text = (request.data.get("input_text") or request.data.get("text") or "").strip()
         if len(text) < 3:
             return Response({"detail": "Inserisci un tema o una richiesta."}, status=400)
+        params = {"input_text": text[:400],
+                  "source_kind": request.data.get("source_kind", "input")}
+        running = _existing_job("strategy", {"input_text": params["input_text"]})
+        if running:
+            return Response(serializers.JobSerializer(running).data,
+                            status=status.HTTP_202_ACCEPTED)
         job = models.Job.objects.create(
-            kind="strategy", status="queued",
-            params={"input_text": text[:400], "source_kind": request.data.get("source_kind", "input")},
+            kind="strategy", status="queued", params=params,
             message=f"In coda: analisi «{text[:40]}»")
         _spawn_job(job.id)
         return Response(serializers.JobSerializer(job).data, status=status.HTTP_202_ACCEPTED)
@@ -408,6 +443,10 @@ class StrategyBriefViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=["post"], url_path="draft")
     def draft(self, request, pk=None):
         """Generate the full draft for this brief (on-demand) as a job."""
+        running = _existing_job("strategy_draft", {"brief_id": int(pk)})
+        if running:
+            return Response(serializers.JobSerializer(running).data,
+                            status=status.HTTP_202_ACCEPTED)
         job = models.Job.objects.create(
             kind="strategy_draft", status="queued", params={"brief_id": int(pk)},
             message="In coda: bozza completa")

@@ -141,7 +141,7 @@ def answer(query: str, top_k: int = 6) -> dict:
         text = client.chat(
             ANSWER_SYSTEM,
             ANSWER_USER.format(query=query, sources=sources_txt),
-            max_tokens=500, temperature=0.2,
+            max_tokens=500, temperature=0.2, priority=True, timeout=600,
         )
     except Exception as exc:  # noqa: BLE001
         text = f"(Errore nella generazione: {exc!r})"
