@@ -144,6 +144,17 @@ class Enrichment(models.Model):
         max_length=32, choices=CONTENT_FORMATS, blank=True, default=""
     )
     llm_model = models.CharField(max_length=64, blank=True, default="")
+    # What the analysis could actually be based on. Guards the UI against
+    # presenting a caption-derived guess as if it described the video.
+    EVIDENCE_CHOICES = [
+        ("transcript", "transcript"),
+        ("caption_only", "caption_only"),
+        ("insufficient", "insufficient"),
+    ]
+    evidence = models.CharField(max_length=16, choices=EVIDENCE_CHOICES,
+                                default="transcript")
+    is_on_topic = models.BooleanField(default=True)
+    off_topic_reason = models.CharField(max_length=300, blank=True, default="")
     raw_response = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -225,6 +236,9 @@ class ReelArgument(models.Model):
 
     reel = models.ForeignKey(Reel, on_delete=models.CASCADE, related_name="arguments")
     text_it = models.TextField()
+    # Verbatim span from the transcript that supports this claim. Empty means
+    # the claim was not grounded and should not have been stored.
+    quote = models.TextField(blank=True, default="")
     embedding = models.JSONField(default=list, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 

@@ -162,7 +162,8 @@
     "sortLikes": "Più piaciuti",
     "onlyFavorites": "Solo preferiti",
     "onlyInspiration": "Solo ispirazione",
-    "reset": "Azzera"
+    "reset": "Azzera",
+    "showExcluded": "Mostra esclusi"
   },
   "reel": {
     "views": "visualizzazioni",
@@ -186,7 +187,8 @@
     "notePlaceholder": "Aggiungi una nota…",
     "tags": "Etichette",
     "addTag": "Aggiungi etichetta…",
-    "save": "Salva"
+    "save": "Salva",
+    "quote": "Citazione"
   },
   "topics": {
     "title": "Temi del cliente",
@@ -288,5 +290,14 @@
       "drawio": "Scarica lo schema (.drawio)",
       "open": "Apri diagrams.net"
     }
+  },
+  "quality": {
+    "transcript": "Analisi da trascrizione",
+    "captionOnly": "Solo didascalia — nessun parlato",
+    "insufficient": "Dati insufficienti",
+    "offTopic": "Fuori tema",
+    "excluded": "Escluso dal dataset",
+    "exclude": "Escludi",
+    "restore": "Ripristina"
   }
 }

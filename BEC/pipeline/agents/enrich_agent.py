@@ -28,13 +28,65 @@ VALID_FORMATS = {
 _DELAY = 0.3
 
 
-def _enrich_one(reel: Reel) -> None:
+_MIN_CAPTION_CHARS = 80  # below this a caption is hashtags/greetings, not content
+
+
+def _norm(text: str) -> str:
+    """Fold text for substring checks: unicode-normalised, lowercase, single
+    spaces. Instagram captions use mathematical-bold letters that would
+    otherwise never match."""
+    import re as _re
+    import unicodedata
+    t = unicodedata.normalize("NFKC", text or "").lower()
+    return _re.sub(r"\s+", " ", t).strip()
+
+
+def _caption_signal(caption: str) -> str:
+    """Caption text with hashtags/mentions stripped — what actually says
+    something about the content."""
+    import re as _re
+    return _re.sub(r"[#@]\w+", " ", caption or "").strip()
+
+
+def classify_evidence(reel: Reel) -> tuple[str, str]:
+    """Return (evidence, transcript_text).
+
+    'transcript'   — there is spoken content to analyse
+    'caption_only' — no audio, but the caption carries real information
+    'insufficient' — neither; the model would have to invent everything
+    """
     transcript = getattr(reel, "transcript", None)
-    transcript_text = transcript.text if transcript else ""
+    text = (transcript.text if transcript else "") or ""
+    if len(text.strip()) >= 40:
+        return "transcript", text
+    if len(_caption_signal(reel.caption)) >= _MIN_CAPTION_CHARS:
+        return "caption_only", ""
+    return "insufficient", ""
+
+
+def _enrich_one(reel: Reel) -> None:
+    evidence, transcript_text = classify_evidence(reel)
+
+    if evidence == "insufficient":
+        # Nothing to analyse. Asking anyway is exactly how the model ended up
+        # inventing medical claims for a reel that only said "grazie a tutti".
+        Enrichment.objects.update_or_create(
+            reel=reel,
+            defaults={"summary_it": "", "topics": [], "hook_text": "",
+                      "hook_analysis_it": "", "target_audience_it": "",
+                      "content_format": "altro", "llm_model": "",
+                      "evidence": evidence, "raw_response": {}},
+        )
+        logger.info("[enrich] %s: dati insufficienti — nessuna chiamata LLM", reel.shortcode)
+        return
+
     user = prompts.ENRICH_USER_TEMPLATE.format(
         caption=(reel.caption or "")[:1500],
-        transcript=(transcript_text or "")[:3000] or "(nessuna trascrizione)",
+        transcript=transcript_text[:3000] or "(nessuna trascrizione)",
     )
+    if evidence == "caption_only":
+        user += prompts.ENRICH_CAPTION_ONLY_NOTE
+
     data = client.chat_json(prompts.ENRICH_SYSTEM, user, max_tokens=700,
                             model=client.settings.FAST_LLM_MODEL_BULK)
     fmt = str(data.get("content_format", "")).strip().lower()
@@ -44,40 +96,67 @@ def _enrich_one(reel: Reel) -> None:
     if isinstance(topics, str):
         topics = [t.strip() for t in topics.split(",") if t.strip()]
 
+    hook = str(data.get("hook_text", ""))[:500]
+    if evidence == "caption_only":
+        hook = ""  # there is no spoken opening to quote
+
     Enrichment.objects.update_or_create(
         reel=reel,
         defaults={
             "summary_it": str(data.get("summary_it", ""))[:2000],
             "topics": [str(t).lower()[:60] for t in topics][:6],
-            "hook_text": str(data.get("hook_text", ""))[:500],
-            "hook_analysis_it": str(data.get("hook_analysis_it", ""))[:1000],
+            "hook_text": hook,
+            "hook_analysis_it": "" if not hook else str(data.get("hook_analysis_it", ""))[:1000],
             "target_audience_it": str(data.get("target_audience_it", ""))[:1000],
             "content_format": fmt,
-            "llm_model": client.settings.HF_LLM_MODEL,
+            "llm_model": client.last_model_used()[:64],
+            "evidence": evidence,
+            "is_on_topic": bool(data.get("is_on_topic", True)),
+            "off_topic_reason": str(data.get("off_topic_reason", ""))[:300],
             "raw_response": data if isinstance(data, dict) else {},
         },
     )
 
 
 def _extract_arguments(reel: Reel) -> int:
-    transcript = getattr(reel, "transcript", None)
-    transcript_text = transcript.text if transcript else ""
+    evidence, transcript_text = classify_evidence(reel)
+    if evidence != "transcript":
+        # No spoken content: any "claim" would be produced from thin air.
+        reel.arguments.all().delete()
+        return 0
+
     user = prompts.ARGUMENTS_USER_TEMPLATE.format(
         caption=(reel.caption or "")[:1500],
-        transcript=(transcript_text or "")[:3000] or "(nessuna trascrizione)",
+        transcript=transcript_text[:3000],
     )
     data = client.chat_json(prompts.ARGUMENTS_SYSTEM, user, max_tokens=600,
                             model=client.settings.FAST_LLM_MODEL_BULK)
     args = data.get("argomenti") if isinstance(data, dict) else data
     if not isinstance(args, list):
         args = []
+
+    haystack = _norm(transcript_text + " " + (reel.caption or ""))
     reel.arguments.all().delete()  # re-extraction replaces
-    created = 0
+    created = dropped = 0
     for a in args:
-        text = str(a).strip()
-        if len(text) >= 8:
-            ReelArgument.objects.create(reel=reel, text_it=text[:1000])
-            created += 1
+        if isinstance(a, dict):
+            text, quote = str(a.get("testo", "")).strip(), str(a.get("citazione", "")).strip()
+        else:
+            text, quote = str(a).strip(), ""
+        if len(text) < 8:
+            continue
+        # The claim survives only if its quote really appears in the source.
+        # This is what makes fabrication structurally impossible rather than
+        # merely discouraged by the prompt.
+        needle = _norm(quote)
+        if len(needle) < 12 or needle not in haystack:
+            dropped += 1
+            continue
+        ReelArgument.objects.create(reel=reel, text_it=text[:1000], quote=quote[:1000])
+        created += 1
+    if dropped:
+        logger.info("[enrich] %s: %d affermazioni scartate (citazione non trovata)",
+                    reel.shortcode, dropped)
     return created
 
 
@@ -130,8 +209,8 @@ def run(ctx) -> dict:
         time.sleep(_DELAY)
 
     # Retry transient failures next run
-    Reel.objects.filter(enrich_status=FAILED).update(enrich_status=PENDING)
-    Reel.objects.filter(argument_status=FAILED).update(argument_status=PENDING)
+    # NOTE: failures are deliberately left as FAILED. Resetting them to
+    # PENDING (as this used to) hid every error and retried it forever.
 
     return {"enriched": enriched, "enrich_failed": failed,
             "arg_reels": arg_reels, "arguments": total_args, "arg_failed": arg_failed}

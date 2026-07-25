@@ -42,9 +42,46 @@ def _get_model():
 
 
 def _transcribe(mp3_path: Path) -> dict:
+    """Remote whisper-large-v3 first, local faster-whisper as the backstop.
+
+    The local `small` model mangles the domain vocabulary ("umonibirentici"
+    for "ormoni bioidentici"); large-v3 conditioned on the glossary gets it
+    right, in about a second, without loading the VPS.
+    """
+    if settings.USE_REMOTE_STT and settings.FAST_LLM_API_KEY:
+        import time as _time
+
+        from llm import client, prompts
+        from llm.client import LLMRateLimit
+
+        for attempt in range(4):
+            try:
+                out = client.transcribe_audio(str(mp3_path), prompt=prompts.MEDICAL_GLOSSARY)
+                if out.get("text"):
+                    segs = out["segments"]
+                    return {"text": out["text"], "segments": segs, "language": "it",
+                            "duration": segs[-1]["end"] if segs else 0.0,
+                            "model_name": out["model"]}
+                logger.warning("[transcriber] remote STT returned empty text — using local")
+                break
+            except LLMRateLimit as exc:
+                if exc.daily:
+                    logger.warning("[transcriber] STT daily budget spent — using local")
+                    break
+                # Per-minute cap: waiting costs seconds, whereas falling back to
+                # the local `small` model costs both minutes AND the accuracy
+                # this whole change exists to fix.
+                wait = min(max(exc.retry_after, 2.0), 30.0)
+                logger.info("[transcriber] STT rate-limited — attendo %.0fs", wait)
+                _time.sleep(wait)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("[transcriber] remote STT failed (%r) — using local", exc)
+                break
+
     model = _get_model()
     segments_iter, info = model.transcribe(
-        str(mp3_path), language="it", vad_filter=True, beam_size=1,
+        str(mp3_path), language="it", vad_filter=True, beam_size=5,
+        initial_prompt=_local_prompt(),
     )
     segments = []
     parts = []
@@ -57,7 +94,13 @@ def _transcribe(mp3_path: Path) -> dict:
         "segments": segments,
         "language": info.language,
         "duration": info.duration,
+        "model_name": settings.WHISPER_MODEL,
     }
+
+
+def _local_prompt() -> str:
+    from llm import prompts
+    return prompts.MEDICAL_GLOSSARY
 
 
 def run(ctx) -> dict:
@@ -85,7 +128,7 @@ def run(ctx) -> dict:
                     "text": result["text"],
                     "segments": result["segments"],
                     "language": result["language"],
-                    "model_name": settings.WHISPER_MODEL,
+                    "model_name": result.get("model_name", settings.WHISPER_MODEL),
                     "audio_duration_s": result["duration"],
                 },
             )

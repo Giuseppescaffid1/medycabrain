@@ -47,6 +47,9 @@ export interface ReelListItem {
   cluster_label: string | null;
   transcribe_status: string;
   enrich_status: string;
+  evidence?: "transcript" | "caption_only" | "insufficient" | "";
+  is_on_topic?: boolean;
+  is_active?: boolean;
 }
 
 export interface Transcript {
@@ -65,9 +68,13 @@ export interface Enrichment {
   target_audience_it: string;
   content_format: string;
   llm_model: string;
+  evidence?: string;
+  is_on_topic?: boolean;
+  off_topic_reason?: string;
 }
 
 export interface ReelDetail {
+  is_active?: boolean;
   id: number;
   shortcode: string;
   account: Account;
@@ -85,7 +92,7 @@ export interface ReelDetail {
   transcript: Transcript | null;
   enrichment: Enrichment | null;
   annotation: Annotation | null;
-  arguments: string[];
+  arguments: { text: string; quote: string }[];
   media_status: string;
   transcribe_status: string;
   enrich_status: string;

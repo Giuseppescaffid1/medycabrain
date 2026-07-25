@@ -47,6 +47,13 @@ def embed_topic(topic: CustomTopic) -> None:
     topic.save(update_fields=["embedding"])
 
 
+def _fold(text: str) -> str:
+    """NFKC-fold and lowercase. Instagram captions are full of mathematical
+    bold letters (e.g. "𝐀𝐍𝐃𝐑𝐎𝐏𝐀𝐔𝐒𝐀"), which no plain regex would ever match."""
+    import unicodedata
+    return unicodedata.normalize("NFKC", text or "").lower()
+
+
 def _reel_haystack(r: Reel) -> str:
     enr = getattr(r, "enrichment", None)
     tr = getattr(r, "transcript", None)
@@ -56,7 +63,7 @@ def _reel_haystack(r: Reel) -> str:
         parts.append(" ".join(enr.topics or []))
     if tr and tr.text:
         parts.append(tr.text)
-    return "\n".join(parts).lower()
+    return _fold("\n".join(parts))
 
 
 def _load_assets() -> list[dict]:
@@ -79,13 +86,13 @@ def _load_assets() -> list[dict]:
         assets.append({
             "kind": "doc", "obj": d, "scope": "owned",
             "vec": np.asarray(d.embedding, dtype=np.float32),
-            "text": f"{d.title}\n{d.summary_it}\n{' '.join(d.topics or [])}\n{d.content_text}".lower(),
+            "text": _fold(f"{d.title}\n{d.summary_it}\n{' '.join(d.topics or [])}\n{d.content_text}"),
         })
     return assets
 
 
 def _lexical_terms(topic: CustomTopic) -> list[str]:
-    terms = [t.lower() for t in [topic.label, *topic.keywords] if len(t.strip()) >= 4]
+    terms = [_fold(t) for t in [topic.label, *topic.keywords] if len(t.strip()) >= 4]
     # Multi-word labels also match on their individual words ("insonnia
     # notturna" should hit a reel that says just "insonnia"). Words < 5 chars
     # are skipped to limit false positives.

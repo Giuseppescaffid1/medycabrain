@@ -46,6 +46,7 @@ class EnrichmentSerializer(serializers.ModelSerializer):
         fields = [
             "summary_it", "topics", "hook_text", "hook_analysis_it",
             "target_audience_it", "content_format", "llm_model",
+            "evidence", "is_on_topic", "off_topic_reason",
         ]
 
 
@@ -53,6 +54,8 @@ class ReelListSerializer(serializers.ModelSerializer):
     account_username = serializers.CharField(source="account.username", read_only=True)
     summary_it = serializers.CharField(source="enrichment.summary_it", read_only=True, default="")
     content_format = serializers.CharField(source="enrichment.content_format", read_only=True, default="")
+    evidence = serializers.CharField(source="enrichment.evidence", read_only=True, default="")
+    is_on_topic = serializers.BooleanField(source="enrichment.is_on_topic", read_only=True, default=True)
     is_favorite = serializers.BooleanField(source="annotation.is_favorite", read_only=True, default=False)
     is_inspiration = serializers.BooleanField(source="annotation.is_inspiration", read_only=True, default=False)
     cluster_label = serializers.SerializerMethodField()
@@ -65,6 +68,7 @@ class ReelListSerializer(serializers.ModelSerializer):
             "thumbnail_file", "thumbnail_url", "summary_it", "content_format",
             "is_favorite", "is_inspiration", "cluster_label",
             "transcribe_status", "enrich_status",
+            "evidence", "is_on_topic", "is_active",
         ]
 
     def get_cluster_label(self, obj):
@@ -93,7 +97,9 @@ class ReelDetailSerializer(serializers.ModelSerializer):
         ]
 
     def get_arguments(self, obj):
-        return [a.text_it for a in obj.arguments.all()]
+        # Each claim ships with the verbatim span that supports it, so the
+        # client can check it instead of trusting it.
+        return [{"text": a.text_it, "quote": a.quote} for a in obj.arguments.all()]
 
     def get_instagram_url(self, obj):
         return f"https://www.instagram.com/reel/{obj.shortcode}/"

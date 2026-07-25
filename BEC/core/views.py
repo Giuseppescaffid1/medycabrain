@@ -70,10 +70,12 @@ class ReelViewSet(viewsets.ReadOnlyModelViewSet):
     ordering = ["-posted_at"]
 
     def get_queryset(self):
-        qs = (
-            models.Reel.objects.filter(is_active=True)
-            .select_related("account", "enrichment", "annotation")
-        )
+        qs = models.Reel.objects.select_related("account", "enrichment", "annotation")
+        # ?excluded=1 shows what the client removed, so it can be restored.
+        if self.request.query_params.get("excluded") in ("1", "true"):
+            qs = qs.filter(is_active=False)
+        else:
+            qs = qs.filter(is_active=True)
         search = self.request.query_params.get("search", "").strip()
         if search:
             vector = SearchVector("caption", config="italian") + SearchVector(
@@ -92,6 +94,30 @@ class ReelViewSet(viewsets.ReadOnlyModelViewSet):
         if self.action == "list":
             ctx["current_assignments"] = _current_cluster_labels()
         return ctx
+
+    @action(detail=True, methods=["post"], url_path="exclude")
+    def exclude(self, request, pk=None):
+        """Take a reel out of the dataset (greetings, off-topic guests…).
+
+        is_active is already honoured by every read path — library, analytics,
+        clustering, custom topics — so flipping it removes the reel from the
+        whole product without deleting anything.
+        """
+        reel = models.Reel.objects.filter(pk=pk).first()
+        if not reel:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        reel.is_active = False
+        reel.save(update_fields=["is_active"])
+        return Response({"id": reel.id, "is_active": False})
+
+    @action(detail=True, methods=["post"], url_path="restore")
+    def restore(self, request, pk=None):
+        reel = models.Reel.objects.filter(pk=pk).first()
+        if not reel:
+            return Response(status=status.HTTP_404_NOT_FOUND)
+        reel.is_active = True
+        reel.save(update_fields=["is_active"])
+        return Response({"id": reel.id, "is_active": True})
 
     @action(detail=True, methods=["patch"], url_path="annotation")
     def annotation(self, request, pk=None):

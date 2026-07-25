@@ -13,6 +13,7 @@ Modeled on the SPI _HuggingFaceExtractor for the HF side: InferenceClient
 from __future__ import annotations
 
 import contextlib
+import contextvars
 import fcntl
 import json
 import logging
@@ -27,6 +28,15 @@ logger = logging.getLogger(__name__)
 
 _hf_client = None
 _FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)\s*```", re.DOTALL)
+
+# Which model actually served the last call. Callers record this instead of
+# guessing from settings — enrichments used to all claim a model that never
+# ran, which made quality regressions impossible to attribute.
+_last_model: contextvars.ContextVar[str] = contextvars.ContextVar("last_model", default="")
+
+
+def last_model_used() -> str:
+    return _last_model.get()
 
 
 class LLMError(Exception):
@@ -92,6 +102,7 @@ def _ollama_chat(system: str, user: str, max_tokens: int, temperature: float,
     }
     if json_mode:  # only for structured-extraction prompts, not free-text answers
         payload["format"] = "json"
+    _last_model.set(f"ollama:{settings.OLLAMA_MODEL}")
     chunks: list[str] = []
     deadline = time.time() + timeout
     with requests.post(f"{settings.OLLAMA_URL}/api/chat", json=payload,
@@ -203,6 +214,7 @@ def _fast_chat(system: str, user: str, max_tokens: int, temperature: float,
         if "json" not in f"{system}{user}".lower():
             payload["messages"][0]["content"] = (
                 system + "\n\nRispondi esclusivamente con un oggetto JSON valido.")
+    _last_model.set(payload["model"])
     resp = requests.post(
         f"{settings.FAST_LLM_BASE_URL.rstrip('/')}/chat/completions",
         json=payload, timeout=timeout,
@@ -227,6 +239,48 @@ def _fast_chat(system: str, user: str, max_tokens: int, temperature: float,
         logger.error("[llm] fast provider rejected the request: %s", resp.text[:200])
     resp.raise_for_status()
     return resp.json()["choices"][0]["message"]["content"]
+
+
+def transcribe_audio(path: str, prompt: str = "", language: str = "it") -> dict:
+    """Speech-to-text on the fast provider (whisper-large-v3).
+
+    Returns {"text", "segments", "model"}. `prompt` carries the domain
+    glossary: whisper conditions on it, which is what fixes recurring medical
+    terms the local `small` model mangles ("ormoni bioidentici").
+    Raises LLMError so the caller can fall back to the local model.
+    """
+    if not settings.FAST_LLM_API_KEY:
+        raise LLMError("no fast-provider key for STT")
+    url = f"{settings.FAST_LLM_BASE_URL.rstrip('/')}/audio/transcriptions"
+    data = {"model": settings.FAST_STT_MODEL, "language": language,
+            "response_format": "verbose_json", "temperature": "0"}
+    if prompt:
+        data["prompt"] = prompt[:800]
+    with open(path, "rb") as fh:
+        resp = requests.post(
+            url, headers={"Authorization": f"Bearer {settings.FAST_LLM_API_KEY}"},
+            files={"file": (os.path.basename(path), fh, "audio/mpeg")},
+            data=data, timeout=300,
+        )
+    if resp.status_code == 429:
+        try:
+            wait = float(resp.headers.get("retry-after", "") or 0)
+        except ValueError:
+            wait = 0.0
+        daily = "per day" in resp.text.lower() or "tpd" in resp.text.lower()
+        raise LLMRateLimit(wait or 20.0, daily=daily)
+    if resp.status_code >= 400:
+        raise LLMError(f"STT failed ({resp.status_code}): {resp.text[:200]}")
+    payload = resp.json()
+    segments = [
+        {"start": round(float(s.get("start", 0)), 2),
+         "end": round(float(s.get("end", 0)), 2),
+         "text": (s.get("text") or "").strip()}
+        for s in payload.get("segments", [])
+    ]
+    return {"text": (payload.get("text") or "").strip(),
+            "segments": segments,
+            "model": settings.FAST_STT_MODEL}
 
 
 def _providers() -> list[str]:
@@ -285,17 +339,26 @@ def chat(system: str, user: str, max_tokens: int = 800, temperature: float = 0.2
             except LLMRateLimit as exc:
                 last_err = exc
                 if exc.daily:
-                    # Today's budget for this model is gone. Try the smaller
-                    # model's separate budget before dropping to local CPU.
-                    alt = settings.FAST_LLM_MODEL_BULK
-                    if provider == "fast" and alt and alt != (model or settings.FAST_LLM_MODEL):
-                        logger.warning("[llm] daily budget exhausted — switching to %s", alt)
-                        try:
-                            return _fast_chat(system, user, max_tokens, temperature,
-                                              json_mode=json_mode,
-                                              timeout=min(timeout, 120), model=alt)
-                        except Exception as exc2:  # noqa: BLE001
-                            last_err = exc2
+                    # Today's budget for THIS model is gone; each model has its
+                    # own. Walk the chain before ever dropping to local CPU.
+                    if provider == "fast":
+                        tried = {model or settings.FAST_LLM_MODEL}
+                        for alt in settings.FAST_LLM_MODEL_CHAIN:
+                            if alt in tried:
+                                continue
+                            tried.add(alt)
+                            logger.warning("[llm] daily budget exhausted — switching to %s", alt)
+                            try:
+                                return _fast_chat(system, user, max_tokens, temperature,
+                                                  json_mode=json_mode,
+                                                  timeout=min(timeout, 120), model=alt)
+                            except LLMRateLimit as exc2:
+                                last_err = exc2
+                                if not exc2.daily:
+                                    break
+                            except Exception as exc2:  # noqa: BLE001
+                                last_err = exc2
+                                break
                     break
                 wait = min(exc.retry_after, 60.0)
                 logger.info("[llm] %s rate-limited — waiting %.0fs", provider, wait)

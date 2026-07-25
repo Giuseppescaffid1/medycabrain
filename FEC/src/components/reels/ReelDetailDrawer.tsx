@@ -4,9 +4,11 @@ import { useTranslation } from "react-i18next";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   addTag,
+  excludeReel,
   fetchReel,
   patchAnnotation,
   removeTag,
+  restoreReel,
 } from "../../api/endpoints";
 import type { ReelDetail } from "../../api/types";
 import { Badge, Button, Spinner } from "../ui/primitives";
@@ -116,6 +118,8 @@ function DrawerBody({ reel, onChange }: { reel: ReelDetail; onChange: () => void
         <p className="whitespace-pre-wrap text-sm text-navy">{reel.caption}</p>
       )}
 
+      <QualityBar reel={reel} onChange={onChange} />
+
       {reel.enrichment ? (
         <EnrichmentCard reel={reel} />
       ) : (
@@ -126,6 +130,49 @@ function DrawerBody({ reel, onChange }: { reel: ReelDetail; onChange: () => void
 
       <TranscriptView reel={reel} />
       <AnnotationPanel reel={reel} onChange={onChange} />
+    </div>
+  );
+}
+
+/** Evidence the analysis rests on, off-topic flag, and the exclude control.
+ *  A caption-only analysis must not read as if it described the video. */
+function QualityBar({ reel, onChange }: { reel: ReelDetail; onChange: () => void }) {
+  const { t } = useTranslation();
+  const ev = reel.enrichment?.evidence || "transcript";
+  const onTopic = reel.enrichment?.is_on_topic !== false;
+  const active = reel.is_active !== false;
+
+  const toggle = useMutation({
+    mutationFn: () => (active ? excludeReel(reel.id) : restoreReel(reel.id)),
+    onSuccess: onChange,
+  });
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      {ev === "transcript" && (
+        <Badge className="bg-success/10 text-success">✓ {t("quality.transcript")}</Badge>
+      )}
+      {ev === "caption_only" && (
+        <Badge className="bg-warning/10 text-warning">{t("quality.captionOnly")}</Badge>
+      )}
+      {ev === "insufficient" && (
+        <Badge className="bg-warning/10 text-warning">{t("quality.insufficient")}</Badge>
+      )}
+      {!onTopic && (
+        <Badge className="bg-danger/10 text-danger">
+          {t("quality.offTopic")}
+          {reel.enrichment?.off_topic_reason ? ` · ${reel.enrichment.off_topic_reason}` : ""}
+        </Badge>
+      )}
+      {!active && <Badge className="bg-danger/10 text-danger">{t("quality.excluded")}</Badge>}
+      <Button
+        variant="ghost"
+        className="ml-auto"
+        loading={toggle.isPending}
+        onClick={() => toggle.mutate()}
+      >
+        {active ? `🚫 ${t("quality.exclude")}` : `↩ ${t("quality.restore")}`}
+      </Button>
     </div>
   );
 }
@@ -175,9 +222,16 @@ function EnrichmentCard({ reel }: { reel: ReelDetail }) {
       )}
       {reel.arguments?.length > 0 && (
         <Section title={t("reel.arguments")}>
-          <ul className="list-disc space-y-1 pl-4 text-sm text-navy">
+          <ul className="space-y-2 text-sm text-navy">
             {reel.arguments.map((a, i) => (
-              <li key={i}>{a}</li>
+              <li key={i} className="border-l-2 border-border pl-3">
+                <div>{a.text}</div>
+                {a.quote && (
+                  <div className="mt-0.5 text-xs italic text-muted">
+                    {t("reel.quote")}: “{a.quote}”
+                  </div>
+                )}
+              </li>
             ))}
           </ul>
         </Section>

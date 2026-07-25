@@ -102,7 +102,8 @@ def _upsert_reel(account: TrackedAccount, reel: ReelMeta, raw_path: str) -> bool
         obj.caption = reel.caption
     if reel.duration_s and not obj.duration_s:
         obj.duration_s = reel.duration_s
-    obj.is_active = True
+    # Deliberately NOT touching is_active here: a reel the client excluded
+    # (greetings, off-topic guest) must stay excluded across re-scrapes.
     obj.save()
     return False
 

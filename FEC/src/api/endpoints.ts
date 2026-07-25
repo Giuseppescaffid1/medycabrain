@@ -25,6 +25,7 @@ export interface ReelFilters {
   ordering?: string;
   page?: number;
   page_size?: number;
+  excluded?: boolean;
 }
 
 export async function fetchReels(filters: ReelFilters): Promise<Paginated<ReelListItem>> {
@@ -105,4 +106,13 @@ export async function fetchTags(): Promise<Tag[]> {
 export async function fetchStats(): Promise<Stats> {
   const { data } = await apiClient.get<Stats>("/stats/overview/");
   return data;
+}
+
+// ── Esclusione contenuti (video di auguri, ospiti fuori tema…) ─────────
+export async function excludeReel(id: number): Promise<void> {
+  await apiClient.post(`/reels/${id}/exclude/`);
+}
+
+export async function restoreReel(id: number): Promise<void> {
+  await apiClient.post(`/reels/${id}/restore/`);
 }

@@ -153,6 +153,19 @@ FAST_LLM_MODEL = os.environ.get("FAST_LLM_MODEL", "llama-3.3-70b-versatile")
 # exhaust the big model's daily token budget in one night. A small model is
 # both adequate for structured extraction and has its own, larger budget.
 FAST_LLM_MODEL_BULK = os.environ.get("FAST_LLM_MODEL_BULK", "llama-3.1-8b-instant")
+# Free tiers cap tokens PER MODEL PER DAY. Reprocessing the whole corpus needs
+# more than any single model's budget, so bulk work walks down this chain:
+# when one model's daily budget is gone we move to the next model's own budget.
+FAST_LLM_MODEL_CHAIN = [
+    m.strip() for m in os.environ.get(
+        "FAST_LLM_MODEL_CHAIN",
+        "llama-3.3-70b-versatile,openai/gpt-oss-120b,qwen/qwen3.6-27b,llama-3.1-8b-instant",
+    ).split(",") if m.strip()
+]
+# Audio transcription (whisper-large-v3 on the fast provider): far better on
+# medical Italian than the local `small` model, and it costs the VPS nothing.
+FAST_STT_MODEL = os.environ.get("FAST_STT_MODEL", "whisper-large-v3")
+USE_REMOTE_STT = os.environ.get("USE_REMOTE_STT", "1") == "1"
 
 # Serialize local Ollama calls: the CPU fits exactly one 3B/7B generation.
 # Concurrent calls (nightly pipeline + a client clicking "Analizza") make
