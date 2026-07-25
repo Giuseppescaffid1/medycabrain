@@ -234,6 +234,10 @@ def _run_scope(scope: str) -> dict:
     )
 
     label_to_cluster: dict[int, TopicCluster] = {}
+    # A prior label may only be inherited by ONE new cluster. Without this,
+    # several clusters that all sit close to the same old centroid inherit the
+    # same name, and the UI shows "Terapie Ormonali Menopausa" three times.
+    used_labels: set[str] = set()
     for pos, lab in enumerate(unique):
         idxs = [i for i, l in enumerate(labels) if l == lab]
         centroid = matrix[idxs].mean(axis=0)
@@ -242,11 +246,14 @@ def _run_scope(scope: str) -> dict:
         # Label stability: reuse a prior label if centroids are close — but
         # never propagate a generic "Tema N" fallback from an earlier run.
         reused = None
+        best_sim = LABEL_MATCH_THRESHOLD
         for pcent, pinfo in prior:
-            if (float(np.dot(centroid, pcent)) >= LABEL_MATCH_THRESHOLD
-                    and not _is_fallback_label(pinfo.get("label_it", ""))):
-                reused = pinfo
-                break
+            label = pinfo.get("label_it", "")
+            if _is_fallback_label(label) or label in used_labels:
+                continue
+            sim = float(np.dot(centroid, pcent))
+            if sim >= best_sim:  # keep the closest match, not merely the first
+                best_sim, reused = sim, pinfo
         if reused:
             naming = reused
         else:
@@ -255,9 +262,20 @@ def _run_scope(scope: str) -> dict:
             sample_texts = [assets[i]["text"] for i in idxs[:5]]
             naming = _name_cluster(sample_texts)
 
+        label = (naming.get("label_it") or "").strip()
+        if not label or label in used_labels:
+            # Still colliding (the namer produced a duplicate): disambiguate
+            # with the cluster's own top keyword rather than shipping twins.
+            kws = naming.get("keywords") if isinstance(naming.get("keywords"), list) else []
+            extra = next((k for k in kws if k and k.lower() not in label.lower()), "")
+            label = f"{label} · {extra}".strip(" ·") if extra else f"Tema {pos + 1}"
+        if label in used_labels:
+            label = f"{label} ({pos + 1})"
+        used_labels.add(label)
+
         cluster = TopicCluster.objects.create(
             run=run_obj,
-            label_it=(naming.get("label_it") or f"Tema {pos + 1}")[:120],
+            label_it=label[:120],
             description_it=naming.get("description_it", ""),
             keywords=naming.get("keywords", [])[:6] if isinstance(naming.get("keywords"), list) else [],
             centroid=centroid.tolist(),
