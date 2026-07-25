@@ -33,6 +33,17 @@ class LLMError(Exception):
     pass
 
 
+class LLMRateLimit(LLMError):
+    """Provider is rate-limiting us (429). Carries how long to wait."""
+
+    def __init__(self, retry_after: float, daily: bool = False):
+        super().__init__(
+            "daily token budget exhausted" if daily
+            else f"rate limited, retry in {retry_after:.0f}s")
+        self.retry_after = retry_after
+        self.daily = daily
+
+
 class LLMCreditError(LLMError):
     """HF returned 402 / out-of-credits — skip HF for the rest of the run."""
 
@@ -171,14 +182,14 @@ def _prio_held(prio_path: str) -> bool:
 
 
 def _fast_chat(system: str, user: str, max_tokens: int, temperature: float,
-               json_mode: bool = False, timeout: int = 120) -> str:
+               json_mode: bool = False, timeout: int = 120, model: str = "") -> str:
     """OpenAI-compatible remote endpoint (Groq, Cerebras, OpenRouter, …).
 
     Two orders of magnitude faster than local CPU inference, which is what
     makes the Second Brain feel instant instead of frozen.
     """
     payload = {
-        "model": settings.FAST_LLM_MODEL,
+        "model": model or settings.FAST_LLM_MODEL,
         "messages": [{"role": "system", "content": system},
                      {"role": "user", "content": user}],
         "max_tokens": max_tokens,
@@ -186,6 +197,12 @@ def _fast_chat(system: str, user: str, max_tokens: int, temperature: float,
     }
     if json_mode:
         payload["response_format"] = {"type": "json_object"}
+        # OpenAI-compatible endpoints reject json mode outright (400) unless
+        # the word "json" appears in the messages. Without this the whole
+        # enrichment path silently fell back to local CPU inference.
+        if "json" not in f"{system}{user}".lower():
+            payload["messages"][0]["content"] = (
+                system + "\n\nRispondi esclusivamente con un oggetto JSON valido.")
     resp = requests.post(
         f"{settings.FAST_LLM_BASE_URL.rstrip('/')}/chat/completions",
         json=payload, timeout=timeout,
@@ -194,6 +211,20 @@ def _fast_chat(system: str, user: str, max_tokens: int, temperature: float,
     )
     if resp.status_code in (401, 402, 403):
         raise LLMCreditError(f"fast provider rejected the key ({resp.status_code})")
+    if resp.status_code == 429:
+        # Free tiers cap tokens-per-minute. Waiting for the bucket to refill
+        # is far cheaper than falling back to a ~136s local generation.
+        try:
+            wait = float(resp.headers.get("retry-after", "") or 0)
+        except ValueError:
+            wait = 0.0
+        # A per-day cap will not refill within any sane wait: escalate at once.
+        daily = "per day" in resp.text.lower() or "tpd" in resp.text.lower()
+        raise LLMRateLimit(wait or 20.0, daily=daily)
+    if resp.status_code == 400:
+        # A malformed request will fail identically on every retry: surface it
+        # loudly instead of burning the local fallback on it.
+        logger.error("[llm] fast provider rejected the request: %s", resp.text[:200])
     resp.raise_for_status()
     return resp.json()["choices"][0]["message"]["content"]
 
@@ -213,7 +244,7 @@ def _providers() -> list[str]:
 
 def chat(system: str, user: str, max_tokens: int = 800, temperature: float = 0.2,
          retries: int = 2, json_mode: bool = False, timeout: int = 240,
-         on_token=None, priority: bool = False) -> str:
+         on_token=None, priority: bool = False, model: str = "") -> str:
     """Return raw assistant text, trying providers in order with retries.
 
     json_mode nudges Ollama to emit valid JSON — set only for extraction
@@ -228,7 +259,8 @@ def chat(system: str, user: str, max_tokens: int = 800, temperature: float = 0.2
     def _call(provider):
         if provider == "fast":
             return _fast_chat(system, user, max_tokens, temperature,
-                              json_mode=json_mode, timeout=min(timeout, 120))
+                              json_mode=json_mode, timeout=min(timeout, 120),
+                              model=model)
         if provider == "hf":
             return _hf_chat(system, user, max_tokens, temperature)
         # Local generation: take the single CPU slot, never run two at once.
@@ -249,6 +281,27 @@ def chat(system: str, user: str, max_tokens: int = 800, temperature: float = 0.2
                 else:
                     _hf_disabled = True
                 last_err = exc
+                break
+            except LLMRateLimit as exc:
+                last_err = exc
+                if exc.daily:
+                    # Today's budget for this model is gone. Try the smaller
+                    # model's separate budget before dropping to local CPU.
+                    alt = settings.FAST_LLM_MODEL_BULK
+                    if provider == "fast" and alt and alt != (model or settings.FAST_LLM_MODEL):
+                        logger.warning("[llm] daily budget exhausted — switching to %s", alt)
+                        try:
+                            return _fast_chat(system, user, max_tokens, temperature,
+                                              json_mode=json_mode,
+                                              timeout=min(timeout, 120), model=alt)
+                        except Exception as exc2:  # noqa: BLE001
+                            last_err = exc2
+                    break
+                wait = min(exc.retry_after, 60.0)
+                logger.info("[llm] %s rate-limited — waiting %.0fs", provider, wait)
+                if attempt < retries:
+                    time.sleep(wait)
+                    continue
                 break
             except requests.exceptions.Timeout as exc:
                 # Retrying a timeout means asking a machine that is already

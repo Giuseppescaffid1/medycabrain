@@ -35,7 +35,8 @@ def _enrich_one(reel: Reel) -> None:
         caption=(reel.caption or "")[:1500],
         transcript=(transcript_text or "")[:3000] or "(nessuna trascrizione)",
     )
-    data = client.chat_json(prompts.ENRICH_SYSTEM, user, max_tokens=700)
+    data = client.chat_json(prompts.ENRICH_SYSTEM, user, max_tokens=700,
+                            model=client.settings.FAST_LLM_MODEL_BULK)
     fmt = str(data.get("content_format", "")).strip().lower()
     if fmt not in VALID_FORMATS:
         fmt = "altro"
@@ -65,7 +66,8 @@ def _extract_arguments(reel: Reel) -> int:
         caption=(reel.caption or "")[:1500],
         transcript=(transcript_text or "")[:3000] or "(nessuna trascrizione)",
     )
-    data = client.chat_json(prompts.ARGUMENTS_SYSTEM, user, max_tokens=600)
+    data = client.chat_json(prompts.ARGUMENTS_SYSTEM, user, max_tokens=600,
+                            model=client.settings.FAST_LLM_MODEL_BULK)
     args = data.get("argomenti") if isinstance(data, dict) else data
     if not isinstance(args, list):
         args = []

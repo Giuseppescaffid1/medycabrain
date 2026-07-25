@@ -149,6 +149,10 @@ OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "qwen2.5:7b-instruct-q4_K_M")
 FAST_LLM_API_KEY = os.environ.get("FAST_LLM_API_KEY", "")
 FAST_LLM_BASE_URL = os.environ.get("FAST_LLM_BASE_URL", "https://api.groq.com/openai/v1")
 FAST_LLM_MODEL = os.environ.get("FAST_LLM_MODEL", "llama-3.3-70b-versatile")
+# Bulk extraction (enrichment, arguments) runs hundreds of calls and would
+# exhaust the big model's daily token budget in one night. A small model is
+# both adequate for structured extraction and has its own, larger budget.
+FAST_LLM_MODEL_BULK = os.environ.get("FAST_LLM_MODEL_BULK", "llama-3.1-8b-instant")
 
 # Serialize local Ollama calls: the CPU fits exactly one 3B/7B generation.
 # Concurrent calls (nightly pipeline + a client clicking "Analizza") make
