@@ -1,5 +1,8 @@
 {
-  "app": { "name": "medycabrain", "tagline": "Content Intelligence" },
+  "app": {
+    "name": "medycabrain",
+    "tagline": "Content Intelligence"
+  },
   "nav": {
     "medyca": "Medyca",
     "competitor": "Competitor",
@@ -15,7 +18,8 @@
     "accounts": "Account",
     "logout": "Esci",
     "menu": "Apri menu",
-    "closeMenu": "Chiudi menu"
+    "closeMenu": "Chiudi menu",
+    "documentation": "Documentazione"
   },
   "scope": {
     "medyca": "Medyca",
@@ -61,7 +65,11 @@
     "opportunitiesHint": "Clicca per generare una strategia su un tema scoperto.",
     "briefs": "Brief strategici",
     "noBriefs": "Nessun brief ancora. Scrivi un tema qui sopra o clicca un'opportunità.",
-    "cov": { "covered": "Già coperto", "partial": "Coperto in parte", "gap": "Scoperto" },
+    "cov": {
+      "covered": "Già coperto",
+      "partial": "Coperto in parte",
+      "gap": "Scoperto"
+    },
     "mSources": "{{m}} fonti Medyca · {{c}} competitor",
     "tabBrief": "Brief",
     "tabDraft": "Bozza",
@@ -229,5 +237,56 @@
     "loading": "Caricamento…",
     "error": "Si è verificato un errore.",
     "close": "Chiudi"
+  },
+  "docs": {
+    "title": "Documentazione — come funziona la piattaforma",
+    "subtitle": "Il percorso che porta dai contenuti pubblicati ai consigli editoriali. Scarica lo schema per la presentazione.",
+    "inputs": {
+      "title": "Cosa entra",
+      "items": [
+        "I tuoi reel Instagram",
+        "I reel dei competitor",
+        "Gli articoli del blog medyca.it",
+        "I temi che indichi tu (tiroide, osteoporosi, Bijuva…)"
+      ]
+    },
+    "flow": {
+      "title": "Cosa fa la piattaforma",
+      "collect": {
+        "title": "Raccoglie",
+        "body": "Scarica ogni reel con le sue statistiche reali: visualizzazioni, like, commenti."
+      },
+      "understand": {
+        "title": "Capisce",
+        "body": "Trascrive l'audio e legge il testo: di cosa parla, qual è il gancio iniziale, a chi si rivolge."
+      },
+      "organise": {
+        "title": "Organizza",
+        "body": "Raggruppa per tema e collega tra loro i reel e gli articoli che parlano della stessa cosa."
+      },
+      "advise": {
+        "title": "Consiglia",
+        "body": "Confronta te con i competitor e scrive un brief strategico, citando le fonti da cui parte."
+      }
+    },
+    "weighting": "Ogni contenuto viene pesato sul suo rendimento reale: un reel che va il doppio della tua media conta il doppio. Così i consigli seguono i numeri, non le impressioni.",
+    "nightly": "Tutto si aggiorna da solo ogni notte.",
+    "outputs": {
+      "title": "Cosa ottieni",
+      "items": [
+        "Libreria — ogni reel con trascrizione, numeri e analisi",
+        "Analytics — andamento, temi che funzionano, tu vs competitor",
+        "Temi e Mappa — i tuoi argomenti e quelli scoperti automaticamente",
+        "Second Brain — cosa hai già coperto e dove c'è un buco",
+        "Brief e bozze — pronti da usare, con le fonti citate",
+        "Knowledge Bank — tutto il materiale, ricercabile"
+      ]
+    },
+    "download": {
+      "title": "Schema della pipeline",
+      "hint": "File draw.io con due pagine: una panoramica per la presentazione e il dettaglio tecnico.",
+      "drawio": "Scarica lo schema (.drawio)",
+      "open": "Apri diagrams.net"
+    }
   }
 }
