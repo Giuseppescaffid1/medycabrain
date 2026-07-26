@@ -138,7 +138,9 @@ class BlogDraftSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.BlogDraft
         fields = ["id", "mode", "cluster_label", "title", "content_md",
-                  "source_refs", "status", "created_at"]
+                  "source_refs", "status", "created_at"
+            "llm_model",
+        ]
         read_only_fields = ["mode", "cluster_label", "title", "content_md",
                             "source_refs", "created_at"]
 
@@ -148,7 +150,9 @@ class StrategyBriefSerializer(serializers.ModelSerializer):
         model = models.StrategyBrief
         fields = ["id", "input_text", "source_kind", "coverage", "brief_md",
                   "draft_md", "medyca_sources", "competitor_sources", "metrics",
-                  "status", "created_at"]
+                  "status", "created_at"
+            "brief_model", "draft_model",
+        ]
         read_only_fields = ["input_text", "source_kind", "coverage", "brief_md",
                             "draft_md", "medyca_sources", "competitor_sources",
                             "metrics", "created_at"]

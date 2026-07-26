@@ -128,6 +128,7 @@ def run_cluster_blog(cluster_id: int, job=None) -> dict:
     draft = BlogDraft.objects.create(
         mode=mode, cluster_label=cluster.label_it, title=title[:300],
         content_md=(content or "").strip(), source_refs=refs, status="proposed",
+        llm_model=client.last_model_used()[:64],
     )
     progress(100, "Fatto.")
     logger.info("[blog_workflow] %s draft for cluster %s -> BlogDraft %s",

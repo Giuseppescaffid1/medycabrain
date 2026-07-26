@@ -298,6 +298,7 @@ class BlogDraft(models.Model):
     title = models.CharField(max_length=300, blank=True, default="")
     content_md = models.TextField(blank=True, default="")
     source_refs = models.JSONField(default=list, blank=True)  # [{kind,title,url}]
+    llm_model = models.CharField(max_length=64, blank=True, default="")
     status = models.CharField(max_length=12, choices=STATUS_CHOICES, default="proposed")
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -480,6 +481,9 @@ class StrategyBrief(models.Model):
     competitor_sources = models.JSONField(default=list, blank=True)  # [{title,url}]
     metrics = models.JSONField(default=dict, blank=True)   # engagement numbers used
     status = models.CharField(max_length=12, choices=STATUS_CHOICES, default="proposed")
+    # Which model wrote this, so the reader can weigh the output accordingly.
+    brief_model = models.CharField(max_length=64, blank=True, default="")
+    draft_model = models.CharField(max_length=64, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

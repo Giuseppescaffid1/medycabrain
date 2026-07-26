@@ -165,6 +165,16 @@ function QualityBar({ reel, onChange }: { reel: ReelDetail; onChange: () => void
         </Badge>
       )}
       {!active && <Badge className="bg-danger/10 text-danger">{t("quality.excluded")}</Badge>}
+      {reel.enrichment?.llm_model && (
+        <Badge className="bg-white text-muted">
+          🤖 {reel.enrichment.llm_model}
+        </Badge>
+      )}
+      {reel.transcript?.model_name && (
+        <Badge className="bg-white text-muted">
+          🎧 {reel.transcript.model_name}
+        </Badge>
+      )}
       <Button
         variant="ghost"
         className="ml-auto"

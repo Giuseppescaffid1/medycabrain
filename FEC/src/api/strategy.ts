@@ -8,6 +8,8 @@ export interface Source {
   weight?: number | null;
 }
 export interface StrategyBrief {
+  brief_model?: string;
+  draft_model?: string;
   id: number;
   input_text: string;
   source_kind: string;

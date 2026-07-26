@@ -165,6 +165,11 @@ function BriefCard({
       <div className="mb-2 flex flex-wrap items-center gap-2">
         <Badge className={COVERAGE_BADGE[brief.coverage]}>{t(`sb.cov.${brief.coverage}`)}</Badge>
         {brief.status === "saved" && <Badge className="bg-success/10 text-success">{t("sb.saved")}</Badge>}
+        {(tab === "draft" ? brief.draft_model : brief.brief_model) && (
+          <Badge className="bg-white text-muted">
+            🤖 {tab === "draft" ? brief.draft_model : brief.brief_model}
+          </Badge>
+        )}
         <span className="text-xs font-semibold text-muted">
           {t("sb.mSources", { m: brief.medyca_sources.length, c: brief.competitor_sources.length })}
         </span>

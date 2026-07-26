@@ -298,6 +298,8 @@
     "offTopic": "Fuori tema",
     "excluded": "Escluso dal dataset",
     "exclude": "Escludi",
-    "restore": "Ripristina"
+    "restore": "Ripristina",
+    "modelHint": "Modello che ha prodotto questa analisi",
+    "sttHint": "Modello che ha trascritto l'audio"
   }
 }

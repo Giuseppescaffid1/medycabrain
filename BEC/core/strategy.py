@@ -169,6 +169,7 @@ def analyze(input_text: str, source_kind: str = "input", job=None,
         source_kind=source_kind,
         coverage=coverage,
         brief_md=(brief_md or "").strip(),
+        brief_model=client.last_model_used()[:64],
         medyca_sources=[
             {"title": h["title"], "url": h["url"], "kind": h["kind"], "weight": h.get("weight")}
             for h, _ in medyca_hits
@@ -202,6 +203,7 @@ def generate_draft(brief_id: int, job=None) -> dict:
     draft = client.chat(DRAFT_SYSTEM, user, max_tokens=1200, timeout=900,
                         on_token=_tick_draft, priority=True)
     brief.draft_md = (draft or "").strip()
-    brief.save(update_fields=["draft_md"])
+    brief.draft_model = client.last_model_used()[:64]
+    brief.save(update_fields=["draft_md", "draft_model"])
     progress(100, "Bozza pronta.")
     return {"brief_id": brief.id}
