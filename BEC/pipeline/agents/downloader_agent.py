@@ -199,8 +199,15 @@ def run(ctx) -> dict:
     dl_delay = dl_delay.get("value", 4) if isinstance(dl_delay, dict) else dl_delay
 
     qs = Reel.objects.filter(media_status=PENDING, is_active=True).select_related("account")
+    # Instagram throttles media/info after a few hundred rapid calls: it starts
+    # answering HTML with a 200, which is what turned a 394-reel batch into 379
+    # failures. Cap each run and let the backlog drain across scheduled runs.
+    cap = ScraperConfig.get("download_max_per_run", {"value": 0})
+    cap = cap.get("value", 0) if isinstance(cap, dict) else cap
     if ctx.limit:
         qs = qs[: ctx.limit]
+    elif cap:
+        qs = qs[:cap]
     done = failed = skipped = 0
     for i, reel in enumerate(qs):
         if i > 0:
