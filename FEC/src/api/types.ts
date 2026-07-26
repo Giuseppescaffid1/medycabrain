@@ -48,6 +48,7 @@ export interface ReelListItem {
   transcribe_status: string;
   enrich_status: string;
   evidence?: "transcript" | "caption_only" | "insufficient" | "";
+  primary_topic?: string;
   is_on_topic?: boolean;
   is_active?: boolean;
 }
@@ -71,6 +72,7 @@ export interface Enrichment {
   evidence?: string;
   is_on_topic?: boolean;
   off_topic_reason?: string;
+  primary_topic?: string;
 }
 
 export interface ReelDetail {

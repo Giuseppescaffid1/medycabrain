@@ -153,6 +153,11 @@ class Enrichment(models.Model):
     ]
     evidence = models.CharField(max_length=16, choices=EVIDENCE_CHOICES,
                                 default="transcript")
+    # The one specific subject of this reel, never an umbrella term. Every
+    # video mentions "menopausa" and "ormoni bioidentici", so those labels
+    # separate nothing: what distinguishes a reel is vampate vs tiroide vs
+    # osteoporosi.
+    primary_topic = models.CharField(max_length=80, blank=True, default="")
     is_on_topic = models.BooleanField(default=True)
     off_topic_reason = models.CharField(max_length=300, blank=True, default="")
     raw_response = models.JSONField(default=dict, blank=True)

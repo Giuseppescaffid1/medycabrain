@@ -47,6 +47,8 @@ class EnrichmentSerializer(serializers.ModelSerializer):
             "summary_it", "topics", "hook_text", "hook_analysis_it",
             "target_audience_it", "content_format", "llm_model",
             "evidence", "is_on_topic", "off_topic_reason",
+        
+            "primary_topic",
         ]
 
 
@@ -55,6 +57,7 @@ class ReelListSerializer(serializers.ModelSerializer):
     summary_it = serializers.CharField(source="enrichment.summary_it", read_only=True, default="")
     content_format = serializers.CharField(source="enrichment.content_format", read_only=True, default="")
     evidence = serializers.CharField(source="enrichment.evidence", read_only=True, default="")
+    primary_topic = serializers.CharField(source="enrichment.primary_topic", read_only=True, default="")
     is_on_topic = serializers.BooleanField(source="enrichment.is_on_topic", read_only=True, default=True)
     is_favorite = serializers.BooleanField(source="annotation.is_favorite", read_only=True, default=False)
     is_inspiration = serializers.BooleanField(source="annotation.is_inspiration", read_only=True, default=False)
@@ -69,6 +72,8 @@ class ReelListSerializer(serializers.ModelSerializer):
             "is_favorite", "is_inspiration", "cluster_label",
             "transcribe_status", "enrich_status",
             "evidence", "is_on_topic", "is_active",
+        
+            "primary_topic",
         ]
 
     def get_cluster_label(self, obj):

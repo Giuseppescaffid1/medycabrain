@@ -56,6 +56,11 @@ export function ReelCard({
         <p className="line-clamp-3 text-xs text-muted">
           {reel.summary_it || reel.caption || "—"}
         </p>
+        {reel.primary_topic && (
+          <Badge className="self-start bg-secondary/10 text-secondary">
+            {reel.primary_topic}
+          </Badge>
+        )}
         {reel.cluster_label && (
           <Badge className={cn("mt-auto self-start bg-surface text-heading")}>
             {reel.cluster_label}

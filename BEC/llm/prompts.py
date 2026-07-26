@@ -8,6 +8,37 @@ nella nicchia salute femminile / menopausa (ispirazione: medyca.it).
 
 # Recurring domain terms. Whisper conditions on this text, which is what stops
 # "ormoni bioidentici" coming back as "umonibirentici" / "ormoni parentici".
+
+# Every reel in this account mentions menopause and bioidentical hormones, so
+# those labels carry no information: they cannot separate one video from
+# another. What distinguishes a reel is its specific subject.
+UMBRELLA_TOPICS = {
+    "menopausa", "ormoni", "ormoni bioidentici", "terapia ormonale",
+    "terapia con ormoni bioidentici", "terapia ormonale bioidentica",
+    "terapia ormonale sostitutiva", "salute femminile", "salute", "benessere",
+    "benessere femminile", "benessere ormonale", "ginecologia", "medicina",
+}
+
+# The same concept arrived under several labels, fragmenting the signal.
+TOPIC_SYNONYMS = {
+    "terapia con ormoni bioidentici": "ormoni bioidentici",
+    "terapia ormonale bioidentica": "ormoni bioidentici",
+    "ormoni bio-identici": "ormoni bioidentici",
+    "tos": "terapia ormonale sostitutiva",
+    "vampate": "vampate di calore",
+    "caldane": "vampate di calore",
+    "secchezza": "secchezza vaginale",
+    "atrofia vaginale": "secchezza vaginale",
+    "insonnia notturna": "insonnia",
+    "disturbi del sonno": "insonnia",
+    "perdita ossea": "osteoporosi",
+    "densita ossea": "osteoporosi",
+    "densità ossea": "osteoporosi",
+    "tiroidee": "tiroide",
+    "ipotiroidismo": "tiroide",
+    "dolori articolari": "dolori osteoarticolari",
+}
+
 MEDICAL_GLOSSARY = (
     "Terminologia medica ricorrente: ormoni bioidentici, terapia ormonale "
     "sostitutiva (TOS), estrogeni, progesterone, testosterone, DHEA, "
@@ -50,6 +81,15 @@ REGOLE FONDAMENTALI:
   effettivamente pronunciate. Senza trascrizione lascialo vuoto.
 - "topics" solo argomenti davvero trattati (da 0 a 6). Non aggiungere temi
   di menopausa o salute ormonale se il contenuto non ne parla.
+- "primary_topic": IL tema specifico di QUESTO video, in 1-3 parole.
+  Praticamente ogni video di questo profilo parla di menopausa e ormoni
+  bioidentici: quelle parole non distinguono nulla, quindi NON usarle qui.
+  Usa invece il sintomo, l'organo, la condizione o la domanda concreta di
+  cui si parla — per esempio: vampate di calore, secchezza vaginale,
+  osteoporosi, tiroide, insonnia, libido, aumento di peso, rischio
+  trombotico, andropausa, dosaggio, effetti collaterali, esami del sangue.
+  Se davvero il video resta sul generale, scrivi l'angolo specifico che
+  affronta (es. "quando iniziare la terapia") e non l'etichetta ombrello.
 - "is_on_topic": false se il reel non riguarda salute femminile, menopausa o
   benessere ormonale (es. auguri, eventi, sport, promozioni generiche).
 
@@ -57,6 +97,7 @@ Restituisci un JSON con questi campi:
 {{
   "summary_it": "riassunto fedele in 1-2 frasi, in italiano ('' se non determinabile)",
   "topics": ["argomenti realmente trattati, minuscolo, 0-6 elementi"],
+  "primary_topic": "il tema specifico di questo video, mai un termine ombrello",
   "hook_text": "prime parole pronunciate ('' se non c'è parlato)",
   "hook_analysis_it": "perché il gancio funziona ('' se non c'è gancio)",
   "target_audience_it": "a chi si rivolge ('' se non determinabile)",

@@ -64,6 +64,29 @@ def classify_evidence(reel: Reel) -> tuple[str, str]:
     return "insufficient", ""
 
 
+def canonical_topic(t: str) -> str:
+    """Fold synonym variants onto one label so the same idea stops arriving
+    under three names ("terapia con ormoni bioidentici" == "ormoni bioidentici")."""
+    t = " ".join((t or "").lower().split())
+    return prompts.TOPIC_SYNONYMS.get(t, t)
+
+
+def pick_primary_topic(raw: str, topics: list[str]) -> str:
+    """Keep the model's specific answer, or recover one from the topic list.
+
+    An umbrella label ("menopausa") is rejected: it is true of nearly every
+    reel here and therefore separates nothing.
+    """
+    cand = canonical_topic(raw)
+    if cand and cand not in prompts.UMBRELLA_TOPICS:
+        return cand[:80]
+    for t in topics:  # fall back to the first genuinely specific topic
+        c = canonical_topic(t)
+        if c and c not in prompts.UMBRELLA_TOPICS:
+            return c[:80]
+    return ""
+
+
 def _enrich_one(reel: Reel) -> None:
     evidence, transcript_text = classify_evidence(reel)
 
@@ -72,7 +95,7 @@ def _enrich_one(reel: Reel) -> None:
         # inventing medical claims for a reel that only said "grazie a tutti".
         Enrichment.objects.update_or_create(
             reel=reel,
-            defaults={"summary_it": "", "topics": [], "hook_text": "",
+            defaults={"summary_it": "", "topics": [], "primary_topic": "", "hook_text": "",
                       "hook_analysis_it": "", "target_audience_it": "",
                       "content_format": "altro", "llm_model": "",
                       "evidence": evidence, "raw_response": {}},
@@ -95,6 +118,15 @@ def _enrich_one(reel: Reel) -> None:
     topics = data.get("topics") or []
     if isinstance(topics, str):
         topics = [t.strip() for t in topics.split(",") if t.strip()]
+    # Canonicalise, drop duplicates, keep order.
+    seen, canon = set(), []
+    for t in topics:
+        c = canonical_topic(str(t))
+        if c and c not in seen:
+            seen.add(c)
+            canon.append(c)
+    topics = canon
+    primary = pick_primary_topic(str(data.get("primary_topic", "")), topics)
 
     hook = str(data.get("hook_text", ""))[:500]
     if evidence == "caption_only":
@@ -104,7 +136,8 @@ def _enrich_one(reel: Reel) -> None:
         reel=reel,
         defaults={
             "summary_it": str(data.get("summary_it", ""))[:2000],
-            "topics": [str(t).lower()[:60] for t in topics][:6],
+            "topics": [t[:60] for t in topics][:6],
+            "primary_topic": primary,
             "hook_text": hook,
             "hook_analysis_it": "" if not hook else str(data.get("hook_analysis_it", ""))[:1000],
             "target_audience_it": str(data.get("target_audience_it", ""))[:1000],
