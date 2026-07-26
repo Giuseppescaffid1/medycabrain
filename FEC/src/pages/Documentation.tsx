@@ -2,6 +2,7 @@ import { useTranslation } from "react-i18next";
 import { motion } from "framer-motion";
 import { Button } from "../components/ui/primitives";
 import { PageTransition, staggerContainer, staggerItem } from "../components/ui/motion";
+import { FlowCanvas } from "../components/docs/FlowCanvas";
 
 const DRAWIO = "/docs/medycabrain-pipeline-cliente.drawio";
 
@@ -75,6 +76,15 @@ export default function Documentation() {
                 {t("docs.weighting")}
               </p>
               <p className="mt-2 text-xs font-semibold text-success">{t("docs.nightly")}</p>
+            </section>
+
+            {/* ── The flow, as a node graph ────────────────────────── */}
+            <section>
+              <h2 className="mb-1 text-xs font-bold uppercase tracking-wider text-muted">
+                {t("flow.title")}
+              </h2>
+              <p className="mb-3 text-xs text-muted/80">{t("flow.hint")}</p>
+              <FlowCanvas />
             </section>
 
             {/* ── What you get ─────────────────────────────────────── */}
