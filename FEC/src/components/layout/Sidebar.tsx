@@ -64,6 +64,7 @@ export function NavContent({ onNavigate }: { onNavigate?: () => void }) {
         <NavLink to="/workspace" className={linkClass} onClick={onNavigate}>⭐ {t("nav.workspace")}</NavLink>
         <NavLink to="/accounts" className={linkClass} onClick={onNavigate}>👤 {t("nav.accounts")}</NavLink>
         <NavLink to="/documentazione" className={linkClass} onClick={onNavigate}>📘 {t("nav.documentation")}</NavLink>
+        <NavLink to="/stato" className={linkClass} onClick={onNavigate}>📡 {t("nav.status")}</NavLink>
       </nav>
 
       <div className="mt-2 border-t border-border pt-3">

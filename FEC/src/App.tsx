@@ -20,6 +20,7 @@ const SecondBrain = lazy(() => import("./pages/SecondBrain"));
 const KnowledgeBank = lazy(() => import("./pages/KnowledgeBank"));
 const BrainMap = lazy(() => import("./pages/BrainMap"));
 const Documentation = lazy(() => import("./pages/Documentation"));
+const Status = lazy(() => import("./pages/Status"));
 
 function Shell({ children }: { children: React.ReactNode }) {
   const [navOpen, setNavOpen] = useState(false);
@@ -49,6 +50,7 @@ function AppRoutes() {
           <Route path="/knowledge-bank" element={<KnowledgeBank />} />
           <Route path="/brain-map" element={<BrainMap />} />
           <Route path="/documentazione" element={<Documentation />} />
+          <Route path="/stato" element={<Status />} />
           <Route path="/workspace" element={<Workspace />} />
           <Route path="/accounts" element={<Accounts />} />
           <Route path="*" element={<Navigate to="/" replace />} />

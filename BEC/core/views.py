@@ -490,6 +490,77 @@ class StrategyBriefViewSet(viewsets.ModelViewSet):
         return Response(serializers.JobSerializer(job).data, status=status.HTTP_202_ACCEPTED)
 
 
+class PipelineStatusView(APIView):
+    """Operational view of the pipeline: how far each stage has got.
+
+    Built for watching a long backlog drain — the counts are the same ones
+    the agents work from, so the page cannot disagree with reality.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from django.db.models import Count, Max
+
+        reels = models.Reel.objects.all()
+        total = reels.count()
+
+        def stage(field):
+            counts = dict(reels.values_list(field).annotate(n=Count("id")))
+            done = counts.get("done", 0) + counts.get("skipped", 0)
+            return {
+                "done": done,
+                "pending": counts.get("pending", 0),
+                "failed": counts.get("failed", 0),
+                "total": total,
+                "pct": round(100 * done / total) if total else 0,
+            }
+
+        stages = [
+            {"key": "download", "label": "Download video", **stage("media_status")},
+            {"key": "transcribe", "label": "Trascrizione", **stage("transcribe_status")},
+            {"key": "enrich", "label": "Analisi LLM", **stage("enrich_status")},
+            {"key": "arguments", "label": "Affermazioni", **stage("argument_status")},
+        ]
+        embedded = models.ReelEmbedding.objects.count()
+        stages.append({"key": "embed", "label": "Embedding", "done": embedded,
+                       "pending": max(0, total - embedded), "failed": 0,
+                       "total": total, "pct": round(100 * embedded / total) if total else 0})
+
+        jobs = [
+            {"id": j.id, "kind": j.kind, "status": j.status, "progress": j.progress,
+             "message": j.message[:120]}
+            for j in models.Job.objects.filter(status__in=("queued", "running")).order_by("-id")[:10]
+        ]
+
+        accounts = [
+            {"username": a.username, "owner_type": a.owner_type, "reels": a.n,
+             "last_scraped_at": a.last_scraped_at}
+            for a in models.TrackedAccount.objects.annotate(n=Count("reels")).order_by("-n")
+        ]
+
+        last = {
+            "reel_scraped": reels.aggregate(m=Max("scraped_at"))["m"],
+            "enrichment": models.Enrichment.objects.aggregate(m=Max("created_at"))["m"],
+            "cluster_run": models.ClusterRun.objects.aggregate(m=Max("created_at"))["m"],
+        }
+
+        return Response({
+            "totals": {
+                "reels": total,
+                "active": reels.filter(is_active=True).count(),
+                "excluded": reels.filter(is_active=False).count(),
+                "arguments": models.ReelArgument.objects.count(),
+                "documents": models.KnowledgeDocument.objects.count(),
+                "clusters": models.TopicCluster.objects.filter(run__is_current=True).count(),
+            },
+            "stages": stages,
+            "jobs": jobs,
+            "accounts": accounts,
+            "last": last,
+        })
+
+
 class CoverageMapView(APIView):
     """Coverage map: Medyca themes (covered) vs competitor themes Medyca hasn't
     addressed (opportunities). Match Medyca vs competitor cluster centroids by

@@ -20,6 +20,7 @@ urlpatterns = [
     path("auth/logout/", views.logout_view),
     path("auth/me/", views.me_view),
     path("stats/overview/", views.StatsView.as_view()),
+    path("ops/status/", views.PipelineStatusView.as_view()),
     path("analytics/", views.AnalyticsView.as_view()),
     path("second-brain/coverage-map/", views.CoverageMapView.as_view()),
     path("second-brain/graph/", views.SecondBrainGraphView.as_view()),

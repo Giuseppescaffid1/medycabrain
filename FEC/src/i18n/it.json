@@ -19,7 +19,8 @@
     "logout": "Esci",
     "menu": "Apri menu",
     "closeMenu": "Chiudi menu",
-    "documentation": "Documentazione"
+    "documentation": "Documentazione",
+    "status": "Stato pipeline"
   },
   "scope": {
     "medyca": "Medyca",
@@ -301,5 +302,21 @@
     "restore": "Ripristina",
     "modelHint": "Modello che ha prodotto questa analisi",
     "sttHint": "Modello che ha trascritto l'audio"
+  },
+  "status": {
+    "title": "Stato della pipeline",
+    "subtitle": "Avanzamento di ogni stadio, aggiornato ogni 5 secondi · ultimo controllo",
+    "stages": "Avanzamento per stadio",
+    "jobs": "Lavori in corso",
+    "noJobs": "Nessun lavoro in corso.",
+    "accounts": "Account monitorati",
+    "account": "Account",
+    "reels": "Reel",
+    "active": "Attivi",
+    "arguments": "Affermazioni",
+    "clusters": "Temi",
+    "lastScrape": "Ultima raccolta",
+    "pending": "in coda",
+    "failed": "falliti"
   }
 }
