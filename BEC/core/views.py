@@ -654,17 +654,22 @@ class CoverageMapView(APIView):
 
 
 class SecondBrainGraphView(APIView):
-    """Constellation graph of the second brain.
+    """The second brain as three worlds, not one tangle.
 
-    Every node carries enough context to stand on its own — who owns it
-    (Medyca or a competitor), its numbers, and a link back to the source —
-    because the client navigates the lineage from here, not from a list.
+    Medyca on one side, the competitors on the other, and between them the
+    opportunities — themes the competition covers and Medyca does not. Edges
+    run competitor -> opportunity -> Medyca, which is the direction the client
+    reads the map in: what is out there, and what it means for me.
+
+    Every node carries its owner and a link to the source, so any dot can be
+    followed back to the reel or article it came from.
     """
 
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        scope = SCOPE_MAP.get(request.query_params.get("scope", "medyca").lower(), "owned")
+        import numpy as np
+
         nodes, edges = [], []
         seen = set()
 
@@ -675,76 +680,79 @@ class SecondBrainGraphView(APIView):
             nodes.append({"id": nid, "group": group, "label": label[:60], "sub": sub,
                           "parent": parent, "owner": owner, "detail": detail, "url": url})
 
-        def link(s_, t_, rel="", kind="structure"):
-            edges.append({"source": s_, "target": t_, "rel": rel, "kind": kind})
+        def link(a, b, rel="", kind="structure"):
+            edges.append({"source": a, "target": b, "rel": rel, "kind": kind})
 
-        is_med = scope == "owned"
-        add("root", "hub", "Medyca" if is_med else "Competitor", "Second Brain",
-            owner="owned" if is_med else "competitor")
+        # ── the three anchors ────────────────────────────────────────────
+        add("root:medyca", "hub", "Medyca", "i tuoi contenuti", owner="owned")
+        add("root:competitor", "hub", "Competitor", "il mercato", owner="competitor")
+        add("root:opportunity", "hub", "Opportunità", "da coprire", owner="opportunity")
 
-        prev = "root"
-        for sid, slabel in [("scrape", "Raccolta"), ("transcribe", "Trascrizione"),
-                            ("enrich", "Analisi"), ("cluster", "Temi")]:
-            add(f"stage:{sid}", "stage", slabel, "pipeline", owner="pipeline")
-            link(prev, f"stage:{sid}", "\u2192", "flow")
-            prev = f"stage:{sid}"
-
-        run = models.ClusterRun.objects.filter(scope=scope, is_current=True).first()
-        if run:
-            for c in run.clusters.all().order_by("-size"):
-                cid = f"cluster:{c.id}"
+        def add_world(scope, root_id):
+            run = models.ClusterRun.objects.filter(scope=scope, is_current=True).first()
+            if not run:
+                return []
+            clusters = list(run.clusters.all().order_by("-size"))
+            for c in clusters:
+                cid = f"{scope}:cluster:{c.id}"
                 add(cid, "theme", c.label_it, f"{c.reel_assignments.count()} reel",
-                    parent="root", owner=scope, detail=c.description_it or "")
-                link("stage:cluster", cid, "", "structure")
-                for r in (models.Reel.objects.filter(cluster_assignments__cluster=c, is_active=True)
-                          .select_related("account", "enrichment").order_by("-view_count")[:6]):
+                    parent=root_id, owner=scope, detail=c.description_it or "")
+                link(root_id, cid, "", "structure")
+                for r in (models.Reel.objects
+                          .filter(cluster_assignments__cluster=c, is_active=True)
+                          .select_related("account", "enrichment")
+                          .order_by("-view_count")[:5]):
                     enr = getattr(r, "enrichment", None)
                     rid = f"reel:{r.shortcode}"
-                    add(rid, "reel", (enr.primary_topic if enr else "") or (r.caption or r.shortcode)[:40],
-                        f"{r.view_count or 0} view \u00b7 @{r.account.username}",
+                    add(rid, "reel",
+                        (enr.primary_topic if enr else "") or (r.caption or r.shortcode)[:38],
+                        f"{r.view_count or 0} view · @{r.account.username}",
                         parent=cid, owner=r.account.owner_type,
                         detail=(enr.summary_it if enr else "") or "",
                         url=f"https://www.instagram.com/reel/{r.shortcode}/")
                     link(cid, rid, "", "structure")
-                for a in (models.DocClusterAssignment.objects.filter(cluster=c)
-                          .select_related("document")[:3]):
-                    d = a.document
-                    add(f"doc:{d.id}", "blog", d.title.replace(" \u2014 Medyca", ""),
-                        "articolo blog", parent=cid, owner="owned",
-                        detail=d.summary_it or "", url=d.source_url)
-                    link(cid, f"doc:{d.id}", "", "structure")
+                if scope == "owned":
+                    for a in (models.DocClusterAssignment.objects.filter(cluster=c)
+                              .select_related("document")[:3]):
+                        d = a.document
+                        add(f"doc:{d.id}", "blog", d.title.replace(" — Medyca", ""),
+                            "articolo blog", parent=cid, owner="owned",
+                            detail=d.summary_it or "", url=d.source_url)
+                        link(cid, f"doc:{d.id}", "", "structure")
+            return clusters
 
+        med_clusters = add_world("owned", "root:medyca")
+        comp_clusters = add_world("competitor", "root:competitor")
+
+        # ── opportunities: what the competition covers and Medyca does not ──
+        med_vecs = [np.asarray(c.centroid, dtype=np.float32)
+                    for c in med_clusters if c.centroid]
+        for c in comp_clusters:
+            if not c.centroid:
+                continue
+            cv = np.asarray(c.centroid, dtype=np.float32)
+            best = max((float(np.dot(cv, mv)) for mv in med_vecs), default=0.0)
+            if best >= 0.8:
+                continue
+            oid = f"opp:{c.id}"
+            add(oid, "opportunity", c.label_it,
+                f"{c.reel_assignments.count()} reel competitor",
+                parent="root:opportunity", owner="opportunity")
+            link("root:opportunity", oid, "", "structure")
+            # the flow the client reads: seen out there -> a gap -> something
+            # Medyca could make
+            link(f"competitor:cluster:{c.id}", oid, "scoperto", "flow")
+            link(oid, "root:medyca", "da coprire", "flow")
+
+        # client-supplied themes hang off Medyca: they are the client's own lens
         for topic in models.CustomTopic.objects.filter(is_active=True):
             tid = f"custom:{topic.id}"
-            n = topic.matches.filter(scope=scope).count()
-            add(tid, "custom", topic.label, f"{n} contenuti \u00b7 tema del cliente",
-                parent="root", owner=scope)
-            link("root", tid, "cliente", "flow")
-            for m2 in (topic.matches.filter(scope=scope, reel__isnull=False)
-                       .select_related("reel__account").order_by("-similarity")[:4]):
-                r = m2.reel
-                rid = f"reel:{r.shortcode}"
-                add(rid, "reel", (r.caption or r.shortcode)[:40],
-                    f"{r.view_count or 0} view \u00b7 @{r.account.username}",
-                    parent=tid, owner=r.account.owner_type,
-                    url=f"https://www.instagram.com/reel/{r.shortcode}/")
-                link(tid, rid, "", "structure")
-
-        if scope == "owned":
-            comp_run = models.ClusterRun.objects.filter(scope="competitor", is_current=True).first()
-            med = list(run.clusters.all()) if run else []
-            import numpy as np
-            med_vecs = [np.asarray(c.centroid, dtype=np.float32) for c in med if c.centroid]
-            for c in (comp_run.clusters.all() if comp_run else []):
-                if not c.centroid:
-                    continue
-                best = max((float(np.dot(np.asarray(c.centroid, dtype=np.float32), mv))
-                            for mv in med_vecs), default=0.0)
-                if best < 0.8:
-                    add(f"opp:{c.id}", "opportunity", c.label_it,
-                        f"{c.reel_assignments.count()} reel competitor \u00b7 opportunit\u00e0",
-                        parent="root", owner="competitor")
-                    link("root", f"opp:{c.id}", "gap", "flow")
+            own = topic.matches.filter(scope="owned").count()
+            comp = topic.matches.filter(scope="competitor").count()
+            add(tid, "custom", topic.label,
+                f"{own} Medyca · {comp} competitor · tema del cliente",
+                parent="root:medyca", owner="owned")
+            link("root:medyca", tid, "tema tuo", "flow")
 
         return Response({"nodes": nodes, "edges": edges})
 

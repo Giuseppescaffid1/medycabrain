@@ -201,7 +201,7 @@ class ContentIdeaSerializer(serializers.ModelSerializer):
         fields = [
             "id", "argument_it", "rationale_it", "angle_it", "is_gap",
             "source_refs", "status", "batch", "created_at",
-            "hook_it", "content_format", "scope",
+            "hook_it", "content_format", "scope", "outline", "cta_it",
         ]
         read_only_fields = [
             "argument_it", "rationale_it", "angle_it", "is_gap",

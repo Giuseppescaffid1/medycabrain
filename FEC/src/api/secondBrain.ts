@@ -7,7 +7,14 @@ export interface SourceRef {
   url: string;
 }
 
+export interface OutlineStep {
+  step: string;
+  note?: string;
+}
+
 export interface ContentIdea {
+  outline: OutlineStep[];
+  cta_it: string;
   hook_it: string;
   content_format: string;
   scope: string;

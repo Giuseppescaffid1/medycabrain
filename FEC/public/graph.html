@@ -121,17 +121,17 @@
 <div id="legend">
   <span><i style="background:#5FA8FF"></i>Medyca</span>
   <span><i style="background:#F0B25C"></i>Competitor</span>
-  <span><i style="background:#C77FD4"></i>Tema</span>
-  <span><i style="background:#67C99A"></i>Blog</span>
   <span><i style="background:#E77C81"></i>Opportunità</span>
+  <span><i style="background:#67C99A"></i>Blog</span>
+  <span><i style="background:#8FB8F0"></i>Tema</span>
 </div>
 <div id="panel" class="hide">
   <input class="search" id="q" placeholder="Cerca un tema, un reel… ( / )" autocomplete="off">
   <div>
     <div class="sect">Disposizione</div>
     <div class="seg" id="segLayout" style="margin-top:6px">
-      <button data-v="force" class="on">Libera</button><button data-v="circle">Cerchio</button>
-      <button data-v="hex">Griglia</button><button data-v="rings">Anelli</button>
+      <button data-v="orbits" class="on">Tre mondi</button><button data-v="force">Libera</button>
+      <button data-v="circle">Cerchio</button><button data-v="rings">Anelli</button>
     </div>
   </div>
   <label class="chk"><input type="checkbox" id="fnames" checked> Mostra le etichette</label>
@@ -153,12 +153,17 @@ const cv=document.getElementById("c"),ctx=cv.getContext("2d");
 let cssW=0,cssH=0,dpr=1;
 function resize(){dpr=Math.min(window.devicePixelRatio||1,2);cssW=window.innerWidth;cssH=window.innerHeight;
   cv.width=cssW*dpr;cv.height=cssH*dpr;}
-window.addEventListener("resize",()=>{resize();});
+// Re-frame on resize: inside an iframe the canvas gets its real size after
+// the first paint, so a fit() computed at boot leaves the map off-centre —
+// which read as "everything is piled in a corner".
+let _refit=null;
+window.addEventListener("resize",()=>{resize();
+  clearTimeout(_refit);_refit=setTimeout(()=>{if(NODES.length)fit();},120);});
 resize();
 
 let NODES=[],EDGES=[],NMAP={},ADJ={},CHILDREN={};
 let cam={x:cssW/2,y:cssH/2,scale:1};
-let layout="force",view="departments",showNames=true,collapsed=false;
+let layout="orbits",view="departments",showNames=true,collapsed=false;
 let spin=0.20,spring=0.38,sizeK=0.12,ringPhase=0;
 let focusId=null,lockId=null;
 let tween=null; // {t0,dur,from:{id:{x,y}}}
@@ -168,7 +173,7 @@ for(let i=0;i<220;i++)STARS.push({x:(Math.random()-.5)*2600,y:(Math.random()-.5)
 /* ── medycabrain node mapping (groups: hub, stage, theme, reel, blog, opportunity) ── */
 const MHUE={stage:"#7FA6D9",theme:"#C77FD4",reel:"#7FA6D9",blog:"#67C99A",opportunity:"#E77C81",custom:"#F0B25C"};
 // Medyca vs competitor must be readable at a glance, before any label.
-const OWNER_HUE={owned:"#5FA8FF",competitor:"#F0B25C",pipeline:"#8090A8"};
+const OWNER_HUE={owned:"#5FA8FF",competitor:"#F0B25C",opportunity:"#E77C81",pipeline:"#8090A8"};
 function isHub(n){return n.group==="hub"||n.group==="stage"||n.group==="theme";}
 // Clicking ANY node must open its lineage. Only the root filters instead.
 function opensPanel(n){return n.group!=="hub";}
@@ -176,8 +181,11 @@ function isCenter(n){return n.group==="hub";}
 function segOf(n){return n.parent||null;}
 function deptOf(n){return n.group;}
 function hueOf(n){
-  if(n.group==="hub")return n.owner==="competitor"?OWNER_HUE.competitor:OWNER_HUE.owned;
+  // Ownership first: which world a dot belongs to is the thing to read before
+  // anything else on this canvas.
+  if(n.group==="hub"||n.group==="opportunity")return OWNER_HUE[n.owner]||OWNER_HUE.owned;
   if(n.group==="reel"||n.group==="blog")return OWNER_HUE[n.owner]||MHUE[n.group];
+  if(n.group==="theme")return n.owner==="competitor"?"#E0A96D":"#8FB8F0";
   return MHUE[n.group]||"#8AA";}
 function shapeOf(n){
   if(n.group==="hub"||n.group==="theme"||n.group==="custom")return "badge";
@@ -187,7 +195,7 @@ function shapeOf(n){
   return "circle";
 }
 function radiusOf(n){
-  if(n.group==="hub")return 27;
+  if(n.group==="hub")return 34;
   if(n.group==="theme")return 17;
   if(n.group==="custom")return 15;
   if(n.group==="stage")return 15;
@@ -203,17 +211,20 @@ function clusterOf(n){
 }
 
 async function boot(){
-  const _scope=new URLSearchParams(location.search).get("scope")||"medyca";
+  // One graph, all three worlds: the split is spatial, not a filter.
   const _tok=localStorage.getItem("brain_token")||"";
-  const d=await(await fetch("/api/v1/second-brain/graph/?scope="+_scope,{headers:{Authorization:"Token "+_tok}})).json();
+  const d=await(await fetch("/api/v1/second-brain/graph/",{headers:{Authorization:"Token "+_tok}})).json();
   NODES=d.nodes;EDGES=d.edges;
   NODES.forEach(n=>{NMAP[n.id]=n;ADJ[n.id]=[];n.r=radiusOf(n);n.hue=hueOf(n);n.shape=shapeOf(n);
     n.x=(Math.random()-.5)*300;n.y=(Math.random()-.5)*260;n.a=1;n.ta=1;});
   EDGES.forEach(e=>{if(NMAP[e.source]&&NMAP[e.target]){
     ADJ[e.source].push({o:e.target,e});ADJ[e.target].push({o:e.source,e});
     if(e.kind==="structure"){(CHILDREN[e.source]=CHILDREN[e.source]||[]).push(e.target);}}});
-  document.getElementById("q").placeholder="Search "+NODES.length+" nodes… ( / )";
-  applyLayout("force",false);
+  document.getElementById("q").placeholder="Cerca fra "+NODES.length+" nodi… ( / )";
+  applyLayout("orbits",false);
+  // and once more after the iframe has settled on its final size
+  requestAnimationFrame(()=>{resize();fit();});
+  setTimeout(()=>{resize();fit();},400);
   requestAnimationFrame(frame);
 }
 
@@ -261,8 +272,52 @@ function ringsPos(){
     pos[n.id]={x:Math.cos(a)*m.R,y:Math.sin(a)*m.R};});});
   NODES.forEach(n=>{if(!pos[n.id])pos[n.id]=n.id==="sys:vm"?{x:0,y:0}:{x:0,y:-70};});
   return pos;}
-function layoutPos(name){return name==="force"?forcePos():name==="circle"?circlePos():
-  name==="hex"?hexPos():ringsPos();}
+
+// ---------- orbits: three worlds, kept apart on purpose ----------
+// A force layout piles everything into one clump, which is exactly what made
+// this unreadable. Here each hub owns a region of the canvas: Medyca left,
+// competitors right, opportunities between them. Themes ring their hub, and
+// each theme's reels and articles ring the theme. Positions are deterministic,
+// so the picture is the same every time you open it.
+function orbitsPos(){
+  const P={};
+  const ANCH={
+    "root:medyca":      {x:-980, y:0,    hue:"medyca"},
+    "root:competitor":  {x: 980, y:0,    hue:"competitor"},
+    "root:opportunity": {x:   0, y:640,  hue:"opportunity"},
+  };
+  const hubs=NODES.filter(n=>n.group==="hub");
+  hubs.forEach(h=>{const a=ANCH[h.id]||{x:0,y:0};P[h.id]={x:a.x,y:a.y};});
+
+  hubs.forEach(h=>{
+    const a=ANCH[h.id]||{x:0,y:0};
+    // children of this hub = themes / opportunities / client topics
+    const kids=NODES.filter(n=>n.parent===h.id);
+    if(!kids.length)return;
+    // Fan the themes into the half-plane pointing away from the centre, so the
+    // two worlds never reach across each other.
+    const outward = a.x===0 ? Math.PI/2 : (a.x<0 ? Math.PI : 0);
+    const spread  = kids.length===1 ? 0 : Math.PI*1.15;
+    const R = 300 + Math.min(kids.length,14)*17;
+    kids.forEach((k,i)=>{
+      const t = kids.length===1 ? outward : outward - spread/2 + spread*(i/(kids.length-1));
+      P[k.id]={x:a.x+Math.cos(t)*R, y:a.y+Math.sin(t)*R};
+      // leaves ring their own theme, tight enough to read as belonging to it
+      const leaves=NODES.filter(n=>n.parent===k.id);
+      const r = 96 + leaves.length*7;
+      leaves.forEach((l,j)=>{
+        const u = t + (j-(leaves.length-1)/2)*(Math.PI/Math.max(leaves.length,6));
+        P[l.id]={x:P[k.id].x+Math.cos(u)*r, y:P[k.id].y+Math.sin(u)*r};
+      });
+    });
+  });
+  // anything unparented (shouldn't happen) parks below the middle
+  NODES.forEach((n,i)=>{if(!P[n.id])P[n.id]={x:(i%9)*70-280,y:900};});
+  return P;
+}
+
+function layoutPos(name){return name==="orbits"?orbitsPos():name==="force"?forcePos():
+  name==="circle"?circlePos():name==="hex"?hexPos():ringsPos();}
 
 function applyLayout(name,animate){
   layout=name;

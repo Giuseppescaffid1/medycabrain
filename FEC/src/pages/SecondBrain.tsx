@@ -1,11 +1,13 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { motion } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import { fetchCoverageMap } from "../api/strategy";
 import { fetchIdeas, updateIdeaStatus, type ContentIdea } from "../api/secondBrain";
 import { useJobs } from "../contexts/JobsContext";
-import { Badge, Button, EmptyState, Skeleton, fieldCls } from "../components/ui/primitives";
+import { Button, EmptyState, Skeleton, fieldCls } from "../components/ui/primitives";
+import { IdeaCard } from "../components/plan/IdeaCard";
+import { useCopy } from "../lib/clipboard";
 import { PageTransition, staggerContainer, staggerItem } from "../components/ui/motion";
 
 /**
@@ -21,6 +23,7 @@ export default function SecondBrain() {
   const { jobs, startPlan } = useJobs();
   const [n, setN] = useState(6);
   const [theme, setTheme] = useState("");
+  const { copy, state: copyState } = useCopy();
 
   const coverage = useQuery({ queryKey: ["coverage-map"], queryFn: fetchCoverageMap });
   const ideas = useQuery({ queryKey: ["ideas"], queryFn: () => fetchIdeas() });
@@ -28,10 +31,24 @@ export default function SecondBrain() {
     (j) => j.kind === "editorial" && (j.status === "queued" || j.status === "running")
   );
 
+  // Optimistic: the card leaves (or gets its badge) the instant it is clicked.
+  // Waiting for the refetch made the list re-order under the cursor, so only
+  // the top card felt clickable.
   const setStatus = useMutation({
     mutationFn: (v: { id: number; status: "saved" | "dismissed" }) =>
       updateIdeaStatus(v.id, v.status),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["ideas"] }),
+    onMutate: async (v) => {
+      await qc.cancelQueries({ queryKey: ["ideas"] });
+      const before = qc.getQueryData<ContentIdea[]>(["ideas"]);
+      qc.setQueryData<ContentIdea[]>(["ideas"], (old) =>
+        (old ?? []).map((i) => (i.id === v.id ? { ...i, status: v.status } : i))
+      );
+      return { before };
+    },
+    onError: (_e, _v, ctx) => {
+      if (ctx?.before) qc.setQueryData(["ideas"], ctx.before);
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: ["ideas"] }),
   });
 
   const visible = (ideas.data ?? []).filter((i) => i.status !== "dismissed");
@@ -47,7 +64,7 @@ export default function SecondBrain() {
           `**${t("plan.sources")}:** ${(i.source_refs ?? []).map((s) => s.title).join(", ")}\n`
       )
       .join("\n---\n\n");
-    navigator.clipboard?.writeText(`# ${t("plan.title")}\n\n${md}`);
+    copy(`# ${t("plan.title")}\n\n${md}`);
   };
 
   return (
@@ -148,7 +165,7 @@ export default function SecondBrain() {
                 </h2>
                 {visible.length > 0 && (
                   <Button variant="secondary" onClick={exportPlan}>
-                    📋 {t("plan.export")}
+                    {copyState === "done" ? `✓ ${t("plan.copied")}` : `📋 ${t("plan.export")}`}
                   </Button>
                 )}
               </div>
@@ -163,15 +180,23 @@ export default function SecondBrain() {
                   animate="animate"
                   className="flex flex-col gap-3"
                 >
-                  {visible.map((idea) => (
-                    <motion.div key={idea.id} variants={staggerItem}>
-                      <IdeaCard
-                        idea={idea}
-                        onSave={() => setStatus.mutate({ id: idea.id, status: "saved" })}
-                        onDismiss={() => setStatus.mutate({ id: idea.id, status: "dismissed" })}
-                      />
-                    </motion.div>
-                  ))}
+                  <AnimatePresence initial={false}>
+                    {visible.map((idea) => (
+                      <motion.div
+                        key={idea.id}
+                        layout
+                        variants={staggerItem}
+                        exit={{ opacity: 0, x: 24, height: 0, marginBottom: -12 }}
+                        transition={{ duration: 0.26 }}
+                      >
+                        <IdeaCard
+                          idea={idea}
+                          onSave={() => setStatus.mutate({ id: idea.id, status: "saved" })}
+                          onDismiss={() => setStatus.mutate({ id: idea.id, status: "dismissed" })}
+                        />
+                      </motion.div>
+                    ))}
+                  </AnimatePresence>
                 </motion.div>
               )}
             </section>
@@ -179,84 +204,5 @@ export default function SecondBrain() {
         </div>
       </div>
     </PageTransition>
-  );
-}
-
-function IdeaCard({
-  idea,
-  onSave,
-  onDismiss,
-}: {
-  idea: ContentIdea;
-  onSave: () => void;
-  onDismiss: () => void;
-}) {
-  const { t } = useTranslation();
-  const copy = () =>
-    navigator.clipboard?.writeText(
-      `${idea.argument_it}\n\n${t("plan.hook")}: ${idea.hook_it}\n` +
-        `${t("plan.angle")}: ${idea.angle_it}\n${t("plan.why")}: ${idea.rationale_it}`
-    );
-
-  return (
-    <div className="rounded-2xl border border-border bg-surface p-4 shadow-card">
-      <div className="mb-2 flex flex-wrap items-center gap-2">
-        {idea.is_gap && <Badge className="bg-warning/10 text-warning">{t("plan.gap")}</Badge>}
-        {idea.content_format && (
-          <Badge className="bg-white text-secondary">
-            {idea.content_format.replace("_", " ")}
-          </Badge>
-        )}
-        {idea.status === "saved" && (
-          <Badge className="bg-success/10 text-success">{t("plan.kept")}</Badge>
-        )}
-      </div>
-
-      <h3 className="text-base font-bold text-heading">{idea.argument_it}</h3>
-
-      {idea.hook_it && (
-        <div className="mt-3 rounded-xl border-l-2 border-secondary bg-white p-3">
-          <div className="text-[10px] font-bold uppercase tracking-wider text-muted">
-            {t("plan.hook")}
-          </div>
-          <p className="mt-0.5 text-sm italic text-navy">“{idea.hook_it}”</p>
-        </div>
-      )}
-
-      {idea.angle_it && (
-        <p className="mt-3 text-sm text-navy">
-          <span className="font-bold">{t("plan.angle")}:</span> {idea.angle_it}
-        </p>
-      )}
-      {idea.rationale_it && (
-        <p className="mt-1.5 text-sm text-muted">
-          <span className="font-bold">{t("plan.why")}:</span> {idea.rationale_it}
-        </p>
-      )}
-
-      {idea.source_refs?.length > 0 && (
-        <div className="mt-3 flex flex-wrap gap-1.5">
-          {idea.source_refs.map((s, i) => (
-            <Badge
-              key={i}
-              className={
-                s.kind === "competitor"
-                  ? "bg-warning/10 text-warning"
-                  : "bg-success/10 text-success"
-              }
-            >
-              {s.kind === "blog" ? "📄" : s.kind === "competitor" ? "🏷" : "🎬"}{" "}
-              {s.title.slice(0, 38)}
-            </Badge>
-          ))}
-        </div>
-      )}
-
-      <div className="mt-3 flex flex-wrap gap-2">
-        <Button variant="secondary" onClick={copy}>📋 {t("plan.copy")}</Button>
-        <Button variant="ghost" onClick={onSave}>⭐ {t("plan.save")}</Button>
-        <Button variant="ghost" onClick={onDismiss}>✕ {t("plan.dismiss")}</Button>
-      </div>
-    </div>
   );
 }

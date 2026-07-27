@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { Scope } from "../api/endpoints";
 import { PageTransition } from "../components/ui/motion";
 
 /**
@@ -12,7 +11,6 @@ import { PageTransition } from "../components/ui/motion";
  */
 export default function BrainMap() {
   const { t } = useTranslation();
-  const [scope, setScope] = useState<Scope>("medyca");
 
   return (
     <PageTransition>
@@ -22,27 +20,14 @@ export default function BrainMap() {
             <h1 className="text-lg font-bold text-heading">{t("map.title")}</h1>
             <p className="text-xs text-muted">{t("map.subtitle")}</p>
           </div>
-          <div className="inline-flex self-start rounded-full border border-border bg-white p-1 sm:self-auto">
-            {(["medyca", "competitor"] as Scope[]).map((s) => (
-              <button
-                key={s}
-                onClick={() => setScope(s)}
-                className={
-                  "rounded-full px-4 py-1 text-sm font-semibold transition " +
-                  (scope === s ? "bg-secondary text-white" : "text-muted hover:text-navy")
-                }
-              >
-                {t(`scope.${s}`)}
-              </button>
-            ))}
-          </div>
         </div>
         <div className="min-h-0 flex-1 lg:p-6">
           <div className="h-full overflow-hidden lg:rounded-3xl lg:border lg:border-border lg:shadow-card">
             <iframe
-              key={scope}
               title="brain-graph"
-              src={`/graph.html?scope=${scope}`}
+              // graph.html is a static file with no content hash, so a browser
+              // will happily keep serving yesterday's version. Tie it to the build.
+              src={`/graph.html?v=${__BUILD_ID__}`}
               className="h-full w-full border-0"
             />
           </div>

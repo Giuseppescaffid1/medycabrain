@@ -58,6 +58,11 @@ Per ogni contenuto indica:
 - "gancio": la prima frase da pronunciare, per intero
 - "formato": uno tra talking_head, voiceover, tutorial, testimonianza, text_overlay, intervista
 - "perche_ora": la ragione, citando i numeri o il gap quando esistono
+- "scaletta": da 3 a 6 passaggi del video, in ordine, ognuno con
+  {{"passaggio": "cosa dire in questo momento del video",
+    "nota": "indicazione pratica di ripresa o tono, se utile"}}
+  Il primo passaggio è il gancio, l'ultimo porta alla chiusura.
+- "chiusura": la call to action finale, la frase con cui chiudere
 - "fonti": i titoli dell'elenco sopra che sostengono il contenuto (almeno uno)
 - "e_gap": true se il tema è coperto dai competitor e non da Medyca
 
@@ -115,7 +120,7 @@ def generate_plan(n: int = 6, theme: str = "", job=None) -> list[ContentIdea]:
     data = client.chat_json(
         PLAN_SYSTEM,
         PLAN_USER.format(n=n, medyca=medyca, competitor=competitor, focus=focus),
-        max_tokens=2200, timeout=900, model=client.model_for("reasoning"),
+        max_tokens=3600, timeout=900, model=client.model_for("reasoning"),
     )
     items = data.get("contenuti") if isinstance(data, dict) else data
     if not isinstance(items, list):
@@ -142,7 +147,17 @@ def generate_plan(n: int = 6, theme: str = "", job=None) -> list[ContentIdea]:
             dropped += 1
             continue
         fmt = str(it.get("formato", "")).strip().lower()
+        outline = []
+        for step in (it.get("scaletta") or [])[:8]:
+            if isinstance(step, dict) and str(step.get("passaggio", "")).strip():
+                outline.append({"step": str(step["passaggio"])[:400],
+                                "note": str(step.get("nota", ""))[:220]})
+            elif isinstance(step, str) and step.strip():
+                outline.append({"step": step[:400], "note": ""})
+
         created.append(ContentIdea.objects.create(
+            outline=outline,
+            cta_it=str(it.get("chiusura", ""))[:300],
             argument_it=title[:300],
             angle_it=str(it.get("angolo", ""))[:2000],
             hook_it=str(it.get("gancio", ""))[:400],

@@ -86,8 +86,8 @@
     "dismiss": "Scarta"
   },
   "map": {
-    "title": "Mappa del Second Brain (DAG)",
-    "subtitle": "Pipeline + temi con reel/blog + opportunità competitor. Trascina per esplorare, scroll per zoom."
+    "title": "Mappa del Second Brain",
+    "subtitle": "Tre mondi: i tuoi contenuti, quelli dei competitor e le opportunità che ne nascono. Clicca un nodo per vedere da dove viene."
   },
   "kb": {
     "title": "Knowledge Bank",
@@ -448,6 +448,13 @@
     "save": "Tieni",
     "dismiss": "Scarta",
     "kept": "Tenuto",
-    "briefsLegacy": "Brief precedenti (sola lettura)"
+    "briefsLegacy": "Brief precedenti (sola lettura)",
+    "expand": "Vedi la scaletta",
+    "collapse": "Chiudi",
+    "outline": "Scaletta del video",
+    "steps": "passaggi",
+    "cta": "Chiusura",
+    "copied": "Copiato",
+    "copyFailed": "Non riuscito"
   }
 }
