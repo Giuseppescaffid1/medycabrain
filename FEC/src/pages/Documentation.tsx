@@ -4,6 +4,7 @@ import { Badge, Button } from "../components/ui/primitives";
 import { PageTransition, staggerContainer, staggerItem } from "../components/ui/motion";
 import { FlowCanvas } from "../components/docs/FlowCanvas";
 import { Operations, type OperationsData } from "../components/ops/Operations";
+import { RunTimeline, type Run } from "../components/ops/RunTimeline";
 import { useQuery } from "@tanstack/react-query";
 import { apiClient } from "../api/client";
 
@@ -23,7 +24,7 @@ export default function Documentation() {
   // reassures the reader about a job that was changed weeks ago.
   const ops = useQuery({
     queryKey: ["ops-status"],
-    queryFn: async () => (await apiClient.get("/ops/status/")).data as { operations: OperationsData },
+    queryFn: async () => (await apiClient.get("/ops/status/")).data as { operations: OperationsData & { history?: Run[] } },
     refetchInterval: 30000,
   });
 
@@ -121,6 +122,14 @@ export default function Documentation() {
               </h2>
               <p className="mb-3 text-xs text-muted/80">{t("ops.subtitle")}</p>
               <Operations data={ops.data?.operations} />
+
+              <div className="mt-6">
+                <h3 className="mb-1 text-xs font-bold uppercase tracking-wider text-muted">
+                  {t("ops.timeline")}
+                </h3>
+                <p className="mb-3 text-xs text-muted/80">{t("ops.timelineHint")}</p>
+                <RunTimeline runs={ops.data?.operations?.history ?? []} />
+              </div>
             </section>
 
             {/* ── Which model does what ───────────────────────────── */}

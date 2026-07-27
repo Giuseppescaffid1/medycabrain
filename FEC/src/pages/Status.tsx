@@ -4,6 +4,7 @@ import { apiClient } from "../api/client";
 import { Skeleton } from "../components/ui/primitives";
 import { PageTransition } from "../components/ui/motion";
 import { Operations, type OperationsData } from "../components/ops/Operations";
+import { RunTimeline, type Run } from "../components/ops/RunTimeline";
 
 interface Stage {
   key: string;
@@ -16,7 +17,7 @@ interface Stage {
 }
 
 interface StatusPayload {
-  operations?: OperationsData;
+  operations?: OperationsData & { history?: Run[] };
   totals: Record<string, number>;
   stages: Stage[];
   jobs: { id: number; kind: string; status: string; progress: number; message: string }[];
@@ -33,7 +34,7 @@ async function fetchStatus(): Promise<StatusPayload> {
  *  its own so a long backlog can be watched without reloading. */
 export default function Status() {
   const { t } = useTranslation();
-  const { data, isLoading, dataUpdatedAt } = useQuery({
+  const { data, isLoading, dataUpdatedAt, refetch, isFetching } = useQuery({
     queryKey: ["ops-status"],
     queryFn: fetchStatus,
     refetchInterval: 5000,
@@ -42,12 +43,33 @@ export default function Status() {
   return (
     <PageTransition>
       <div className="flex h-full flex-col">
-        <div className="border-b border-border px-4 py-4 sm:px-6">
-          <h1 className="text-xl font-bold text-heading">{t("status.title")}</h1>
-          <p className="text-sm text-muted">
-            {t("status.subtitle")}
-            {dataUpdatedAt ? ` · ${new Date(dataUpdatedAt).toLocaleTimeString("it-IT")}` : ""}
-          </p>
+        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-4 py-4 sm:px-6">
+          <div className="min-w-0">
+            <h1 className="text-xl font-bold text-heading">{t("status.title")}</h1>
+            <p className="text-sm text-muted">
+              {t("status.subtitle")}
+              {dataUpdatedAt
+                ? ` · ${t("status.updatedAt")} ${new Date(dataUpdatedAt).toLocaleTimeString("it-IT")}`
+                : ""}
+            </p>
+          </div>
+          <button
+            onClick={() => refetch()}
+            disabled={isFetching}
+            className="flex min-h-10 shrink-0 items-center gap-2 rounded-full border border-border bg-white px-4 py-2 text-sm font-bold text-secondary shadow-card transition duration-200 hover:bg-surface focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-secondary disabled:opacity-60"
+          >
+            <svg
+              width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden
+              className={isFetching ? "motion-safe:animate-spin" : ""}
+            >
+              <path
+                d="M14 8a6 6 0 1 1-1.76-4.24M14 2v4h-4"
+                stroke="currentColor" strokeWidth="1.8"
+                strokeLinecap="round" strokeLinejoin="round"
+              />
+            </svg>
+            {t("status.refresh")}
+          </button>
         </div>
 
         <div className="flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-5">
@@ -103,6 +125,15 @@ export default function Status() {
                       </div>
                     ))}
                   </div>
+                </section>
+
+                {/* How long each run took */}
+                <section>
+                  <h2 className="mb-1 text-xs font-bold uppercase tracking-wider text-muted">
+                    {t("ops.timeline")}
+                  </h2>
+                  <p className="mb-3 text-xs text-muted/80">{t("ops.timelineHint")}</p>
+                  <RunTimeline runs={data.operations?.history ?? []} />
                 </section>
 
                 {/* Running jobs */}

@@ -142,6 +142,75 @@ def last_runs(limit_lines: int = 4000) -> list[dict]:
     return sorted(seen.values(), key=lambda r: order.index(r["stage"]) if r["stage"] in order else 99)
 
 
+
+_START = re.compile(r"\[(?P<ts>[\d\-]+ [\d:]+) UTC\] ▶ agent: (?P<stage>\w+)")
+
+
+def run_history(limit_runs: int = 6, limit_lines: int = 12000) -> list[dict]:
+    """Recent pipeline executions, each with its stages and their durations.
+
+    Read from the log the agents write, so the timeline reflects what the
+    machine did rather than what anyone thinks it does. Stages are paired by
+    their start and completion lines; a stage that started and never finished
+    is reported as running rather than dropped — that is exactly the case
+    worth seeing.
+    """
+    path = Path(settings.BASE_DIR) / "logs" / "pipeline.log"
+    if not path.exists():
+        return []
+    try:
+        lines = path.read_text(errors="ignore").splitlines()[-limit_lines:]
+    except OSError:
+        return []
+
+    runs: list[dict] = []
+    current: dict | None = None
+    pending: dict[str, str] = {}
+
+    def _ts(raw: str) -> datetime | None:
+        try:
+            return datetime.strptime(raw, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+        except ValueError:
+            return None
+
+    for line in lines:
+        m = _START.search(line)
+        if m:
+            started = _ts(m.group("ts"))
+            if not started:
+                continue
+            stage = m.group("stage")
+            # A new run begins when a stage starts that the current run already
+            # has: the pipeline walks its stages once, in order.
+            if current is None or any(s["stage"] == stage for s in current["stages"]):
+                current = {"started": started.isoformat(), "stages": []}
+                runs.append(current)
+            pending[stage] = started.isoformat()
+            continue
+
+        m = _LOG_LINE.search(line)
+        if not m or current is None:
+            continue
+        stage = m.group("stage")
+        finished = _ts(m.group("ts"))
+        if not finished:
+            continue
+        current["stages"].append({
+            "stage": stage,
+            "label": STAGE_LABELS.get(stage, stage),
+            "started": pending.pop(stage, None),
+            "finished": finished.isoformat(),
+            "seconds": round(float(m.group("secs"))),
+            "result": m.group("payload")[:160],
+        })
+        current["finished"] = finished.isoformat()
+
+    for r in runs:
+        r["seconds"] = sum(s["seconds"] for s in r["stages"])
+    # newest first, and only runs that actually did something
+    return [r for r in reversed(runs) if r["stages"]][:limit_runs]
+
+
 def models() -> list[dict]:
     """Which model serves which kind of work, read from the live settings."""
     from llm import client
@@ -165,6 +234,7 @@ def snapshot() -> dict:
         "services": services(),
         "schedules": schedules(),
         "last_runs": last_runs(),
+        "history": run_history(),
         "models": models(),
         "provider": settings.FAST_LLM_BASE_URL,
     }

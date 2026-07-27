@@ -348,12 +348,12 @@
         },
         {
           "step": "Analisi del contenuto",
-          "model": "Claude Opus 4.8",
-          "why": "Legge la trascrizione ed estrae il tema specifico, il gancio e le affermazioni, ognuna con la citazione testuale che la sostiene."
+          "model": "Claude Opus 5",
+          "why": "Legge la trascrizione ed estrae il tema specifico, il gancio e le affermazioni, ognuna con la citazione testuale che la sostiene. È il livello più profondo: da qui dipende come è organizzato tutto il resto."
         },
         {
           "step": "Raggruppamento per tema",
-          "model": "Claude Opus 4.8",
+          "model": "Claude Opus 5",
           "why": "Decide come sono organizzati i temi: è un giudizio, non un'estrazione meccanica."
         },
         {
@@ -362,9 +362,9 @@
           "why": "Risponde solo dalle fonti Medyca, citandole; se le fonti non bastano lo dichiara invece di inventare."
         },
         {
-          "step": "Brief strategici",
+          "step": "Piano editoriale",
           "model": "Claude Opus 4.8",
-          "why": "Confronta copertura e gap rispetto ai competitor e propone l'angolo editoriale."
+          "why": "Confronta la copertura di Medyca con quella dei competitor e propone idee girabili: angolo, gancio, scaletta e chiusura."
         },
         {
           "step": "Indicizzazione per la ricerca",
@@ -396,7 +396,7 @@
   },
   "status": {
     "title": "Stato della pipeline",
-    "subtitle": "Avanzamento di ogni stadio, aggiornato ogni 5 secondi · ultimo controllo",
+    "subtitle": "Avanzamento di ogni stadio, aggiornato ogni 5 secondi",
     "stages": "Avanzamento per stadio",
     "jobs": "Lavori in corso",
     "noJobs": "Nessun lavoro in corso.",
@@ -408,7 +408,9 @@
     "clusters": "Temi",
     "lastScrape": "Ultima raccolta",
     "pending": "in coda",
-    "failed": "falliti"
+    "failed": "falliti",
+    "refresh": "Aggiorna",
+    "updatedAt": "aggiornato alle"
   },
   "flow": {
     "title": "Il flusso, passo per passo",
@@ -487,6 +489,10 @@
     "stage": "Passaggio",
     "when": "Quando",
     "duration": "Durata",
-    "models": "Modelli in uso"
+    "models": "Modelli in uso",
+    "noRuns": "Nessuna esecuzione registrata",
+    "total": "totale",
+    "timeline": "Tempo impiegato per esecuzione",
+    "timelineHint": "Ogni barra è una esecuzione completa della pipeline: la larghezza dei segmenti mostra quanto è durato ciascun passaggio."
   }
 }

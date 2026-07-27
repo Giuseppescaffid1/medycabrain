@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { AnimatePresence, motion } from "framer-motion";
@@ -201,9 +201,13 @@ export function Sidebar({ className }: { className?: string }) {
 export function MobileDrawer({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { t } = useTranslation();
   const location = useLocation();
+  const openedAt = useRef(location.pathname);
 
+  // Close on navigation — but only on a real navigation. The drawer is mounted
+  // by the open flag, so an unguarded effect runs at mount and shuts it in the
+  // same frame it opens: the tap appears to do nothing at all.
   useEffect(() => {
-    onClose();
+    if (location.pathname !== openedAt.current) onClose();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname]);
 
