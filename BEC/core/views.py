@@ -590,7 +590,10 @@ class PipelineStatusView(APIView):
             "cluster_run": models.ClusterRun.objects.aggregate(m=Max("created_at"))["m"],
         }
 
+        from core import ops
+
         return Response({
+            "operations": ops.snapshot(),
             "totals": {
                 "reels": total,
                 "active": reels.filter(is_active=True).count(),

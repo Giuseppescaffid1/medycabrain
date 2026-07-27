@@ -3,6 +3,9 @@ import { motion } from "framer-motion";
 import { Badge, Button } from "../components/ui/primitives";
 import { PageTransition, staggerContainer, staggerItem } from "../components/ui/motion";
 import { FlowCanvas } from "../components/docs/FlowCanvas";
+import { Operations, type OperationsData } from "../components/ops/Operations";
+import { useQuery } from "@tanstack/react-query";
+import { apiClient } from "../api/client";
 
 const DRAWIO = "/docs/medycabrain-pipeline-cliente.drawio";
 
@@ -16,6 +19,13 @@ const STAGES = [
 
 export default function Documentation() {
   const { t } = useTranslation();
+  // Read live rather than written down: a documented schedule drifts, and then
+  // reassures the reader about a job that was changed weeks ago.
+  const ops = useQuery({
+    queryKey: ["ops-status"],
+    queryFn: async () => (await apiClient.get("/ops/status/")).data as { operations: OperationsData },
+    refetchInterval: 30000,
+  });
 
   const inputs = t("docs.inputs.items", { returnObjects: true }) as string[];
   const outputs = t("docs.outputs.items", { returnObjects: true }) as string[];
@@ -102,6 +112,15 @@ export default function Documentation() {
                   </div>
                 ))}
               </div>
+            </section>
+
+            {/* ── What is running right now, read from the machine ── */}
+            <section>
+              <h2 className="mb-1 text-xs font-bold uppercase tracking-wider text-muted">
+                {t("ops.title")}
+              </h2>
+              <p className="mb-3 text-xs text-muted/80">{t("ops.subtitle")}</p>
+              <Operations data={ops.data?.operations} />
             </section>
 
             {/* ── Which model does what ───────────────────────────── */}

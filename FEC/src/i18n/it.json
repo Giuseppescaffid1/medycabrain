@@ -473,5 +473,20 @@
     "cta": "Chiusura",
     "copied": "Copiato",
     "copyFailed": "Non riuscito"
+  },
+  "ops": {
+    "title": "Cosa è attivo in questo momento",
+    "subtitle": "Letto dal server a ogni apertura della pagina, non scritto a mano: se qualcosa cambia, qui si vede.",
+    "services": "Servizi",
+    "up": "attivo",
+    "schedules": "Esecuzioni programmate",
+    "schedulesHint": "Il sistema lavora da solo con questa cadenza. Nessuna azione richiesta.",
+    "noSchedules": "Nessuna esecuzione programmata.",
+    "lowPriority": "bassa priorità",
+    "lastRuns": "Ultime esecuzioni",
+    "stage": "Passaggio",
+    "when": "Quando",
+    "duration": "Durata",
+    "models": "Modelli in uso"
   }
 }

@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { apiClient } from "../api/client";
 import { Skeleton } from "../components/ui/primitives";
 import { PageTransition } from "../components/ui/motion";
+import { Operations, type OperationsData } from "../components/ops/Operations";
 
 interface Stage {
   key: string;
@@ -15,6 +16,7 @@ interface Stage {
 }
 
 interface StatusPayload {
+  operations?: OperationsData;
   totals: Record<string, number>;
   stages: Stage[];
   jobs: { id: number; kind: string; status: string; progress: number; message: string }[];
@@ -124,6 +126,9 @@ export default function Status() {
                     </div>
                   )}
                 </section>
+
+                {/* What is running right now */}
+                <Operations data={data.operations} />
 
                 {/* Accounts */}
                 <section>
