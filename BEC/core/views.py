@@ -621,9 +621,12 @@ class CoverageMapView(APIView):
 
 
 class SecondBrainGraphView(APIView):
-    """Constellation graph of the second brain — the pipeline DAG + the theme
-    clusters with their reels/blog assets + competitor opportunities. Emitted
-    in the {nodes, edges} shape the ~/brain graph.html renderer expects."""
+    """Constellation graph of the second brain.
+
+    Every node carries enough context to stand on its own — who owns it
+    (Medyca or a competitor), its numbers, and a link back to the source —
+    because the client navigates the lineage from here, not from a list.
+    """
 
     permission_classes = [IsAuthenticated]
 
@@ -632,61 +635,68 @@ class SecondBrainGraphView(APIView):
         nodes, edges = [], []
         seen = set()
 
-        def add(nid, group, label, sub="", parent=""):
+        def add(nid, group, label, sub="", parent="", owner="", detail="", url=""):
             if nid in seen:
                 return
             seen.add(nid)
-            nodes.append({"id": nid, "group": group, "label": label[:60],
-                          "sub": sub, "parent": parent})
+            nodes.append({"id": nid, "group": group, "label": label[:60], "sub": sub,
+                          "parent": parent, "owner": owner, "detail": detail, "url": url})
 
-        def link(s, t, rel="", kind="structure"):
-            edges.append({"source": s, "target": t, "rel": rel, "kind": kind})
+        def link(s_, t_, rel="", kind="structure"):
+            edges.append({"source": s_, "target": t_, "rel": rel, "kind": kind})
 
-        add("root", "hub", "Medyca" if scope == "owned" else "Competitor", "Second Brain")
+        is_med = scope == "owned"
+        add("root", "hub", "Medyca" if is_med else "Competitor", "Second Brain",
+            owner="owned" if is_med else "competitor")
 
-        # Pipeline DAG (the stages)
-        stages = [("scrape", "Scrape"), ("transcribe", "Trascrizione"),
-                  ("enrich", "Analisi LLM"), ("cluster", "Cluster")]
         prev = "root"
-        for sid, slabel in stages:
-            add(f"stage:{sid}", "stage", slabel, "pipeline")
-            link(prev, f"stage:{sid}", "→", "flow")
+        for sid, slabel in [("scrape", "Raccolta"), ("transcribe", "Trascrizione"),
+                            ("enrich", "Analisi"), ("cluster", "Temi")]:
+            add(f"stage:{sid}", "stage", slabel, "pipeline", owner="pipeline")
+            link(prev, f"stage:{sid}", "\u2192", "flow")
             prev = f"stage:{sid}"
 
-        # Theme clusters + their top assets
         run = models.ClusterRun.objects.filter(scope=scope, is_current=True).first()
         if run:
             for c in run.clusters.all().order_by("-size"):
                 cid = f"cluster:{c.id}"
-                add(cid, "theme", c.label_it, f"{c.reel_assignments.count()} reel", parent="root")
+                add(cid, "theme", c.label_it, f"{c.reel_assignments.count()} reel",
+                    parent="root", owner=scope, detail=c.description_it or "")
                 link("stage:cluster", cid, "", "structure")
-                reels = models.Reel.objects.filter(
-                    cluster_assignments__cluster=c, is_active=True)[:5]
-                for r in reels:
+                for r in (models.Reel.objects.filter(cluster_assignments__cluster=c, is_active=True)
+                          .select_related("account", "enrichment").order_by("-view_count")[:6]):
+                    enr = getattr(r, "enrichment", None)
                     rid = f"reel:{r.shortcode}"
-                    add(rid, "reel", (r.caption or r.shortcode)[:40],
-                        f"{r.view_count or 0} view", parent=cid)
+                    add(rid, "reel", (enr.primary_topic if enr else "") or (r.caption or r.shortcode)[:40],
+                        f"{r.view_count or 0} view \u00b7 @{r.account.username}",
+                        parent=cid, owner=r.account.owner_type,
+                        detail=(enr.summary_it if enr else "") or "",
+                        url=f"https://www.instagram.com/reel/{r.shortcode}/")
                     link(cid, rid, "", "structure")
-                for a in models.DocClusterAssignment.objects.filter(cluster=c).select_related("document")[:3]:
-                    did = f"doc:{a.document_id}"
-                    add(did, "blog", a.document.title.replace(" — Medyca", ""), "blog", parent=cid)
-                    link(cid, did, "", "structure")
+                for a in (models.DocClusterAssignment.objects.filter(cluster=c)
+                          .select_related("document")[:3]):
+                    d = a.document
+                    add(f"doc:{d.id}", "blog", d.title.replace(" \u2014 Medyca", ""),
+                        "articolo blog", parent=cid, owner="owned",
+                        detail=d.summary_it or "", url=d.source_url)
+                    link(cid, f"doc:{d.id}", "", "structure")
 
-        # Client-supplied custom topics (overlay themes)
         for topic in models.CustomTopic.objects.filter(is_active=True):
             tid = f"custom:{topic.id}"
             n = topic.matches.filter(scope=scope).count()
-            add(tid, "custom", topic.label, f"{n} contenuti · cliente", parent="root")
+            add(tid, "custom", topic.label, f"{n} contenuti \u00b7 tema del cliente",
+                parent="root", owner=scope)
             link("root", tid, "cliente", "flow")
-            for m in (topic.matches.filter(scope=scope, reel__isnull=False)
-                      .select_related("reel").order_by("-similarity")[:4]):
-                r = m.reel
+            for m2 in (topic.matches.filter(scope=scope, reel__isnull=False)
+                       .select_related("reel__account").order_by("-similarity")[:4]):
+                r = m2.reel
                 rid = f"reel:{r.shortcode}"
                 add(rid, "reel", (r.caption or r.shortcode)[:40],
-                    f"{r.view_count or 0} view", parent=tid)
+                    f"{r.view_count or 0} view \u00b7 @{r.account.username}",
+                    parent=tid, owner=r.account.owner_type,
+                    url=f"https://www.instagram.com/reel/{r.shortcode}/")
                 link(tid, rid, "", "structure")
 
-        # Competitor opportunities (gaps) — from the coverage map
         if scope == "owned":
             comp_run = models.ClusterRun.objects.filter(scope="competitor", is_current=True).first()
             med = list(run.clusters.all()) if run else []
@@ -695,15 +705,15 @@ class SecondBrainGraphView(APIView):
             for c in (comp_run.clusters.all() if comp_run else []):
                 if not c.centroid:
                     continue
-                cv = np.asarray(c.centroid, dtype=np.float32)
-                best = max((float(np.dot(cv, mv)) for mv in med_vecs), default=0.0)
+                best = max((float(np.dot(np.asarray(c.centroid, dtype=np.float32), mv))
+                            for mv in med_vecs), default=0.0)
                 if best < 0.8:
-                    oid = f"opp:{c.id}"
-                    add(oid, "opportunity", c.label_it, "opportunità")
-                    link("root", oid, "gap", "link")
+                    add(f"opp:{c.id}", "opportunity", c.label_it,
+                        f"{c.reel_assignments.count()} reel competitor \u00b7 opportunit\u00e0",
+                        parent="root", owner="competitor")
+                    link("root", f"opp:{c.id}", "gap", "flow")
 
         return Response({"nodes": nodes, "edges": edges})
-
 
 
 class CustomTopicViewSet(viewsets.ModelViewSet):

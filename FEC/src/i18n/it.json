@@ -24,7 +24,9 @@
   },
   "scope": {
     "medyca": "Medyca",
-    "competitor": "Competitor"
+    "competitor": "Competitor",
+    "medycaHint": "I tuoi contenuti",
+    "competitorHint": "Contenuti dei competitor"
   },
   "analytics": {
     "title": "Analytics",
@@ -87,7 +89,7 @@
   },
   "kb": {
     "title": "Knowledge Bank",
-    "subtitle": "Tutti i contenuti di Medyca su cui lavora il Second Brain: articoli del blog e reel con trascrizione.",
+    "subtitle": "Chiedi qualcosa ai contenuti di Medyca: risponde citando articoli e reel, senza aggiungere nulla di esterno.",
     "browse": "Sfoglia",
     "search": "Cerca",
     "ask": "Chiedi",
@@ -107,7 +109,8 @@
     "sources": "Fonti",
     "relevance": "rilevanza",
     "noResults": "Nessun risultato.",
-    "cited": "citata nella risposta"
+    "cited": "citata nella risposta",
+    "askIntro": "Fai una domanda e ottieni una risposta costruita solo sui contenuti di Medyca, con le fonti citate. Le altre schede servono per sfogliare il materiale grezzo."
   },
   "jobs": {
     "ideation": "Generazione idee di contenuto",

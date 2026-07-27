@@ -22,6 +22,7 @@ import {
 } from "../api/analytics";
 import type { Scope } from "../api/endpoints";
 import { Skeleton } from "../components/ui/primitives";
+import { ScopeBadge } from "../components/ui/ScopeBadge";
 import { PageTransition, useCountUp } from "../components/ui/motion";
 import { formatCount, mediaUrl } from "../lib/utils";
 
@@ -47,7 +48,8 @@ export default function Analytics() {
     <PageTransition>
     <div className="flex h-full flex-col">
       <div className="border-b border-border px-4 py-4 sm:px-6">
-        <h1 className="text-xl font-bold text-heading">{t(`scope.${scope}`)} · {t("analytics.title")}</h1>
+        <h1 className="text-xl font-bold text-heading">{t("analytics.title")}</h1>
+        <div className="mt-1 mb-1"><ScopeBadge scope={scope} /></div>
         <p className="text-sm text-muted">{t("analytics.subtitle")}</p>
       </div>
 

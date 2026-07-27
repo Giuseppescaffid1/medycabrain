@@ -9,6 +9,7 @@ import { ReelDetailDrawer } from "../components/reels/ReelDetailDrawer";
 import { FilterBar } from "../components/filters/FilterBar";
 import { StatBar } from "../components/layout/StatBar";
 import { Button, EmptyState, Skeleton, fieldCls } from "../components/ui/primitives";
+import { ScopeBadge } from "../components/ui/ScopeBadge";
 import { PageTransition, staggerContainer, staggerItem } from "../components/ui/motion";
 import { useDebounced } from "../lib/useDebounced";
 
@@ -43,9 +44,10 @@ export default function Library() {
       <div className="flex h-full flex-col">
         <div className="sticky top-0 z-20 space-y-3 border-b border-border bg-white/85 px-4 py-4 backdrop-blur sm:px-6">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-            <h1 className="text-xl font-bold text-heading">
-              {t(`scope.${scope}`)} · {t("library.title")}
-            </h1>
+            <div>
+              <h1 className="text-xl font-bold text-heading">{t("library.title")}</h1>
+              <div className="mt-1"><ScopeBadge scope={scope} /></div>
+            </div>
             <StatBar scope={scope} />
           </div>
           <input

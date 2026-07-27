@@ -7,6 +7,7 @@ import type { ReelListItem } from "../api/types";
 import { ReelCard } from "../components/reels/ReelCard";
 import { ReelDetailDrawer } from "../components/reels/ReelDetailDrawer";
 import { EmptyState, Skeleton } from "../components/ui/primitives";
+import { ScopeBadge } from "../components/ui/ScopeBadge";
 import { PageTransition } from "../components/ui/motion";
 
 /** A publication timeline: what was posted, and when. A month histogram you
@@ -47,9 +48,8 @@ export default function Timeline() {
     <PageTransition>
     <div className="flex h-full flex-col">
       <div className="border-b border-border px-4 py-4 sm:px-6">
-        <h1 className="text-xl font-bold text-heading">
-          {t(`scope.${scope}`)} · {t("timeline.title")}
-        </h1>
+        <h1 className="text-xl font-bold text-heading">{t("timeline.title")}</h1>
+        <div className="mt-1 mb-1"><ScopeBadge scope={scope} /></div>
         <p className="text-sm text-muted">{t("timeline.subtitle")}</p>
       </div>
 

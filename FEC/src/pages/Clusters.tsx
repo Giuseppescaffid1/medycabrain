@@ -5,6 +5,7 @@ import { fetchClusters, type Scope } from "../api/endpoints";
 import type { Cluster } from "../api/types";
 import { motion } from "framer-motion";
 import { Badge, EmptyState, Skeleton } from "../components/ui/primitives";
+import { ScopeBadge } from "../components/ui/ScopeBadge";
 import { PageTransition, staggerContainer, staggerItem } from "../components/ui/motion";
 import { CustomTopics } from "../components/clusters/CustomTopics";
 import { mediaUrl } from "../lib/utils";
@@ -23,7 +24,8 @@ export default function Clusters() {
     <PageTransition>
       <div className="flex h-full flex-col">
         <div className="border-b border-border px-4 py-4 sm:px-6">
-          <h1 className="text-xl font-bold text-heading">{t(`scope.${scope}`)} · {t("clusters.title")}</h1>
+          <h1 className="text-xl font-bold text-heading">{t("clusters.title")}</h1>
+          <div className="mt-1 mb-1"><ScopeBadge scope={scope} /></div>
           <p className="text-sm text-muted">{t("clusters.subtitle")}</p>
         </div>
         <div className="flex-1 px-4 py-4 sm:px-6 sm:py-5">

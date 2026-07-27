@@ -14,9 +14,16 @@ const linkClass = ({ isActive }: { isActive: boolean }) =>
       : "text-navy/70 hover:bg-surface/60 hover:text-navy"
   );
 
-function Section({ label }: { label: string }) {
+/** Section header. `tone` carries the same colour coding as the scope badges
+ *  and the constellation map: blue is Medyca, amber is the competition. */
+function Section({ label, tone }: { label: string; tone?: "owned" | "competitor" }) {
+  const dot =
+    tone === "owned" ? "bg-secondary" : tone === "competitor" ? "bg-warning" : "";
+  const text =
+    tone === "owned" ? "text-secondary" : tone === "competitor" ? "text-warning" : "text-muted/80";
   return (
-    <div className="px-4 pb-1 pt-4 text-[10px] font-bold uppercase tracking-wider text-muted/80">
+    <div className={cn("flex items-center gap-2 px-4 pb-1 pt-4 text-[10px] font-bold uppercase tracking-wider", text)}>
+      {dot && <span className={cn("h-1.5 w-1.5 rounded-full", dot)} aria-hidden />}
       {label}
     </div>
   );
@@ -45,13 +52,13 @@ export function NavContent({ onNavigate }: { onNavigate?: () => void }) {
       </NavLink>
 
       <nav className="flex flex-1 flex-col gap-0.5">
-        <Section label={t("nav.medyca")} />
+        <Section label={t("nav.medyca")} tone="owned" />
         <NavLink to="/medyca/library" className={linkClass} onClick={onNavigate}>🎬 {t("nav.library")}</NavLink>
         <NavLink to="/medyca/analytics" className={linkClass} onClick={onNavigate}>📊 {t("nav.analytics")}</NavLink>
         <NavLink to="/medyca/timeline" className={linkClass} onClick={onNavigate}>📅 {t("nav.timeline")}</NavLink>
         <NavLink to="/medyca/clusters" className={linkClass} onClick={onNavigate}>🧭 {t("nav.clusters")}</NavLink>
 
-        <Section label={t("nav.competitor")} />
+        <Section label={t("nav.competitor")} tone="competitor" />
         <NavLink to="/competitor/library" className={linkClass} onClick={onNavigate}>🎬 {t("nav.library")}</NavLink>
         <NavLink to="/competitor/analytics" className={linkClass} onClick={onNavigate}>📊 {t("nav.analytics")}</NavLink>
         <NavLink to="/competitor/timeline" className={linkClass} onClick={onNavigate}>📅 {t("nav.timeline")}</NavLink>

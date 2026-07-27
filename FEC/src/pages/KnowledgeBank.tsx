@@ -23,12 +23,12 @@ type Tab = "browse" | "search" | "ask";
 
 export default function KnowledgeBank() {
   const { t } = useTranslation();
-  const [tab, setTab] = useState<Tab>("browse");
+  const [tab, setTab] = useState<Tab>("ask");
 
   const tabs: { key: Tab; label: string; icon: string }[] = [
-    { key: "browse", label: t("kb.browse"), icon: "📚" },
-    { key: "search", label: t("kb.search"), icon: "🔎" },
     { key: "ask", label: t("kb.ask"), icon: "💬" },
+    { key: "search", label: t("kb.search"), icon: "🔎" },
+    { key: "browse", label: t("kb.browse"), icon: "📚" },
   ];
 
   return (
@@ -176,6 +176,7 @@ function AskTab() {
   const ask = useMutation<AskResult, unknown, string>({ mutationFn: (query) => askKnowledge(query) });
   return (
     <div className="mx-auto max-w-3xl">
+      <p className="mb-3 text-sm text-muted">{t("kb.askIntro")}</p>
       <form onSubmit={(e) => { e.preventDefault(); if (q.trim()) ask.mutate(q.trim()); }} className="flex flex-col gap-3">
         <textarea
           value={q}
