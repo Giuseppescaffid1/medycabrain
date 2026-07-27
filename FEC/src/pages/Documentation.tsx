@@ -1,6 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { motion } from "framer-motion";
-import { Button } from "../components/ui/primitives";
+import { Badge, Button } from "../components/ui/primitives";
 import { PageTransition, staggerContainer, staggerItem } from "../components/ui/motion";
 import { FlowCanvas } from "../components/docs/FlowCanvas";
 
@@ -102,6 +102,47 @@ export default function Documentation() {
                   </div>
                 ))}
               </div>
+            </section>
+
+            {/* ── Which model does what ───────────────────────────── */}
+            <section>
+              <h2 className="mb-1 text-xs font-bold uppercase tracking-wider text-muted">
+                {t("docs.models.title")}
+              </h2>
+              <p className="mb-3 text-xs text-muted/80">{t("docs.models.hint")}</p>
+              <div className="overflow-x-auto rounded-xl border border-border bg-white shadow-card">
+                <table className="w-full min-w-[620px] text-sm">
+                  <tbody className="divide-y divide-border">
+                    {(t("docs.models.items", { returnObjects: true }) as
+                      { step: string; model: string; why: string }[]).map((m) => (
+                      <tr key={m.step} className="align-top">
+                        <td className="w-48 px-4 py-3 font-semibold text-navy">{m.step}</td>
+                        <td className="w-44 px-4 py-3">
+                          <Badge className="bg-surface text-heading">{m.model}</Badge>
+                        </td>
+                        <td className="px-4 py-3 text-muted">{m.why}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+
+            {/* ── How the RAG answers ─────────────────────────────── */}
+            <section>
+              <h2 className="mb-3 text-xs font-bold uppercase tracking-wider text-muted">
+                {t("docs.rag.title")}
+              </h2>
+              <ol className="space-y-2">
+                {(t("docs.rag.steps", { returnObjects: true }) as string[]).map((step, i) => (
+                  <li key={step} className="flex gap-3 rounded-xl border border-border bg-surface p-3 shadow-card">
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-secondary/15 text-xs font-bold text-secondary">
+                      {i + 1}
+                    </span>
+                    <span className="text-sm text-navy">{step}</span>
+                  </li>
+                ))}
+              </ol>
             </section>
 
             {/* ── Known limits: say it before the client discovers it ── */}

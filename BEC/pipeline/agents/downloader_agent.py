@@ -167,11 +167,13 @@ def _process_one(reel: Reel) -> bool:
     # media/info is the throttled endpoint — roughly 35 calls per run before
     # Instagram starts answering HTML. A cached, unexpired CDN url lets us skip
     # it entirely: the CDN itself is not rate-limited.
+    used_api = False
     if reel.video_url and not _url_expired(reel.video_url):
         details = {"video_url": reel.video_url, "has_audio": True}
         logger.debug("[downloader] %s: uso url in cache, nessuna chiamata API", reel.shortcode)
     else:
         details = _fetch_media_details(reel)
+        used_api = True
 
     has_audio = details.get("has_audio", True)
     if has_audio:
@@ -182,6 +184,7 @@ def _process_one(reel: Reel) -> bool:
             # Targeted renewal, once. Previously this fired on every download
             # error and doubled the API quota a failing reel consumed.
             video_url = _fetch_media_details(reel).get("video_url", "")
+            used_api = True
             if not video_url:
                 raise
             _download(video_url, mp4)
@@ -213,7 +216,7 @@ def _process_one(reel: Reel) -> bool:
                     reel.shortcode)
     reel.save(update_fields=["audio_file", "thumbnail_file", "media_status",
                              "transcribe_status", "enrich_status", "last_error"])
-    return True
+    return used_api
 
 
 def run(ctx) -> dict:
@@ -246,11 +249,14 @@ def run(ctx) -> dict:
     done = failed = skipped = 0
     throttled_streak = 0
     stopped_early = False
-    for i, reel in enumerate(qs):
-        if i > 0:
-            time.sleep(random.uniform(dl_delay, dl_delay * 2))  # media/info is an API call
+    spent_api = False
+    for reel in qs:
+        # Pace only the throttled endpoint. A cached url goes straight to the
+        # CDN, which has no quota — sleeping there would waste hours.
+        if spent_api:
+            time.sleep(random.uniform(dl_delay, dl_delay * 2))
         try:
-            _process_one(reel)
+            spent_api = _process_one(reel)
             done += 1
             throttled_streak = 0
         except IGThrottled as exc:

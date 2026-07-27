@@ -102,11 +102,12 @@
     "searchHint": "Scrivi almeno 3 caratteri per la ricerca semantica.",
     "askPlaceholder": "Fai una domanda alla knowledge bank di Medyca…",
     "askButton": "Chiedi all'AI",
-    "askNote": "Risposta generata in locale, con citazioni. Può richiedere qualche minuto.",
+    "askNote": "Risposta generata solo dalle fonti di Medyca, con citazioni verificabili.",
     "thinking": "Sto pensando…",
     "sources": "Fonti",
     "relevance": "rilevanza",
-    "noResults": "Nessun risultato."
+    "noResults": "Nessun risultato.",
+    "cited": "citata nella risposta"
   },
   "jobs": {
     "ideation": "Generazione idee di contenuto",
@@ -297,6 +298,51 @@
         "Instagram limita quante schede video possiamo chiedere al giorno da un singolo server: la raccolta di grandi arretrati procede a scaglioni, non tutta in una volta.",
         "Vengono letti i contenuti dalla scheda Reel; i post video normali e i caroselli non sono inclusi.",
         "Il monitoraggio di siti e blog riguarda per ora solo medyca.it, non i competitor."
+      ]
+    },
+    "models": {
+      "title": "I modelli che usiamo, e per cosa",
+      "hint": "Ogni passaggio usa il modello adatto al lavoro che deve fare.",
+      "items": [
+        {
+          "step": "Trascrizione audio",
+          "model": "Whisper large-v3",
+          "why": "Riconosce la terminologia medica ricorrente grazie a un glossario dedicato (ormoni bioidentici, TOS, Bijuva)."
+        },
+        {
+          "step": "Analisi del contenuto",
+          "model": "Claude Opus 4.8",
+          "why": "Legge la trascrizione ed estrae il tema specifico, il gancio e le affermazioni, ognuna con la citazione testuale che la sostiene."
+        },
+        {
+          "step": "Raggruppamento per tema",
+          "model": "Claude Opus 4.8",
+          "why": "Decide come sono organizzati i temi: è un giudizio, non un'estrazione meccanica."
+        },
+        {
+          "step": "Domande alla Knowledge Bank",
+          "model": "Claude Opus 4.8",
+          "why": "Risponde solo dalle fonti Medyca, citandole; se le fonti non bastano lo dichiara invece di inventare."
+        },
+        {
+          "step": "Brief strategici",
+          "model": "Claude Opus 4.8",
+          "why": "Confronta copertura e gap rispetto ai competitor e propone l'angolo editoriale."
+        },
+        {
+          "step": "Indicizzazione per la ricerca",
+          "model": "MiniLM multilingue",
+          "why": "Trasforma i testi in vettori: è ciò che permette di cercare per significato e non per parola esatta."
+        }
+      ]
+    },
+    "rag": {
+      "title": "Come funziona \"Chiedi alla Knowledge Bank\"",
+      "steps": [
+        "La domanda viene cercata in due modi insieme: per significato (vettori) e per parola esatta — serve per nomi come Bijuva, che la ricerca semantica da sola può mancare.",
+        "Di ogni contenuto trovato viene estratto il passaggio che riguarda davvero la domanda, non l'inizio dell'articolo.",
+        "Il modello risponde usando solo quei passaggi e cita ogni affermazione con un numero.",
+        "Le fonti effettivamente citate vengono evidenziate, così puoi verificarle una per una."
       ]
     }
   },

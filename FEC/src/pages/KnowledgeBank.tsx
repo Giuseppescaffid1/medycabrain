@@ -198,7 +198,12 @@ function AskTab() {
             <p className="whitespace-pre-wrap text-sm text-navy">{ask.data.answer}</p>
           </div>
           <div>
-            <h3 className="mb-2 text-xs font-bold uppercase tracking-wider text-muted">{t("kb.sources")}</h3>
+            <h3 className="mb-2 flex flex-wrap items-center gap-2 text-xs font-bold uppercase tracking-wider text-muted">
+              {t("kb.sources")}
+              {ask.data.model && (
+                <Badge className="bg-white normal-case text-muted">🤖 {ask.data.model}</Badge>
+              )}
+            </h3>
             <HitList hits={ask.data.sources} numbered />
           </div>
         </div>
@@ -226,6 +231,9 @@ function HitList({ hits, numbered }: { hits: KnowledgeHit[]; numbered?: boolean 
                 {h.kind === "blog" ? "blog" : "reel"}
               </Badge>
               <span className="text-xs text-muted/80">{t("kb.relevance")} {(h.score * 100).toFixed(0)}%</span>
+              {h.cited && (
+                <Badge className="bg-success/10 text-success">{t("kb.cited")}</Badge>
+              )}
             </div>
             <h3 className="font-bold text-heading">{h.title.replace(/ — Medyca$/, "")}</h3>
             <p className="line-clamp-2 text-sm text-muted">{h.summary || h.snippet}</p>

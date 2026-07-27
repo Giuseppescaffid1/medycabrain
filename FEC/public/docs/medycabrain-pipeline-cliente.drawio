@@ -120,10 +120,10 @@
         <mxCell id="l_b2" value="2 · COMPRENSIONE" style="rounded=0;fillColor=none;strokeColor=#D5E3F2;dashed=1;verticalAlign=top;align=left;fontColor=#52688A;fontStyle=2;spacingLeft=10;fontSize=11;" vertex="1" parent="1">
           <mxGeometry x="450" y="90" width="380" height="330" as="geometry" />
         </mxCell>
-        <mxCell id="l_tr" value="transcriber_agent.py&#10;faster-whisper (small, italiano)&#10;LOCALE — CPU" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#4A6FAC;fontColor=#2C4984;fontSize=11;align=left;spacingLeft=10;verticalAlign=top;spacingTop=8;arcSize=12;" vertex="1" parent="1">
+        <mxCell id="l_tr" value="transcriber_agent.py&#10;whisper-large-v3 (remoto) + glossario medico&#10;fallback locale faster-whisper" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#4A6FAC;fontColor=#2C4984;fontSize=11;align=left;spacingLeft=10;verticalAlign=top;spacingTop=8;arcSize=12;" vertex="1" parent="1">
           <mxGeometry x="470" y="122" width="340" height="66" as="geometry" />
         </mxCell>
-        <mxCell id="l_en" value="enrich_agent.py — 1 chiamata LLM per reel&#10;→ summary_it · topics · hook + analisi&#10;→ target audience · content_format&#10;→ arguments (affermazioni verificabili)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#C93B42;fontColor=#2C4984;fontSize=11;align=left;spacingLeft=10;verticalAlign=top;spacingTop=8;arcSize=12;" vertex="1" parent="1">
+        <mxCell id="l_en" value="enrich_agent.py — Claude Opus 4.8 (analisi)&#10;→ summary_it · topics · hook + analisi&#10;→ target audience · content_format&#10;→ arguments (affermazioni verificabili)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#C93B42;fontColor=#2C4984;fontSize=11;align=left;spacingLeft=10;verticalAlign=top;spacingTop=8;arcSize=12;" vertex="1" parent="1">
           <mxGeometry x="470" y="204" width="340" height="86" as="geometry" />
         </mxCell>
         <mxCell id="l_emb" value="embeddings — sentence-transformers&#10;paraphrase-multilingual-MiniLM-L12-v2&#10;caldo nel processo web, non nei job" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#1E7E4A;fontColor=#2C4984;fontSize=11;align=left;spacingLeft=10;verticalAlign=top;spacingTop=8;arcSize=12;" vertex="1" parent="1">
@@ -134,7 +134,7 @@
         <mxCell id="l_b3" value="3 · ORGANIZZAZIONE" style="rounded=0;fillColor=none;strokeColor=#D5E3F2;dashed=1;verticalAlign=top;align=left;fontColor=#52688A;fontStyle=2;spacingLeft=10;fontSize=11;" vertex="1" parent="1">
           <mxGeometry x="860" y="90" width="380" height="330" as="geometry" />
         </mxCell>
-        <mxCell id="l_cl" value="cluster_agent.py — 2 livelli&#10;L1 temi: HDBSCAN → fallback agglomerativo&#10;(coseno, soglia 0.30) su reel + articoli&#10;L2 argomenti: assegnati al centroide vicino" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#4A6FAC;fontColor=#2C4984;fontSize=11;align=left;spacingLeft=10;verticalAlign=top;spacingTop=8;arcSize=12;" vertex="1" parent="1">
+        <mxCell id="l_cl" value="cluster_agent.py — 2 livelli · naming su Opus 4.8&#10;L1 temi: HDBSCAN → fallback agglomerativo&#10;(coseno, soglia 0.30) su reel + articoli&#10;L2 argomenti: assegnati al centroide vicino" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#4A6FAC;fontColor=#2C4984;fontSize=11;align=left;spacingLeft=10;verticalAlign=top;spacingTop=8;arcSize=12;" vertex="1" parent="1">
           <mxGeometry x="880" y="122" width="340" height="86" as="geometry" />
         </mxCell>
         <mxCell id="l_ct" value="custom_topics.py — temi del cliente&#10;match ibrido: similarità ≥ 0.40 OPPURE&#10;menzione letterale (nomi di farmaci)&#10;ricalcolato a ogni run notturna" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#C93B42;fontColor=#2C4984;fontSize=11;align=left;spacingLeft=10;verticalAlign=top;spacingTop=8;arcSize=12;" vertex="1" parent="1">
@@ -148,13 +148,13 @@
         <mxCell id="l_b4" value="4 · STRATEGIA (on-demand, interattivo)" style="rounded=0;fillColor=none;strokeColor=#D5E3F2;dashed=1;verticalAlign=top;align=left;fontColor=#52688A;fontStyle=2;spacingLeft=10;fontSize=11;" vertex="1" parent="1">
           <mxGeometry x="1270" y="90" width="380" height="330" as="geometry" />
         </mxCell>
-        <mxCell id="l_st" value="strategy.py::analyze()&#10;1 · vettore query (processo web, caldo)&#10;2 · copertura Medyca, pesata engagement&#10;3 · segnale competitor → gap&#10;4 · brief LLM con fonti citate&#10;5 · bozza completa on-demand" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#C93B42;fontColor=#2C4984;fontSize=11;align=left;spacingLeft=10;verticalAlign=top;spacingTop=8;arcSize=12;" vertex="1" parent="1">
+        <mxCell id="l_st" value="strategy.py::analyze() — Opus 4.8&#10;1 · vettore query (processo web, caldo)&#10;2 · copertura Medyca, pesata engagement&#10;3 · segnale competitor → gap&#10;4 · brief LLM con fonti citate&#10;5 · bozza completa on-demand" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#C93B42;fontColor=#2C4984;fontSize=11;align=left;spacingLeft=10;verticalAlign=top;spacingTop=8;arcSize=12;" vertex="1" parent="1">
           <mxGeometry x="1290" y="122" width="340" height="116" as="geometry" />
         </mxCell>
         <mxCell id="l_bw" value="blog_workflow.py&#10;espande un articolo esistente oppure&#10;ne scrive uno nuovo, fondato sui transcript" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#4A6FAC;fontColor=#2C4984;fontSize=11;align=left;spacingLeft=10;verticalAlign=top;spacingTop=8;arcSize=12;" vertex="1" parent="1">
           <mxGeometry x="1290" y="254" width="340" height="66" as="geometry" />
         </mxCell>
-        <mxCell id="l_kn" value="knowledge.py — ricerca semantica + RAG" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#4A6FAC;fontColor=#2C4984;fontSize=11;align=left;spacingLeft=10;verticalAlign=top;spacingTop=8;arcSize=12;" vertex="1" parent="1">
+        <mxCell id="l_kn" value="knowledge.py — RAG ibrida (vettori + parole) · Opus 4.8" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#4A6FAC;fontColor=#2C4984;fontSize=11;align=left;spacingLeft=10;verticalAlign=top;spacingTop=8;arcSize=12;" vertex="1" parent="1">
           <mxGeometry x="1290" y="336" width="340" height="46" as="geometry" />
         </mxCell>
 
@@ -162,7 +162,7 @@
         <mxCell id="l_b5" value="LAYER LLM — catena di provider" style="rounded=0;fillColor=none;strokeColor=#C93B42;dashed=1;verticalAlign=top;align=left;fontColor=#C93B42;fontStyle=2;spacingLeft=10;fontSize=11;" vertex="1" parent="1">
           <mxGeometry x="450" y="450" width="790" height="150" as="geometry" />
         </mxCell>
-        <mxCell id="l_fast" value="1 · FAST (remoto, in uso)&#10;Groq — llama-3.3-70b&#10;~0,3–3 s per chiamata" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#1E7E4A;fontColor=#1E7E4A;fontSize=11;align=left;spacingLeft=10;verticalAlign=top;spacingTop=8;arcSize=12;" vertex="1" parent="1">
+        <mxCell id="l_fast" value="1 · REMOTO (in uso)&#10;analisi/cluster/RAG: Opus 4.8&#10;estrazione di massa: Sonnet 4.6" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#1E7E4A;fontColor=#1E7E4A;fontSize=11;align=left;spacingLeft=10;verticalAlign=top;spacingTop=8;arcSize=12;" vertex="1" parent="1">
           <mxGeometry x="470" y="486" width="240" height="70" as="geometry" />
         </mxCell>
         <mxCell id="l_oll" value="2 · OLLAMA (riserva locale)&#10;qwen2.5:3b su CPU — ~1 tok/s&#10;lock: una generazione alla volta&#10;l'interattivo ha la precedenza" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#B7791F;fontColor=#B7791F;fontSize=11;align=left;spacingLeft=10;verticalAlign=top;spacingTop=8;arcSize=12;" vertex="1" parent="1">
@@ -232,13 +232,13 @@
         <mxCell id="n_dl" value="⬇️ Scarica video&#10;video, copertina, numeri" style="rounded=1;whiteSpace=wrap;html=1;arcSize=18;fillColor=#FFFFFF;strokeColor=#4A6FAC;strokeWidth=2;fontColor=#2C4984;fontSize=12;align=left;spacingLeft=10;verticalAlign=middle;" vertex="1" parent="1">
           <mxGeometry x="520" y="90" width="200" height="66" as="geometry" />
         </mxCell>
-        <mxCell id="n_stt" value="🎧 Trascrive l'audio&#10;whisper + glossario medico" style="rounded=1;whiteSpace=wrap;html=1;arcSize=18;fillColor=#FFFFFF;strokeColor=#4A6FAC;strokeWidth=2;fontColor=#2C4984;fontSize=12;align=left;spacingLeft=10;verticalAlign=middle;" vertex="1" parent="1">
+        <mxCell id="n_stt" value="🎧 Trascrive l'audio&#10;whisper-large-v3 + glossario" style="rounded=1;whiteSpace=wrap;html=1;arcSize=18;fillColor=#FFFFFF;strokeColor=#4A6FAC;strokeWidth=2;fontColor=#2C4984;fontSize=12;align=left;spacingLeft=10;verticalAlign=middle;" vertex="1" parent="1">
           <mxGeometry x="760" y="90" width="200" height="66" as="geometry" />
         </mxCell>
         <mxCell id="n_gate" value="🚦 C'è materiale?&#10;parlato o didascalia" style="rounded=1;whiteSpace=wrap;html=1;arcSize=18;fillColor=#FFFFFF;strokeColor=#B7791F;strokeWidth=2;fontColor=#2C4984;fontSize=12;align=left;spacingLeft=10;verticalAlign=middle;" vertex="1" parent="1">
           <mxGeometry x="1000" y="90" width="200" height="66" as="geometry" />
         </mxCell>
-        <mxCell id="n_llm" value="🧠 Analisi AI&#10;tema, gancio, affermazioni" style="rounded=1;whiteSpace=wrap;html=1;arcSize=18;fillColor=#FFFFFF;strokeColor=#4A6FAC;strokeWidth=2;fontColor=#2C4984;fontSize=12;align=left;spacingLeft=10;verticalAlign=middle;" vertex="1" parent="1">
+        <mxCell id="n_llm" value="🧠 Analisi AI · Opus 4.8&#10;tema, gancio, affermazioni citate" style="rounded=1;whiteSpace=wrap;html=1;arcSize=18;fillColor=#FFFFFF;strokeColor=#4A6FAC;strokeWidth=2;fontColor=#2C4984;fontSize=12;align=left;spacingLeft=10;verticalAlign=middle;" vertex="1" parent="1">
           <mxGeometry x="1240" y="30" width="200" height="66" as="geometry" />
         </mxCell>
         <mxCell id="n_skip" value="⛔ Non inventa nulla&#10;&quot;dati insufficienti&quot;" style="rounded=1;whiteSpace=wrap;html=1;arcSize=18;fillColor=#FFFFFF;strokeColor=#B7791F;strokeWidth=2;fontColor=#2C4984;fontSize=12;align=left;spacingLeft=10;verticalAlign=middle;" vertex="1" parent="1">
@@ -247,7 +247,7 @@
         <mxCell id="n_emb" value="🔢 Indicizza&#10;rende ricercabile" style="rounded=1;whiteSpace=wrap;html=1;arcSize=18;fillColor=#FFFFFF;strokeColor=#4A6FAC;strokeWidth=2;fontColor=#2C4984;fontSize=12;align=left;spacingLeft=10;verticalAlign=middle;" vertex="1" parent="1">
           <mxGeometry x="1000" y="310" width="200" height="66" as="geometry" />
         </mxCell>
-        <mxCell id="n_clu" value="🧭 Raggruppa per tema&#10;cluster automatici" style="rounded=1;whiteSpace=wrap;html=1;arcSize=18;fillColor=#FFFFFF;strokeColor=#4A6FAC;strokeWidth=2;fontColor=#2C4984;fontSize=12;align=left;spacingLeft=10;verticalAlign=middle;" vertex="1" parent="1">
+        <mxCell id="n_clu" value="🧭 Raggruppa per tema · Opus 4.8&#10;cluster automatici" style="rounded=1;whiteSpace=wrap;html=1;arcSize=18;fillColor=#FFFFFF;strokeColor=#4A6FAC;strokeWidth=2;fontColor=#2C4984;fontSize=12;align=left;spacingLeft=10;verticalAlign=middle;" vertex="1" parent="1">
           <mxGeometry x="760" y="310" width="200" height="66" as="geometry" />
         </mxCell>
         <mxCell id="n_top" value="👤 Temi del cliente&#10;tiroide, osteoporosi…" style="rounded=1;whiteSpace=wrap;html=1;arcSize=18;fillColor=#FFFFFF;strokeColor=#C93B42;strokeWidth=2;fontColor=#2C4984;fontSize=12;align=left;spacingLeft=10;verticalAlign=middle;" vertex="1" parent="1">

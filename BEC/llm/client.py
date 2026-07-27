@@ -283,6 +283,23 @@ def transcribe_audio(path: str, prompt: str = "", language: str = "it") -> dict:
             "model": settings.FAST_STT_MODEL}
 
 
+def model_for(task: str) -> str:
+    """Pick the model for a kind of work.
+
+    'analysis'  reading a transcript, extracting claims, naming themes —
+                the deep layer, where a weak model costs meaning
+    'reasoning' strategy briefs and drafts
+    'bulk'      mechanical, high-volume extraction
+    Falls back down the chain when the stronger tiers are not configured.
+    """
+    if task == "analysis":
+        return (settings.LLM_MODEL_REASONING_2 or settings.LLM_MODEL_REASONING
+                or settings.FAST_LLM_MODEL)
+    if task == "reasoning":
+        return (settings.LLM_MODEL_REASONING_2 or settings.FAST_LLM_MODEL)
+    return settings.FAST_LLM_MODEL_BULK
+
+
 def _providers() -> list[str]:
     order = []
     for p in settings.LLM_PROVIDER_ORDER:

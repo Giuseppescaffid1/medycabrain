@@ -158,6 +158,12 @@ LLM_BASE_URL = os.environ.get("LLM_BASE_URL", "")
 LLM_API_KEY = os.environ.get("LLM_API_KEY", "")
 LLM_MODEL_BULK = os.environ.get("LLM_MODEL_BULK", "")
 LLM_MODEL_REASONING = os.environ.get("LLM_MODEL_REASONING", "")
+# The deep-reasoning layer. Whisper produces the transcript; THIS model has to
+# read it well — what the reel actually claims, its specific subject, and how
+# those claims group into themes. Cheap models fit the JSON shape but flatten
+# the meaning, which is what produced "menopausa" on half the corpus.
+LLM_MODEL_REASONING_2 = os.environ.get("LLM_MODEL_REASONING_2", "")
+LLM_MODEL_REASONING_3 = os.environ.get("LLM_MODEL_REASONING_3", "")
 
 FAST_LLM_API_KEY = LLM_API_KEY or os.environ.get("FAST_LLM_API_KEY", "")
 FAST_LLM_BASE_URL = LLM_BASE_URL or os.environ.get("FAST_LLM_BASE_URL", "https://api.groq.com/openai/v1")

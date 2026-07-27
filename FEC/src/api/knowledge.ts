@@ -15,6 +15,8 @@ export interface KnowledgeDoc {
 }
 
 export interface KnowledgeHit {
+  cited?: boolean;
+  keyword_match?: number;
   kind: "blog" | "reel";
   id: number;
   title: string;
@@ -26,6 +28,7 @@ export interface KnowledgeHit {
 }
 
 export interface AskResult {
+  model?: string;
   answer: string;
   sources: KnowledgeHit[];
 }

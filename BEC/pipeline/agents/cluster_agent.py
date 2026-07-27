@@ -157,7 +157,10 @@ def _name_cluster(sample_texts: list[str]) -> dict:
     try:
         # Extra retries: naming runs right after the argument-extraction burst,
         # so HF can be rate-limited here.
-        data = client.chat_json(prompts.CLUSTER_NAME_SYSTEM, user, max_tokens=300, retries=4)
+        # Naming a theme is judgement, not extraction: it decides how the
+        # whole Second Brain is organised.
+        data = client.chat_json(prompts.CLUSTER_NAME_SYSTEM, user, max_tokens=300,
+                                retries=4, model=client.model_for("analysis"))
         return data if isinstance(data, dict) else {}
     except Exception as exc:  # noqa: BLE001
         logger.warning("[cluster] naming failed: %r", exc)

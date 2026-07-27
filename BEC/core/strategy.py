@@ -161,7 +161,8 @@ def analyze(input_text: str, source_kind: str = "input", job=None,
             job.set_progress(pct, f"Scrivo il brief… ({len(partial)} caratteri)")
 
     brief_md = client.chat(STRATEGY_SYSTEM, user, max_tokens=900, timeout=900,
-                           on_token=_tick, priority=True)
+                           on_token=_tick, priority=True,
+                           model=client.model_for("reasoning"))
 
     progress(90, "Salvo il brief…")
     brief = StrategyBrief.objects.create(
@@ -201,7 +202,8 @@ def generate_draft(brief_id: int, job=None) -> dict:
             job.set_progress(pct, f"Scrivo la bozza… ({len(partial)} caratteri)")
 
     draft = client.chat(DRAFT_SYSTEM, user, max_tokens=1200, timeout=900,
-                        on_token=_tick_draft, priority=True)
+                        on_token=_tick_draft, priority=True,
+                        model=client.model_for("reasoning"))
     brief.draft_md = (draft or "").strip()
     brief.draft_model = client.last_model_used()[:64]
     brief.save(update_fields=["draft_md", "draft_model"])

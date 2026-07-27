@@ -110,8 +110,9 @@ def _enrich_one(reel: Reel) -> None:
     if evidence == "caption_only":
         user += prompts.ENRICH_CAPTION_ONLY_NOTE
 
+    # Reading a transcript well is the whole point of this step.
     data = client.chat_json(prompts.ENRICH_SYSTEM, user, max_tokens=700,
-                            model=client.settings.FAST_LLM_MODEL_BULK)
+                            model=client.model_for("analysis"))
     fmt = str(data.get("content_format", "")).strip().lower()
     if fmt not in VALID_FORMATS:
         fmt = "altro"
@@ -163,7 +164,7 @@ def _extract_arguments(reel: Reel) -> int:
         transcript=transcript_text[:3000],
     )
     data = client.chat_json(prompts.ARGUMENTS_SYSTEM, user, max_tokens=600,
-                            model=client.settings.FAST_LLM_MODEL_BULK)
+                            model=client.model_for("analysis"))
     args = data.get("argomenti") if isinstance(data, dict) else data
     if not isinstance(args, list):
         args = []
