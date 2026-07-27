@@ -1,4 +1,4 @@
-import { Suspense, lazy, useState } from "react";
+import { Suspense, useState } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { useAuth } from "./contexts/AuthContext";
 import { JobsProvider } from "./contexts/JobsContext";
@@ -6,21 +6,22 @@ import { MobileDrawer, Sidebar } from "./components/layout/Sidebar";
 import { MobileHeader } from "./components/layout/MobileHeader";
 import { StatusBar } from "./components/layout/StatusBar";
 import { Spinner } from "./components/ui/primitives";
+import { lazyPage } from "./lib/lazyPage";
 
-const Login = lazy(() => import("./pages/Login"));
-const Home = lazy(() => import("./pages/Home"));
-const Library = lazy(() => import("./pages/Library"));
-const Clusters = lazy(() => import("./pages/Clusters"));
-const ClusterDetail = lazy(() => import("./pages/ClusterDetail"));
-const Timeline = lazy(() => import("./pages/Timeline"));
-const Analytics = lazy(() => import("./pages/Analytics"));
-const Workspace = lazy(() => import("./pages/Workspace"));
-const Accounts = lazy(() => import("./pages/Accounts"));
-const SecondBrain = lazy(() => import("./pages/SecondBrain"));
-const KnowledgeBank = lazy(() => import("./pages/KnowledgeBank"));
-const BrainMap = lazy(() => import("./pages/BrainMap"));
-const Documentation = lazy(() => import("./pages/Documentation"));
-const Status = lazy(() => import("./pages/Status"));
+const Login = lazyPage(() => import("./pages/Login"));
+const Home = lazyPage(() => import("./pages/Home"));
+const Library = lazyPage(() => import("./pages/Library"));
+const Clusters = lazyPage(() => import("./pages/Clusters"));
+const ClusterDetail = lazyPage(() => import("./pages/ClusterDetail"));
+const Timeline = lazyPage(() => import("./pages/Timeline"));
+const Analytics = lazyPage(() => import("./pages/Analytics"));
+const Workspace = lazyPage(() => import("./pages/Workspace"));
+const Accounts = lazyPage(() => import("./pages/Accounts"));
+const SecondBrain = lazyPage(() => import("./pages/SecondBrain"));
+const KnowledgeBank = lazyPage(() => import("./pages/KnowledgeBank"));
+const BrainMap = lazyPage(() => import("./pages/BrainMap"));
+const Documentation = lazyPage(() => import("./pages/Documentation"));
+const Status = lazyPage(() => import("./pages/Status"));
 
 function Shell({ children }: { children: React.ReactNode }) {
   const [navOpen, setNavOpen] = useState(false);
