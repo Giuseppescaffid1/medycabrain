@@ -103,7 +103,7 @@
         <mxCell id="l_scr" value="scraper_agent.py&#10;curl_cffi (Chrome impersonation)&#10;GraphQL doc_id + topsearch&#10;media/info per i metadati" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#4A6FAC;fontColor=#2C4984;fontSize=11;align=left;spacingLeft=10;verticalAlign=top;spacingTop=8;arcSize=12;" vertex="1" parent="1">
           <mxGeometry x="60" y="122" width="340" height="76" as="geometry" />
         </mxCell>
-        <mxCell id="l_dl" value="downloader_agent.py&#10;video + thumbnail su disco" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#4A6FAC;fontColor=#2C4984;fontSize=11;align=left;spacingLeft=10;verticalAlign=top;spacingTop=8;arcSize=12;" vertex="1" parent="1">
+        <mxCell id="l_dl" value="downloader_agent.py&#10;url video via Apify&#10;video + thumbnail su disco" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#4A6FAC;fontColor=#2C4984;fontSize=11;align=left;spacingLeft=10;verticalAlign=top;spacingTop=8;arcSize=12;" vertex="1" parent="1">
           <mxGeometry x="60" y="214" width="340" height="56" as="geometry" />
         </mxCell>
         <mxCell id="l_blog" value="ingest_blog.py&#10;crawl medyca.it/blog → KnowledgeDocument" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#4A6FAC;fontColor=#2C4984;fontSize=11;align=left;spacingLeft=10;verticalAlign=top;spacingTop=8;arcSize=12;" vertex="1" parent="1">

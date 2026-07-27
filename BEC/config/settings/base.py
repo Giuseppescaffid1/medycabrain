@@ -195,6 +195,13 @@ USE_REMOTE_STT = os.environ.get("USE_REMOTE_STT", "1") == "1"
 STT_BASE_URL = os.environ.get("FAST_LLM_BASE_URL", "https://api.groq.com/openai/v1")
 STT_API_KEY = os.environ.get("FAST_LLM_API_KEY", "")
 
+# Apify supplies reel metadata and a working CDN video url from its own
+# proxied infrastructure, which is what unblocks the download backlog: our own
+# calls to Instagram's media/info throttle after ~35 and then answer HTML.
+# Billed per result, so callers batch per account — never per reel.
+APIFY_TOKEN = os.environ.get("APIFY_TOKEN", "")
+APIFY_REEL_ACTOR = os.environ.get("APIFY_REEL_ACTOR", "apify~instagram-reel-scraper")
+
 # Serialize local Ollama calls: the CPU fits exactly one 3B/7B generation.
 # Concurrent calls (nightly pipeline + a client clicking "Analizza") make
 # BOTH time out, which is how the box melted down.

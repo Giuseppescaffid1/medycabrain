@@ -219,6 +219,76 @@ def _process_one(reel: Reel) -> bool:
     return used_api
 
 
+def _prefetch_urls(batch: list[Reel]) -> dict:
+    """Fill in video_url for a whole batch from Apify, one call per account.
+
+    This is what keeps the run off Instagram's throttled media/info endpoint:
+    _process_one already prefers a cached, unexpired url and only calls the
+    API when one is missing, so a batch that arrives with fresh urls makes
+    zero throttled calls.
+
+    Depth is measured against the account's whole known history, not against
+    the reels in this batch. The actor returns the N most recent reels of the
+    account, and our pending rows are scattered through that timeline rather
+    than sitting at the top of it: a first attempt sized from the batch asked
+    for 7 and matched 0 of them. Overshooting slightly costs a fraction of a
+    cent; undershooting returns rows we cannot use at all.
+    """
+    from scraper import apify_provider
+
+    by_account: dict[str, list[Reel]] = {}
+    for reel in batch:
+        if reel.video_url and not _url_expired(reel.video_url):
+            continue  # already usable, costs nothing
+        by_account.setdefault(reel.account.username, []).append(reel)
+    if not by_account:
+        return {"apify_accounts": 0, "apify_urls": 0}
+
+    filled = accounts = 0
+    for username, reels in by_account.items():
+        # A flat margin, not a ratio: our rows can sit deeper in the account's
+        # real timeline than their own count suggests, and a run that comes
+        # back short is wasted entirely rather than partially.
+        known = Reel.objects.filter(account__username=username).count()
+        depth = max(known, len(reels)) + 60
+        try:
+            items = apify_provider.fetch_reels(username, limit=depth)
+        except apify_provider.ApifyUnavailable as exc:
+            logger.warning("[downloader] apify non disponibile per @%s: %s", username, exc)
+            continue
+        accounts += 1
+
+        found = {i["shortcode"]: i for i in items}
+        for reel in reels:
+            item = found.get(reel.shortcode)
+            if not item or not item["video_url"]:
+                continue
+            reel.video_url = item["video_url"]
+            fields = ["video_url"]
+            # Backfill only what is missing or newer — never overwrite a real
+            # value with a blank one the actor happened not to return.
+            for attr, key in (("thumbnail_url", "thumbnail_url"),
+                              ("caption", "caption"),
+                              ("duration_s", "duration_s")):
+                if item[key] and not getattr(reel, attr):
+                    setattr(reel, attr, item[key])
+                    fields.append(attr)
+            for attr in ("view_count", "like_count", "comment_count"):
+                if item[attr] is not None:
+                    setattr(reel, attr, item[attr])
+                    fields.append(attr)
+            if item["posted_at"] and not reel.posted_at:
+                reel.posted_at = item["posted_at"]
+                fields.append("posted_at")
+            reel.save(update_fields=fields)
+            filled += 1
+
+    if accounts:
+        logger.info("[downloader] apify: %s url pronti su %s account",
+                    filled, accounts)
+    return {"apify_accounts": accounts, "apify_urls": filled}
+
+
 def run(ctx) -> dict:
     import random
     import time
@@ -246,11 +316,28 @@ def run(ctx) -> dict:
         qs = qs[: ctx.limit]
     elif cap:
         qs = qs[:cap]
+    # Materialise before prefetching: the batch is iterated twice, and a
+    # sliced queryset would run the whole query again.
+    batch = list(qs)
+    from scraper import apify_provider
+    stats = _prefetch_urls(batch) if apify_provider.enabled() else {}
+
     done = failed = skipped = 0
     throttled_streak = 0
     stopped_early = False
     spent_api = False
-    for reel in qs:
+    deferred = 0
+    for reel in batch:
+        # Once Instagram's quota is gone, only the reels that would call it are
+        # blocked. A reel holding a fresh CDN url needs no API at all, and
+        # stopping the whole run on its account's behalf is what kept 691 reels
+        # at zero attempts: the run aborted on the first few urls it lacked and
+        # never reached the hundreds it could already have fetched.
+        needs_api = not (reel.video_url and not _url_expired(reel.video_url))
+        if stopped_early and needs_api:
+            deferred += 1
+            continue
+
         # Pace only the throttled endpoint. A cached url goes straight to the
         # CDN, which has no quota — sleeping there would waste hours.
         if spent_api:
@@ -271,8 +358,8 @@ def run(ctx) -> dict:
                            throttled_streak, reel.shortcode)
             if throttled_streak >= _THROTTLE_STREAK:
                 stopped_early = True
-                logger.warning("[downloader] interrompo il run: riprende alla prossima esecuzione")
-                break
+                logger.warning("[downloader] quota Instagram esaurita: proseguo solo "
+                               "con i reel che hanno gia un url utilizzabile")
         except Exception as exc:  # noqa: BLE001
             throttled_streak = 0
             reel.media_attempts += 1
@@ -291,4 +378,4 @@ def run(ctx) -> dict:
         media_status=PENDING
     )
     return {"downloaded": done, "failed": failed, "skipped": skipped,
-            "stopped_early": stopped_early}
+            "stopped_early": stopped_early, "deferred": deferred, **stats}

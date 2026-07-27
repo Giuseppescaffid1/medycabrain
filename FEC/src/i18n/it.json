@@ -295,7 +295,7 @@
       "title": "Cosa fa la piattaforma",
       "collect": {
         "title": "Raccoglie",
-        "body": "Scarica ogni reel con le sue statistiche reali: visualizzazioni, like, commenti."
+        "body": "Scarica ogni reel con le sue statistiche reali: visualizzazioni, like, commenti. L'accesso a Instagram passa da un servizio esterno che ne gestisce i limiti, così gli arretrati non restano bloccati."
       },
       "understand": {
         "title": "Capisce",
@@ -332,10 +332,10 @@
     "limits": {
       "title": "Limiti noti",
       "items": [
-        "Instagram limita quante schede video possiamo chiedere al giorno da un singolo server: la raccolta di grandi arretrati procede a scaglioni, non tutta in una volta.",
+        "I video vengono recuperati tramite un servizio esterno (Apify) che gestisce l'accesso a Instagram: questo evita il blocco che fermava il recupero degli arretrati. Il servizio si paga a consumo, circa 2,60 $ ogni 1.000 reel.",
         "Vengono letti i contenuti dalla scheda Reel; i post video normali e i caroselli non sono inclusi.",
         "Il monitoraggio di siti e blog riguarda per ora solo medyca.it, non i competitor.",
-        "37 video trascritti il 27 luglio hanno usato il modello locale di riserva, meno preciso sui termini medici: il servizio di trascrizione remoto rispondeva \"non trovato\". Il collegamento è stato corretto e quelle trascrizioni verranno rifatte."
+        "37 video trascritti il 27 luglio avevano usato il modello locale di riserva, meno preciso sui termini medici. Il collegamento al servizio di trascrizione è stato corretto e quelle trascrizioni sono state rifatte."
       ]
     },
     "models": {
