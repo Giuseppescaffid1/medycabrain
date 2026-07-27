@@ -242,7 +242,9 @@ def answer(query: str, top_k: int = 8, scope: str = "all",
             ANSWER_SYSTEM,
             convo + ANSWER_USER.format(query=query, sources=sources_txt),
             max_tokens=900, temperature=0.2, priority=True, timeout=600,
-            model=client.model_for("analysis"),
+            # Deliberately the reasoning tier, not the analysis one: the chat
+            # answers many questions a day and does not need the deepest model.
+            model=client.model_for("reasoning"),
         )
         used = client.last_model_used()
     except Exception as exc:  # noqa: BLE001

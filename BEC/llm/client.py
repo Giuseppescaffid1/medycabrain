@@ -293,8 +293,11 @@ def model_for(task: str) -> str:
     Falls back down the chain when the stronger tiers are not configured.
     """
     if task == "analysis":
-        return (settings.LLM_MODEL_REASONING_2 or settings.LLM_MODEL_REASONING
-                or settings.FAST_LLM_MODEL)
+        # The deepest tier: reading a transcript decides the specific topic,
+        # the claims and how the whole Second Brain gets organised, so it gets
+        # the strongest model configured.
+        return (settings.LLM_MODEL_REASONING_3 or settings.LLM_MODEL_REASONING_2
+                or settings.LLM_MODEL_REASONING or settings.FAST_LLM_MODEL)
     if task == "reasoning":
         return (settings.LLM_MODEL_REASONING_2 or settings.FAST_LLM_MODEL)
     return settings.FAST_LLM_MODEL_BULK

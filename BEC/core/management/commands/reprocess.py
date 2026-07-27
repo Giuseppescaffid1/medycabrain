@@ -32,6 +32,11 @@ class Command(BaseCommand):
         parser.add_argument("--limit", type=int, default=0)
         parser.add_argument("--only-stale", action="store_true",
                             help="Skip reels already produced by the current prompts.")
+        parser.add_argument("--with-transcript", action="store_true",
+                            help="Only reels that actually have spoken content.")
+        parser.add_argument("--not-model", default="",
+                            help="Only reels whose analysis came from a model NOT "
+                                 "starting with this prefix (e.g. 'claude').")
 
     def handle(self, *args, **opts):
         from django.conf import settings
@@ -93,6 +98,18 @@ class Command(BaseCommand):
     def _enrich(self, qs, opts, settings):
         from llm.client import LLMRateLimit
         from pipeline.agents import enrich_agent as ea
+
+        if opts["with_transcript"]:
+            # A reel with no audio yet produces no LLM call at all — including
+            # it would only rewrite hundreds of "insufficient" rows.
+            qs = qs.filter(transcribe_status=DONE).exclude(transcript__text="")
+        if opts["not_model"]:
+            # Redo only what a weaker model produced: re-running an analysis
+            # that is already good costs time and changes nothing.
+            qs = qs.exclude(enrichment__llm_model__startswith=opts["not_model"])
+            # ...but a reel that never got an analysis at all still needs one.
+            self.stdout.write(
+                f"[enrich] filtro: analisi non prodotte da '{opts['not_model']}*'")
 
         todo = list(qs[: opts["limit"]] if opts["limit"] else qs)
         self.stdout.write(f"[enrich] {len(todo)} reel")
