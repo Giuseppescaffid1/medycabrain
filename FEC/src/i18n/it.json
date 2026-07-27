@@ -87,7 +87,24 @@
   },
   "map": {
     "title": "Mappa del Second Brain",
-    "subtitle": "Tre mondi: i tuoi contenuti, quelli dei competitor e le opportunità che ne nascono. Clicca un nodo per vedere da dove viene."
+    "subtitle": "Tre mondi: i tuoi contenuti, quelli dei competitor e le opportunità che ne nascono.",
+    "hint": "Clicca un tema per aprirlo e vederne i contenuti",
+    "recenter": "Ricentra",
+    "legendMedyca": "Medyca",
+    "legendCompetitor": "Competitor",
+    "legendOpportunity": "Opportunità",
+    "openSource": "Apri la fonte",
+    "partOf": "Fa parte di",
+    "contains": "Contiene",
+    "connected": "Collegato a",
+    "kind": {
+      "hub": "mondo",
+      "theme": "tema",
+      "reel": "reel",
+      "blog": "articolo",
+      "opportunity": "opportunità",
+      "custom": "tema del cliente"
+    }
   },
   "kb": {
     "title": "Knowledge Bank",
