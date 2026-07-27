@@ -22,12 +22,34 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument("--job", type=int, required=True)
 
+    def _install_signal_handlers(self, job):
+        """A backend restart kills this process through the cgroup, and Python
+        dies on SIGTERM without raising — so the try/except never runs and the
+        row stays 'running' forever. Record the death before going."""
+        import signal
+
+        def _bail(signum, _frame):
+            from django.utils import timezone
+            job.status = "failed"
+            job.message = "Interrotto dal sistema"
+            job.error = f"terminato dal segnale {signum}"
+            job.finished_at = timezone.now()
+            job.save(update_fields=["status", "message", "error", "finished_at"])
+            raise SystemExit(1)
+
+        for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+            try:
+                signal.signal(sig, _bail)
+            except (ValueError, OSError):  # not on the main thread
+                pass
+
     def handle(self, *args, **opts):
         try:
             job = Job.objects.get(id=opts["job"])
         except Job.DoesNotExist as exc:
             raise CommandError(f"job {opts['job']} not found") from exc
 
+        self._install_signal_handlers(job)
         job.status = "running"
         job.message = "Avvio…"
         job.progress = 1
@@ -66,6 +88,11 @@ class Command(BaseCommand):
             b = analyze(job.params["input_text"], job.params.get("source_kind", "input"),
                         job=job, query_vec=job.params.get("qv"))
             return {"brief_id": b.id, "coverage": b.coverage}
+        if job.kind == "editorial":
+            from core.editorial import generate_plan
+            ideas = generate_plan(n=int(job.params.get("n", 6)),
+                                  theme=job.params.get("theme", ""), job=job)
+            return {"created": len(ideas), "batch": ideas[0].batch if ideas else ""}
         if job.kind == "strategy_draft":
             from core.strategy import generate_draft
             return generate_draft(int(job.params["brief_id"]), job=job)

@@ -1,233 +1,262 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import {
-  fetchBriefs,
-  fetchCoverageMap,
-  updateBriefStatus,
-  type StrategyBrief,
-} from "../api/strategy";
+import { motion } from "framer-motion";
+import { fetchCoverageMap } from "../api/strategy";
+import { fetchIdeas, updateIdeaStatus, type ContentIdea } from "../api/secondBrain";
 import { useJobs } from "../contexts/JobsContext";
 import { Badge, Button, EmptyState, Skeleton, fieldCls } from "../components/ui/primitives";
-import { PageTransition } from "../components/ui/motion";
+import { PageTransition, staggerContainer, staggerItem } from "../components/ui/motion";
 
 /**
- * Second Brain = motore di strategia contenuti. L'utente scrive un tema (o
- * clicca un'opportunità dalla mappa di copertura); il motore risponde con un
- * brief fondato su cosa Medyca ha già + il gap vs competitor, pesato per
- * engagement. Da ogni brief si genera una bozza completa on-demand.
+ * The editorial plan: contents ready to be filmed, not a prose brief.
+ *
+ * Each entry is grounded in material that exists — an idea whose sources could
+ * not be resolved never reaches this screen — so the client can check where a
+ * suggestion comes from before spending a shoot on it.
  */
 export default function SecondBrain() {
   const { t } = useTranslation();
   const qc = useQueryClient();
-  const { jobs, startStrategy, startDraft } = useJobs();
-  const [input, setInput] = useState("");
+  const { jobs, startPlan } = useJobs();
+  const [n, setN] = useState(6);
+  const [theme, setTheme] = useState("");
 
   const coverage = useQuery({ queryKey: ["coverage-map"], queryFn: fetchCoverageMap });
-  const briefs = useQuery({ queryKey: ["briefs"], queryFn: fetchBriefs });
-  const analyzing = jobs.some((j) => j.kind === "strategy" && (j.status === "queued" || j.status === "running"));
+  const ideas = useQuery({ queryKey: ["ideas"], queryFn: () => fetchIdeas() });
+  const building = jobs.some(
+    (j) => j.kind === "editorial" && (j.status === "queued" || j.status === "running")
+  );
 
   const setStatus = useMutation({
-    mutationFn: (v: { id: number; status: "saved" | "dismissed" }) => updateBriefStatus(v.id, v.status),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["briefs"] }),
+    mutationFn: (v: { id: number; status: "saved" | "dismissed" }) =>
+      updateIdeaStatus(v.id, v.status),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["ideas"] }),
   });
 
-  const run = (text: string, kind = "input") => {
-    if (text.trim().length >= 3) startStrategy(text.trim(), kind);
+  const visible = (ideas.data ?? []).filter((i) => i.status !== "dismissed");
+
+  const exportPlan = () => {
+    const md = visible
+      .map(
+        (i) =>
+          `## ${i.argument_it}\n\n` +
+          `**${t("plan.hook")}:** ${i.hook_it}\n\n` +
+          `**${t("plan.angle")}:** ${i.angle_it}\n\n` +
+          `**${t("plan.why")}:** ${i.rationale_it}\n\n` +
+          `**${t("plan.sources")}:** ${(i.source_refs ?? []).map((s) => s.title).join(", ")}\n`
+      )
+      .join("\n---\n\n");
+    navigator.clipboard?.writeText(`# ${t("plan.title")}\n\n${md}`);
   };
 
   return (
     <PageTransition>
-    <div className="flex h-full flex-col">
-      <div className="border-b border-border px-4 pb-4 pt-5 sm:px-6">
-        <h1 className="text-xl font-bold text-heading">{t("sb.title")}</h1>
-        <p className="text-sm text-muted">{t("sb.subtitle")}</p>
-      </div>
+      <div className="flex h-full flex-col">
+        <div className="border-b border-border px-4 pb-4 pt-5 sm:px-6">
+          <h1 className="text-xl font-bold text-heading">{t("plan.title")}</h1>
+          <p className="text-sm text-muted">{t("plan.subtitle")}</p>
+        </div>
 
-      <div className="flex-1 overflow-y-auto px-4 py-5 sm:px-6 sm:py-6">
-        <div className="mx-auto max-w-4xl space-y-8">
-          {/* ── Input box ─────────────────────────────────────────── */}
-          <div>
-            <form
-              onSubmit={(e) => { e.preventDefault(); run(input); }}
-              className="flex flex-col gap-3"
-            >
-              <label className="text-sm font-semibold text-navy">{t("sb.inputLabel")}</label>
-              <div className="flex flex-col gap-2 sm:flex-row">
-                <input
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  placeholder={t("sb.inputPlaceholder")}
-                  className={fieldCls + " h-12 min-w-0 flex-1 rounded-2xl text-base"}
-                />
-                <Button type="submit" disabled={input.trim().length < 3} loading={analyzing} className="h-12 shrink-0">
-                  {t("sb.analyze")}
+        <div className="flex-1 overflow-y-auto px-4 py-5 sm:px-6 sm:py-6">
+          <div className="mx-auto max-w-4xl space-y-7">
+            {/* ── Generate ─────────────────────────────────────────── */}
+            <section className="rounded-2xl border border-border bg-surface p-4 shadow-card">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                <label className="flex-1">
+                  <span className="mb-1 block text-xs font-bold uppercase tracking-wider text-muted">
+                    {t("plan.themeLabel")}
+                  </span>
+                  <input
+                    value={theme}
+                    onChange={(e) => setTheme(e.target.value)}
+                    placeholder={t("plan.themePlaceholder")}
+                    className={fieldCls + " w-full"}
+                  />
+                </label>
+                <label className="w-full sm:w-32">
+                  <span className="mb-1 block text-xs font-bold uppercase tracking-wider text-muted">
+                    {t("plan.n")}
+                  </span>
+                  <select
+                    value={n}
+                    onChange={(e) => setN(Number(e.target.value))}
+                    className={fieldCls + " w-full"}
+                  >
+                    {[4, 6, 8, 10].map((v) => (
+                      <option key={v} value={v}>{v}</option>
+                    ))}
+                  </select>
+                </label>
+                <Button
+                  variant="primary"
+                  loading={building}
+                  onClick={() => startPlan(n, theme.trim())}
+                  className="shrink-0"
+                >
+                  {t("plan.generate")}
                 </Button>
               </div>
-              <p className="text-xs text-muted/80">{t("sb.inputHint")}</p>
-            </form>
-          </div>
+              {building && <p className="mt-2 text-xs text-muted">{t("plan.generating")}</p>}
+            </section>
 
-          {/* ── Coverage map ──────────────────────────────────────── */}
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <div className="rounded-xl border border-border bg-surface p-4 shadow-card">
-              <h2 className="mb-2 flex items-center gap-2 text-sm font-bold text-navy">
-                <span className="h-2 w-2 rounded-full bg-success" /> {t("sb.covered")}
-              </h2>
-              <p className="mb-3 text-xs text-muted/80">{t("sb.coveredHint")}</p>
-              <div className="flex flex-wrap gap-2">
-                {coverage.data?.covered.map((c) => (
-                  <button key={c.id} onClick={() => run(c.label, "theme")}
-                    className="rounded-full border border-border bg-white px-3 py-1.5 text-sm font-semibold text-navy transition hover:border-success">
-                    {c.custom && <span title="Tema del cliente">👤 </span>}{c.label} <span className="text-xs text-muted/80">· {c.reels + c.docs}</span>
-                  </button>
-                ))}
-                {coverage.data && coverage.data.covered.length === 0 && (
-                  <span className="text-xs text-muted/80">—</span>
+            {/* ── Coverage: the bridge from the data to the plan ───── */}
+            <section className="grid grid-cols-1 gap-4 md:grid-cols-2">
+              <div className="rounded-2xl border border-border bg-surface p-4 shadow-card">
+                <h2 className="mb-2 flex items-center gap-2 text-sm font-bold text-navy">
+                  <span className="h-2 w-2 rounded-full bg-success" /> {t("sb.covered")}
+                </h2>
+                <div className="flex flex-wrap gap-2">
+                  {coverage.isLoading && <Skeleton className="h-8 w-40" />}
+                  {coverage.data?.covered.map((c) => (
+                    <button
+                      key={c.id}
+                      onClick={() => startPlan(n, c.label)}
+                      className="rounded-full border border-border bg-white px-3 py-1.5 text-sm font-semibold text-navy transition hover:border-success"
+                    >
+                      {c.custom && "👤 "}
+                      {c.label} <span className="text-xs text-muted/80">· {c.reels + c.docs}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="rounded-2xl border border-border bg-surface p-4 shadow-card">
+                <h2 className="mb-2 flex items-center gap-2 text-sm font-bold text-navy">
+                  <span className="h-2 w-2 rounded-full bg-warning" /> {t("sb.opportunities")}
+                </h2>
+                <div className="flex flex-wrap gap-2">
+                  {coverage.isLoading && <Skeleton className="h-8 w-40" />}
+                  {coverage.data?.opportunities.map((o) => (
+                    <button
+                      key={o.id}
+                      onClick={() => startPlan(n, o.label)}
+                      className="rounded-full border border-warning/40 bg-warning/10 px-3 py-1.5 text-sm font-semibold text-warning transition hover:border-warning"
+                    >
+                      {o.custom && "👤 "}
+                      {o.label} <span className="text-xs text-warning/70">· {o.reels}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </section>
+
+            {/* ── The plan ─────────────────────────────────────────── */}
+            <section>
+              <div className="mb-3 flex items-center justify-between gap-3">
+                <h2 className="text-xs font-bold uppercase tracking-wider text-muted">
+                  {t("plan.title")} {visible.length > 0 ? `· ${visible.length}` : ""}
+                </h2>
+                {visible.length > 0 && (
+                  <Button variant="secondary" onClick={exportPlan}>
+                    📋 {t("plan.export")}
+                  </Button>
                 )}
               </div>
-            </div>
-
-            <div className="rounded-xl border border-border bg-surface p-4 shadow-card">
-              <h2 className="mb-2 flex items-center gap-2 text-sm font-bold text-navy">
-                <span className="h-2 w-2 rounded-full bg-warning" /> {t("sb.opportunities")}
-              </h2>
-              <p className="mb-3 text-xs text-muted/80">{t("sb.opportunitiesHint")}</p>
-              <div className="flex flex-wrap gap-2">
-                {coverage.data?.opportunities.map((o) => (
-                  <button key={o.id} onClick={() => run(o.label, "theme")}
-                    className="rounded-full border border-warning/40 bg-warning/10 px-3 py-1.5 text-sm font-semibold text-warning transition hover:border-warning">
-                    {o.custom && <span title="Tema del cliente">👤 </span>}{o.label} <span className="text-xs text-warning/70">· {o.reels}</span>
-                  </button>
-                ))}
-                {coverage.data && coverage.data.opportunities.length === 0 && (
-                  <span className="text-xs text-muted/80">—</span>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* ── Briefs ────────────────────────────────────────────── */}
-          <div>
-            <h2 className="mb-3 text-xs font-bold uppercase tracking-wider text-muted">
-              {t("sb.briefs")}
-            </h2>
-            {briefs.isLoading ? (
-              <Skeleton className="h-40" />
-            ) : !briefs.data || briefs.data.length === 0 ? (
-              <EmptyState message={t("sb.noBriefs")} />
-            ) : (
-              <div className="flex flex-col gap-3">
-                {briefs.data.map((b) => (
-                  <BriefCard
-                    key={b.id}
-                    brief={b}
-                    onDraft={() => startDraft(b.id)}
-                    drafting={jobs.some((j) => j.kind === "strategy_draft" && (j.status === "queued" || j.status === "running"))}
-                    onSave={() => setStatus.mutate({ id: b.id, status: "saved" })}
-                    onDismiss={() => setStatus.mutate({ id: b.id, status: "dismissed" })}
-                  />
-                ))}
-              </div>
-            )}
+              {ideas.isLoading ? (
+                <Skeleton className="h-48" />
+              ) : visible.length === 0 ? (
+                <EmptyState message={t("plan.empty")} />
+              ) : (
+                <motion.div
+                  variants={staggerContainer}
+                  initial="initial"
+                  animate="animate"
+                  className="flex flex-col gap-3"
+                >
+                  {visible.map((idea) => (
+                    <motion.div key={idea.id} variants={staggerItem}>
+                      <IdeaCard
+                        idea={idea}
+                        onSave={() => setStatus.mutate({ id: idea.id, status: "saved" })}
+                        onDismiss={() => setStatus.mutate({ id: idea.id, status: "dismissed" })}
+                      />
+                    </motion.div>
+                  ))}
+                </motion.div>
+              )}
+            </section>
           </div>
         </div>
       </div>
-    </div>
     </PageTransition>
   );
 }
 
-const COVERAGE_BADGE: Record<string, string> = {
-  covered: "bg-success/10 text-success",
-  partial: "bg-secondary/10 text-secondary",
-  gap: "bg-warning/10 text-warning",
-};
-
-function BriefCard({
-  brief,
-  onDraft,
-  drafting,
+function IdeaCard({
+  idea,
   onSave,
   onDismiss,
 }: {
-  brief: StrategyBrief;
-  onDraft: () => void;
-  drafting: boolean;
+  idea: ContentIdea;
   onSave: () => void;
   onDismiss: () => void;
 }) {
   const { t } = useTranslation();
-  const [tab, setTab] = useState<"brief" | "draft">("brief");
+  const copy = () =>
+    navigator.clipboard?.writeText(
+      `${idea.argument_it}\n\n${t("plan.hook")}: ${idea.hook_it}\n` +
+        `${t("plan.angle")}: ${idea.angle_it}\n${t("plan.why")}: ${idea.rationale_it}`
+    );
 
   return (
-    <div className="rounded-xl border border-border bg-surface p-4 shadow-card">
+    <div className="rounded-2xl border border-border bg-surface p-4 shadow-card">
       <div className="mb-2 flex flex-wrap items-center gap-2">
-        <Badge className={COVERAGE_BADGE[brief.coverage]}>{t(`sb.cov.${brief.coverage}`)}</Badge>
-        {brief.status === "saved" && <Badge className="bg-success/10 text-success">{t("sb.saved")}</Badge>}
-        {(tab === "draft" ? brief.draft_model : brief.brief_model) && (
-          <Badge className="bg-white text-muted">
-            🤖 {tab === "draft" ? brief.draft_model : brief.brief_model}
+        {idea.is_gap && <Badge className="bg-warning/10 text-warning">{t("plan.gap")}</Badge>}
+        {idea.content_format && (
+          <Badge className="bg-white text-secondary">
+            {idea.content_format.replace("_", " ")}
           </Badge>
         )}
-        <span className="text-xs font-semibold text-muted">
-          {t("sb.mSources", { m: brief.medyca_sources.length, c: brief.competitor_sources.length })}
-        </span>
+        {idea.status === "saved" && (
+          <Badge className="bg-success/10 text-success">{t("plan.kept")}</Badge>
+        )}
       </div>
-      <h3 className="text-base font-bold text-heading">{brief.input_text}</h3>
 
-      {brief.draft_md && (
-        <div className="mt-2 inline-flex rounded-full border border-border bg-white p-0.5">
-          <TabBtn active={tab === "brief"} onClick={() => setTab("brief")}>{t("sb.tabBrief")}</TabBtn>
-          <TabBtn active={tab === "draft"} onClick={() => setTab("draft")}>{t("sb.tabDraft")}</TabBtn>
+      <h3 className="text-base font-bold text-heading">{idea.argument_it}</h3>
+
+      {idea.hook_it && (
+        <div className="mt-3 rounded-xl border-l-2 border-secondary bg-white p-3">
+          <div className="text-[10px] font-bold uppercase tracking-wider text-muted">
+            {t("plan.hook")}
+          </div>
+          <p className="mt-0.5 text-sm italic text-navy">“{idea.hook_it}”</p>
         </div>
       )}
 
-      <div className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-navy">
-        {tab === "draft" && brief.draft_md ? brief.draft_md : brief.brief_md}
-      </div>
+      {idea.angle_it && (
+        <p className="mt-3 text-sm text-navy">
+          <span className="font-bold">{t("plan.angle")}:</span> {idea.angle_it}
+        </p>
+      )}
+      {idea.rationale_it && (
+        <p className="mt-1.5 text-sm text-muted">
+          <span className="font-bold">{t("plan.why")}:</span> {idea.rationale_it}
+        </p>
+      )}
 
-      {/* sources */}
-      {(brief.medyca_sources.length > 0 || brief.competitor_sources.length > 0) && (
+      {idea.source_refs?.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-1.5">
-          {brief.medyca_sources.map((s, i) => (
-            <a key={`m${i}`} href={s.url} target="_blank" rel="noreferrer">
-              <Badge className="bg-success/10 text-success">
-                {s.kind === "blog" ? "📄" : "🎬"} {s.title.slice(0, 32)}{s.weight ? ` · ${s.weight}×` : ""}
-              </Badge>
-            </a>
-          ))}
-          {brief.competitor_sources.map((s, i) => (
-            <a key={`c${i}`} href={s.url} target="_blank" rel="noreferrer">
-              <Badge className="bg-warning/10 text-warning">🏷 {s.title.slice(0, 30)}</Badge>
-            </a>
+          {idea.source_refs.map((s, i) => (
+            <Badge
+              key={i}
+              className={
+                s.kind === "competitor"
+                  ? "bg-warning/10 text-warning"
+                  : "bg-success/10 text-success"
+              }
+            >
+              {s.kind === "blog" ? "📄" : s.kind === "competitor" ? "🏷" : "🎬"}{" "}
+              {s.title.slice(0, 38)}
+            </Badge>
           ))}
         </div>
       )}
 
       <div className="mt-3 flex flex-wrap gap-2">
-        {!brief.draft_md && (
-          <Button variant="secondary" onClick={onDraft} loading={drafting}>
-            ✍️ {t("sb.genDraft")}
-          </Button>
-        )}
-        <Button variant="secondary" onClick={() => navigator.clipboard?.writeText(tab === "draft" ? brief.draft_md : brief.brief_md)}>
-          📋 {t("sb.copy")}
-        </Button>
-        <Button variant="ghost" onClick={onSave}>⭐ {t("sb.save")}</Button>
-        <Button variant="ghost" onClick={onDismiss}>✕ {t("sb.dismiss")}</Button>
+        <Button variant="secondary" onClick={copy}>📋 {t("plan.copy")}</Button>
+        <Button variant="ghost" onClick={onSave}>⭐ {t("plan.save")}</Button>
+        <Button variant="ghost" onClick={onDismiss}>✕ {t("plan.dismiss")}</Button>
       </div>
     </div>
-  );
-}
-
-function TabBtn({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
-  return (
-    <button
-      onClick={onClick}
-      className={"rounded-full px-3 py-1 text-xs font-semibold transition " + (active ? "bg-secondary text-white" : "text-muted hover:text-navy")}
-    >
-      {children}
-    </button>
   );
 }

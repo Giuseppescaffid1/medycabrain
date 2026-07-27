@@ -41,28 +41,32 @@ def _embed_query(text: str) -> np.ndarray:
     return np.asarray(v, dtype=np.float32)
 
 
-def _load_index() -> list[dict]:
-    """Gather all embedded knowledge-bank items into a flat list."""
+def _load_index(scope: str = "all") -> list[dict]:
+    """Every embedded item the chat can answer from.
+
+    `scope`: "medyca" (own content only), "competitor", or "all". Competitor
+    reels carry their account, because "who said this" is half the answer when
+    the client compares themselves to the market.
+    """
     items = []
-    for d in KnowledgeDocument.objects.filter(is_active=True).exclude(embedding=[]):
-        items.append({
-            "kind": "blog",
-            "id": d.id,
-            "title": d.title,
-            "url": d.source_url,
-            "summary": d.summary_it,
-            "text": d.content_text,
-            "topics": d.topics,
-            "vec": np.asarray(d.embedding, dtype=np.float32),
-        })
-    # Owned reels (their own content), if scraped + embedded
-    owned = (
-        Reel.objects.filter(account__owner_type="owned", is_active=True,
+    want_owned = scope in ("all", "medyca", "owned")
+    want_comp = scope in ("all", "competitor")
+    if want_owned:
+        for d in KnowledgeDocument.objects.filter(is_active=True).exclude(embedding=[]):
+            items.append({
+                "kind": "blog", "owner": "owned", "id": d.id, "title": d.title,
+                "url": d.source_url, "summary": d.summary_it,
+                "text": d.content_text, "topics": d.topics,
+                "vec": np.asarray(d.embedding, dtype=np.float32),
+            })
+    owners = ([] if not want_owned else ["owned"]) + ([] if not want_comp else ["competitor"])
+    reels = (
+        Reel.objects.filter(account__owner_type__in=owners, is_active=True,
                             enrich_status=DONE)
         .exclude(embedding__isnull=True)
         .select_related("account", "enrichment", "transcript", "embedding")
     )
-    for r in owned:
+    for r in reels:
         emb = getattr(r, "embedding", None)
         if not emb or not emb.vector:
             continue
@@ -70,10 +74,12 @@ def _load_index() -> list[dict]:
         tr = getattr(r, "transcript", None)
         items.append({
             "kind": "reel",
+            "owner": r.account.owner_type,
             "id": r.id,
-            "title": (enr.summary_it if enr else "") or r.caption[:80],
+            "title": (enr.primary_topic if enr else "") or (enr.summary_it if enr else "") or r.caption[:80],
             "url": f"https://www.instagram.com/reel/{r.shortcode}/",
-            "summary": enr.summary_it if enr else "",
+            "summary": (enr.summary_it if enr else ""),
+            "account": r.account.username,
             "text": (tr.text if tr else "") or r.caption,
             "topics": enr.topics if enr else [],
             "vec": np.asarray(emb.vector, dtype=np.float32),
@@ -119,7 +125,7 @@ def _lexical_score(query: str, text: str) -> float:
     return sum(1 for w in words if w in hay) / len(words)
 
 
-def semantic_search(query: str, top_k: int = 6) -> list[dict]:
+def semantic_search(query: str, top_k: int = 6, scope: str = "all") -> list[dict]:
     """Hybrid retrieval over the knowledge bank.
 
     Documents are ranked by embedding similarity blended with verbatim
@@ -127,7 +133,7 @@ def semantic_search(query: str, top_k: int = 6) -> list[dict]:
     selected so the generator receives the text that answers the question,
     not the opening lines of the article.
     """
-    index = _load_index()
+    index = _load_index(scope)
     if not index:
         return []
     q = _embed_query(query)
@@ -145,7 +151,9 @@ def semantic_search(query: str, top_k: int = 6) -> list[dict]:
         it = index[i]
         passage = _best_passage(it["text"] or it["summary"], q) or _snippet(it["text"])
         out.append({
-            "kind": it["kind"], "id": it["id"], "title": it["title"],
+            "kind": it["kind"], "owner": it.get("owner", "owned"),
+            "account": it.get("account", ""),
+            "id": it["id"], "title": it["title"],
             "url": it["url"], "summary": it["summary"], "topics": it["topics"],
             "snippet": passage,
             "score": round(float(score), 3),
@@ -178,7 +186,10 @@ ANSWER_SYSTEM = (
     "errore.\n"
     "- Se le fonti non rispondono, dillo apertamente e indica cosa manca. "
     "Una risposta mancante è preferibile a una inventata.\n"
-    "- Se le fonti si contraddicono, segnalalo invece di sceglierne una."
+    "- Se le fonti si contraddicono, segnalalo invece di sceglierne una.\n"
+    "- Ogni fonte indica se \u00e8 di Medyca o di un COMPETITOR: distinguilo "
+    "sempre nella risposta. Confondere ci\u00f2 che dice Medyca con ci\u00f2 che dicono "
+    "gli altri \u00e8 l'errore peggiore che puoi fare qui."
 )
 ANSWER_USER = """\
 DOMANDA:
@@ -193,7 +204,8 @@ in modo completo, parziale o nullo.
 Scrivi ESCLUSIVAMENTE in lingua italiana."""
 
 
-def answer(query: str, top_k: int = 8) -> dict:
+def answer(query: str, top_k: int = 8, scope: str = "all",
+           history: list | None = None) -> dict:
     """RAG over the knowledge bank.
 
     Retrieval is hybrid (embeddings + verbatim keywords) and sends the
@@ -201,22 +213,34 @@ def answer(query: str, top_k: int = 8) -> dict:
     the reasoning model — the same one that analyses transcripts — because
     reading several sources and refusing to over-claim is judgement work.
     """
-    hits = semantic_search(query, top_k=top_k)
+    hits = semantic_search(query, top_k=top_k, scope=scope)
     if not hits:
         return {"answer": "La knowledge bank è ancora vuota o non indicizzata.",
                 "sources": [], "model": ""}
+    def _label(h):
+        who = "Medyca" if h.get("owner") != "competitor" else f"COMPETITOR @{h.get('account', '')}"
+        what = "articolo blog" if h["kind"] == "blog" else "reel"
+        return f"{what}, {who}"
+
     sources_txt = "\n\n".join(
-        f"[{i+1}] {h['title']} ({'articolo blog' if h['kind'] == 'blog' else 'reel'})\n"
-        f"{h['snippet']}"
+        f"[{i+1}] {h['title']} ({_label(h)})\n{h['snippet']}"
         for i, h in enumerate(hits)
     )
+    # A few turns of memory: enough for follow-ups ("e sui competitor?")
+    # without letting an old topic drag the retrieval off course.
+    convo = ""
+    for turn in (history or [])[-6:]:
+        role = "UTENTE" if turn.get("role") == "user" else "ASSISTENTE"
+        convo += f"{role}: {str(turn.get('content', ''))[:500]}\n"
+    if convo:
+        convo = f"CONVERSAZIONE FINORA:\n{convo}\n"
     if not client.available():
         return {"answer": "(LLM non disponibile — mostro solo le fonti recuperate.)",
                 "sources": hits, "model": ""}
     try:
         text = client.chat(
             ANSWER_SYSTEM,
-            ANSWER_USER.format(query=query, sources=sources_txt),
+            convo + ANSWER_USER.format(query=query, sources=sources_txt),
             max_tokens=900, temperature=0.2, priority=True, timeout=600,
             model=client.model_for("analysis"),
         )

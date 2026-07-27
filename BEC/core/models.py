@@ -405,6 +405,9 @@ class ContentIdea(models.Model):
     argument_it = models.CharField(max_length=300)   # the content argument/topic
     rationale_it = models.TextField(blank=True, default="")  # why it's worth doing
     angle_it = models.TextField(blank=True, default="")      # concrete content angle
+    hook_it = models.CharField(max_length=400, blank=True, default="")  # opening line
+    content_format = models.CharField(max_length=32, blank=True, default="")
+    scope = models.CharField(max_length=16, default="owned")  # owned | competitor
     is_gap = models.BooleanField(default=False)              # competitors cover, Medyca doesn't
     source_refs = models.JSONField(default=list, blank=True)  # [{kind,title,url}]
     status = models.CharField(max_length=16, choices=STATUS_CHOICES, default="proposed")
@@ -430,6 +433,8 @@ class Job(models.Model):
     KIND_CHOICES = [
         ("ideation", "Ideation"), ("pipeline", "Pipeline"), ("blog", "Blog"),
         ("strategy", "Strategy"), ("strategy_draft", "Strategy draft"),
+    
+        ("editorial", "editorial"),
     ]
     STATUS_CHOICES = [
         ("queued", "Queued"),

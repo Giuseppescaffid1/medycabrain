@@ -13,14 +13,16 @@
     "clusters": "Cluster",
     "secondBrain": "Second Brain",
     "brainMap": "Mappa (DAG)",
-    "knowledgeBank": "Knowledge Bank",
+    "knowledgeBank": "Chat sui contenuti",
     "workspace": "Workspace",
     "accounts": "Account",
     "logout": "Esci",
     "menu": "Apri menu",
     "closeMenu": "Chiudi menu",
     "documentation": "Documentazione",
-    "status": "Stato pipeline"
+    "status": "Stato pipeline",
+    "plan": "Piano editoriale",
+    "manage": "Gestione"
   },
   "scope": {
     "medyca": "Medyca",
@@ -110,7 +112,22 @@
     "relevance": "rilevanza",
     "noResults": "Nessun risultato.",
     "cited": "citata nella risposta",
-    "askIntro": "Fai una domanda e ottieni una risposta costruita solo sui contenuti di Medyca, con le fonti citate. Le altre schede servono per sfogliare il materiale grezzo."
+    "askIntro": "Fai una domanda e ottieni una risposta costruita solo sui contenuti di Medyca, con le fonti citate. Le altre schede servono per sfogliare il materiale grezzo.",
+    "chatTitle": "Chat sui contenuti",
+    "chatSubtitle": "Chiedi qualsiasi cosa ai contenuti di Medyca e dei competitor. Risponde citando le fonti, senza aggiungere nulla di esterno.",
+    "scopeAll": "Tutti",
+    "scopeMedyca": "Solo Medyca",
+    "scopeCompetitor": "Solo competitor",
+    "send": "Invia",
+    "placeholder": "Scrivi una domanda…",
+    "reading": "Sto leggendo le fonti…",
+    "suggest": "Prova a chiedere",
+    "suggestions": [
+      "Cosa ho già detto sugli ormoni bioidentici?",
+      "Di cosa parlano i competitor che io non tratto?",
+      "Quali sono i miei contenuti che hanno funzionato meglio e perché?"
+    ],
+    "clear": "Nuova conversazione"
   },
   "jobs": {
     "ideation": "Generazione idee di contenuto",
@@ -410,5 +427,27 @@
     "brainSub": "coperto vs da coprire",
     "ui": "La tua piattaforma",
     "uiSub": "libreria, analytics, brief"
+  },
+  "plan": {
+    "title": "Piano editoriale",
+    "subtitle": "Contenuti pronti da girare, costruiti su ciò che hai già pubblicato e su ciò che dicono i competitor.",
+    "generate": "Genera un piano",
+    "generating": "Costruisco il piano…",
+    "n": "Quanti contenuti",
+    "themeLabel": "Su un tema specifico (facoltativo)",
+    "themePlaceholder": "Es. osteoporosi, tiroide, andropausa…",
+    "empty": "Nessun piano ancora. Generane uno qui sopra, oppure parti da un tema della mappa di copertura.",
+    "hook": "Gancio d'apertura",
+    "angle": "Angolo",
+    "why": "Perché ora",
+    "sources": "Fonti",
+    "gap": "Tema scoperto",
+    "format": "Formato",
+    "copy": "Copia",
+    "export": "Esporta il piano",
+    "save": "Tieni",
+    "dismiss": "Scarta",
+    "kept": "Tenuto",
+    "briefsLegacy": "Brief precedenti (sola lettura)"
   }
 }

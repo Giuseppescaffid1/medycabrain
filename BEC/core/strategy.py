@@ -153,16 +153,12 @@ def analyze(input_text: str, source_kind: str = "input", job=None,
         medyca=_material(medyca_hits, with_weight=True),
         competitor=_material(comp_hits),
     )
-    # Stream: the progress bar advances with the text instead of sitting at a
-    # frozen 55% for minutes, and a slow-but-working generation is not killed.
-    def _tick(partial: str):
-        if job:
-            pct = min(90, 55 + len(partial) // 60)
-            job.set_progress(pct, f"Scrivo il brief… ({len(partial)} caratteri)")
-
+    # The remote provider does not stream, so on_token would never fire and the
+    # bar would sit at a frozen 55% for the whole generation — which reads as a
+    # crash. Say what is happening instead of faking a percentage.
+    progress(60, "Scrivo il piano… di solito 30-60 secondi")
     brief_md = client.chat(STRATEGY_SYSTEM, user, max_tokens=900, timeout=900,
-                           on_token=_tick, priority=True,
-                           model=client.model_for("reasoning"))
+                           priority=True, model=client.model_for("reasoning"))
 
     progress(90, "Salvo il brief…")
     brief = StrategyBrief.objects.create(
@@ -196,14 +192,8 @@ def generate_draft(brief_id: int, job=None) -> dict:
     progress(30, "Scrivo la bozza completa…")
     medyca = "\n".join(f"- {s['title']}" for s in brief.medyca_sources) or "(nessuna)"
     user = DRAFT_USER.format(topic=brief.input_text, brief=brief.brief_md[:3000], medyca=medyca)
-    def _tick_draft(partial: str):
-        if job:
-            pct = min(92, 40 + len(partial) // 60)
-            job.set_progress(pct, f"Scrivo la bozza… ({len(partial)} caratteri)")
-
     draft = client.chat(DRAFT_SYSTEM, user, max_tokens=1200, timeout=900,
-                        on_token=_tick_draft, priority=True,
-                        model=client.model_for("reasoning"))
+                        priority=True, model=client.model_for("reasoning"))
     brief.draft_md = (draft or "").strip()
     brief.draft_model = client.last_model_used()[:64]
     brief.save(update_fields=["draft_md", "draft_model"])

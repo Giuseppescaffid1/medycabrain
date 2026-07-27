@@ -2,7 +2,7 @@ import { apiClient } from "./client";
 
 export interface Job {
   id: number;
-  kind: "ideation" | "pipeline" | "blog" | "strategy" | "strategy_draft";
+  kind: "ideation" | "pipeline" | "blog" | "strategy" | "strategy_draft" | "editorial";
   status: "queued" | "running" | "done" | "failed";
   progress: number;
   message: string;

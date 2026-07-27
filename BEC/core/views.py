@@ -1,5 +1,6 @@
 import logging
 import os
+from pathlib import Path
 
 from django.contrib.auth import authenticate
 from django.contrib.postgres.search import SearchQuery, SearchVector
@@ -354,9 +355,15 @@ class KnowledgeAskView(APIView):
         query = (request.data.get("query") or request.data.get("q") or "").strip()
         if not query:
             return Response({"detail": "query richiesta."}, status=400)
-        top_k = int(request.data.get("top_k", 6))
+        top_k = max(3, min(int(request.data.get("top_k", 8)), 12))
+        scope = (request.data.get("scope") or "all").lower()
+        if scope not in ("all", "medyca", "competitor"):
+            scope = "all"
+        history = request.data.get("history") or []
+        if not isinstance(history, list):
+            history = []
         from core.knowledge import answer
-        return Response(answer(query, top_k=top_k))
+        return Response(answer(query, top_k=top_k, scope=scope, history=history))
 
 
 class ContentIdeaViewSet(viewsets.ModelViewSet):
@@ -375,6 +382,22 @@ class ContentIdeaViewSet(viewsets.ModelViewSet):
         else:
             qs = qs.exclude(status="dismissed")
         return qs
+
+    @action(detail=False, methods=["post"], url_path="plan")
+    def plan(self, request):
+        """Build an editorial plan: n contents ready to film, each grounded."""
+        n = max(3, min(int(request.data.get("n", 6)), 12))
+        theme = (request.data.get("theme") or "").strip()[:200]
+        running = _existing_job("editorial", {"theme": theme})
+        if running:
+            return Response(serializers.JobSerializer(running).data,
+                            status=status.HTTP_202_ACCEPTED)
+        job = models.Job.objects.create(
+            kind="editorial", status="queued", params={"n": n, "theme": theme},
+            message=f"In coda: piano editoriale{' su ' + theme if theme else ''}")
+        _spawn_job(job.id)
+        return Response(serializers.JobSerializer(job).data,
+                        status=status.HTTP_202_ACCEPTED)
 
     @action(detail=False, methods=["post"], url_path="generate")
     def generate(self, request):
@@ -395,12 +418,17 @@ STALE_AFTER = 25 * 60  # a job with no progress for 25 min is dead, not slow
 
 
 def _reap_stale_jobs():
-    """Fail jobs whose worker died or hung, so the UI never shows a bar that
-    can no longer move (and so dedupe doesn't block on a ghost)."""
+    """Fail jobs whose worker died, so the UI never shows a bar that can no
+    longer move. A worker killed by a signal (a backend restart kills the whole
+    cgroup) never gets to write its own failure, so someone has to."""
     from django.utils import timezone
     cutoff = timezone.now() - timezone.timedelta(seconds=STALE_AFTER)
     models.Job.objects.filter(status__in=ACTIVE, updated_at__lt=cutoff).update(
-        status="failed", message="Interrotto: nessun avanzamento")
+        status="failed",
+        message="Interrotto: nessun avanzamento",
+        error="il processo è morto senza segnalare l'errore (riavvio o kill)",
+        finished_at=timezone.now(),
+    )
 
 
 def _existing_job(kind: str, params: dict):
@@ -424,12 +452,17 @@ def _spawn_job(job_id: int):
 
     from django.conf import settings
 
+    # Never DEVNULL: a job that dies leaves no trace, and every incident
+    # becomes unfalsifiable. One file per job, kept next to the other logs.
+    log_dir = Path(settings.BASE_DIR) / "logs" / "jobs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+    log_file = open(log_dir / f"job-{job_id}.log", "ab", buffering=0)
     subprocess.Popen(
         [sys.executable, "manage.py", "run_job", "--job", str(job_id)],
         cwd=str(settings.BASE_DIR),
         env={**os.environ, "PYTHONUNBUFFERED": "1"},
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+        stdout=log_file,
+        stderr=subprocess.STDOUT,
         start_new_session=True,
     )
 
@@ -775,6 +808,9 @@ class JobViewSet(viewsets.ReadOnlyModelViewSet):
     def get_queryset(self):
         qs = models.Job.objects.all()
         if self.request.query_params.get("active"):
+            # The UI polls this every few seconds; it is the only place that
+            # reliably runs, so it is where ghosts get cleaned up.
+            _reap_stale_jobs()
             qs = qs.filter(status__in=["queued", "running"])
         elif self.action == "list":
             # recent jobs only (avoid unbounded list); retrieve stays unfiltered

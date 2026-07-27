@@ -1,4 +1,5 @@
 import { apiClient } from "./client";
+import type { Job } from "./jobs";
 
 export interface SourceRef {
   kind: string;
@@ -7,6 +8,9 @@ export interface SourceRef {
 }
 
 export interface ContentIdea {
+  hook_it: string;
+  content_format: string;
+  scope: string;
   id: number;
   argument_it: string;
   rationale_it: string;
@@ -68,5 +72,11 @@ export async function updateBlogDraftStatus(
   status: "saved" | "dismissed" | "proposed"
 ): Promise<BlogDraft> {
   const { data } = await apiClient.patch<BlogDraft>(`/second-brain/blog-drafts/${id}/`, { status });
+  return data;
+}
+
+/** Kick an editorial-plan job: n contents, optionally focused on one theme. */
+export async function startPlanJob(n = 6, theme = ""): Promise<Job> {
+  const { data } = await apiClient.post<Job>("/second-brain/ideas/plan/", { n, theme });
   return data;
 }

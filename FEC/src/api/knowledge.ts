@@ -15,6 +15,8 @@ export interface KnowledgeDoc {
 }
 
 export interface KnowledgeHit {
+  owner?: "owned" | "competitor";
+  account?: string;
   cited?: boolean;
   keyword_match?: number;
   kind: "blog" | "reel";
@@ -49,11 +51,22 @@ export async function searchKnowledge(query: string, topK = 6): Promise<Knowledg
   return data.results;
 }
 
-export async function askKnowledge(query: string, topK = 5): Promise<AskResult> {
-  // RAG runs a local LLM on CPU — can take a couple of minutes.
+export interface AskOptions {
+  scope?: "all" | "medyca" | "competitor";
+  history?: { role: "user" | "assistant"; content: string }[];
+  topK?: number;
+}
+
+export async function askKnowledge(query: string, opts: AskOptions = {}): Promise<AskResult> {
+  // No streaming: the whole answer arrives at once, in roughly 30s.
   const { data } = await apiClient.post<AskResult>(
     "/knowledge/ask/",
-    { query, top_k: topK },
+    {
+      query,
+      top_k: opts.topK ?? 8,
+      scope: opts.scope ?? "all",
+      history: opts.history ?? [],
+    },
     { timeout: 300000 }
   );
   return data;

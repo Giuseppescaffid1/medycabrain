@@ -24,6 +24,7 @@ interface JobsState {
   startClusterBlog: (clusterId: number) => Promise<void>;
   startStrategy: (input: string, sourceKind?: string) => Promise<void>;
   startDraft: (briefId: number) => Promise<void>;
+  startPlan: (n?: number, theme?: string) => Promise<void>;
   dismiss: (id: number) => void;
 }
 
@@ -61,7 +62,8 @@ export function JobsProvider({ children }: { children: ReactNode }) {
           const final = await getJob(j.id);
           finishedAt.current[j.id] = Date.now();
           setJobs((p) => p.map((x) => (x.id === j.id ? final : x)));
-          if (final.kind === "ideation") qc.invalidateQueries({ queryKey: ["ideas"] });
+          if (final.kind === "ideation" || final.kind === "editorial")
+            qc.invalidateQueries({ queryKey: ["ideas"] });
           if (final.kind === "blog") qc.invalidateQueries({ queryKey: ["blog-drafts"] });
           if (final.kind === "strategy" || final.kind === "strategy_draft")
             qc.invalidateQueries({ queryKey: ["briefs"] });
@@ -103,6 +105,11 @@ export function JobsProvider({ children }: { children: ReactNode }) {
     poll();
   }, [poll]);
 
+  const startPlan = useCallback(async (n = 6, theme = "") => {
+    const { startPlanJob } = await import("../api/secondBrain");
+    registerJob(await startPlanJob(n, theme));
+  }, [registerJob]);
+
   const startIdeation = useCallback(async (n = 8) => {
     registerJob(await startIdeationJob(n));
   }, [registerJob]);
@@ -125,7 +132,8 @@ export function JobsProvider({ children }: { children: ReactNode }) {
 
   return (
     <JobsContext.Provider
-      value={{ jobs, startIdeation, startClusterBlog, startStrategy, startDraft, dismiss }}
+      value={{ jobs, startIdeation, startClusterBlog, startStrategy, startDraft,
+        startPlan, dismiss }}
     >
       {children}
     </JobsContext.Provider>

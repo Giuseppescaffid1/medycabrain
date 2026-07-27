@@ -155,9 +155,7 @@ class StrategyBriefSerializer(serializers.ModelSerializer):
         model = models.StrategyBrief
         fields = ["id", "input_text", "source_kind", "coverage", "brief_md",
                   "draft_md", "medyca_sources", "competitor_sources", "metrics",
-                  "status", "created_at"
-            "brief_model", "draft_model",
-        ]
+                  "status", "created_at", "brief_model", "draft_model"]
         read_only_fields = ["input_text", "source_kind", "coverage", "brief_md",
                             "draft_md", "medyca_sources", "competitor_sources",
                             "metrics", "created_at"]
@@ -203,6 +201,7 @@ class ContentIdeaSerializer(serializers.ModelSerializer):
         fields = [
             "id", "argument_it", "rationale_it", "angle_it", "is_gap",
             "source_refs", "status", "batch", "created_at",
+            "hook_it", "content_format", "scope",
         ]
         read_only_fields = [
             "argument_it", "rationale_it", "angle_it", "is_gap",
