@@ -185,16 +185,20 @@ export function NavContent({ onNavigate }: { onNavigate?: () => void }) {
   );
 }
 
+/* A div, not an <aside>. Ad blockers carry cosmetic filters that hide <aside>
+   on sight, because on ordinary sites it holds banners — one of them hid this
+   whole menu, and only in a profile with extensions on. The real navigation
+   landmark is the <nav> inside NavContent, so nothing is lost. */
 export function Sidebar({ className }: { className?: string }) {
   return (
-    <aside
+    <div
       className={cn(
         "h-full w-64 shrink-0 flex-col overflow-y-auto border-r border-border bg-ground p-3",
         className ?? "flex"
       )}
     >
       <NavContent />
-    </aside>
+    </div>
   );
 }
 
@@ -232,7 +236,7 @@ export function MobileDrawer({ open, onClose }: { open: boolean; onClose: () => 
             className="fixed inset-0 z-40 bg-navy/30 lg:hidden"
             aria-hidden
           />
-          <motion.aside
+          <motion.div
             key="drawer"
             initial={{ x: "-100%" }}
             animate={{ x: 0 }}
@@ -253,7 +257,7 @@ export function MobileDrawer({ open, onClose }: { open: boolean; onClose: () => 
               </svg>
             </button>
             <NavContent onNavigate={onClose} />
-          </motion.aside>
+          </motion.div>
         </>
       )}
     </AnimatePresence>
