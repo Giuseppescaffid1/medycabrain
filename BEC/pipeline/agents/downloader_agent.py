@@ -324,6 +324,7 @@ def run(ctx) -> dict:
 
     done = failed = skipped = 0
     throttled_streak = 0
+    throttled_total = 0
     stopped_early = False
     spent_api = False
     deferred = 0
@@ -351,12 +352,20 @@ def run(ctx) -> dict:
             # would fail too (measured: once it starts, 45/45 failed). Stop, and
             # do NOT charge the reel an attempt — it did nothing wrong.
             throttled_streak += 1
+            throttled_total += 1
             reel.media_status = PENDING
             reel.last_error = f"quota Instagram esaurita: {exc}"[:500]
             reel.save(update_fields=["media_status", "last_error"])
             logger.warning("[downloader] quota esaurita (%s consecutivi) su %s",
                            throttled_streak, reel.shortcode)
-            if throttled_streak >= _THROTTLE_STREAK:
+            # Total, not consecutive. A run alternates between reels holding a
+            # cached url (which succeed) and reels needing the API (which do
+            # not), and every success reset the streak — so it never reached
+            # three, never stopped trying, and paid the 20-40s pacing sleep on
+            # every doomed call. Measured: 2 reels/min instead of ~12.
+            # The quota belongs to the window, not to a run of bad luck: once
+            # it has gone three times, it is gone.
+            if throttled_streak >= _THROTTLE_STREAK or throttled_total >= _THROTTLE_STREAK:
                 stopped_early = True
                 logger.warning("[downloader] quota Instagram esaurita: proseguo solo "
                                "con i reel che hanno gia un url utilizzabile")
