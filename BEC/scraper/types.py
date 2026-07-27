@@ -22,6 +22,15 @@ class IGBlocked(Exception):
     """
 
 
+class IGThrottled(Exception):
+    """Instagram answered the HTML app-shell with a 200 instead of JSON.
+
+    Soft rate-limiting on the private API: the account/IP has spent its quota
+    for the window. Not a schema change, and not the fault of the reel being
+    fetched — retrying inside the same run only deepens the block.
+    """
+
+
 class IGSchemaChanged(Exception):
     """HTTP 200 but the expected JSON keys are missing.
 

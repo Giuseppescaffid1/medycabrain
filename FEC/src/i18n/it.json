@@ -290,6 +290,14 @@
       "hint": "File draw.io con due pagine: una panoramica per la presentazione e il dettaglio tecnico.",
       "drawio": "Scarica lo schema (.drawio)",
       "open": "Apri diagrams.net"
+    },
+    "limits": {
+      "title": "Limiti noti",
+      "items": [
+        "Instagram limita quante schede video possiamo chiedere al giorno da un singolo server: la raccolta di grandi arretrati procede a scaglioni, non tutta in una volta.",
+        "Vengono letti i contenuti dalla scheda Reel; i post video normali e i caroselli non sono inclusi.",
+        "Il monitoraggio di siti e blog riguarda per ora solo medyca.it, non i competitor."
+      ]
     }
   },
   "quality": {

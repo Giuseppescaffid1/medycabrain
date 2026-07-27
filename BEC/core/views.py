@@ -522,6 +522,18 @@ class PipelineStatusView(APIView):
             {"key": "enrich", "label": "Analisi LLM", **stage("enrich_status")},
             {"key": "arguments", "label": "Affermazioni", **stage("argument_status")},
         ]
+        # How much of the queue can skip the throttled API call: the single
+        # number that says whether the download bottleneck is dissolving.
+        pending = reels.filter(media_status="pending")
+        stages.append({
+            "key": "cached_urls", "label": "URL video in cache",
+            "done": pending.exclude(video_url="").count(),
+            "pending": pending.filter(video_url="").count(),
+            "failed": 0, "total": pending.count(),
+            "pct": round(100 * pending.exclude(video_url="").count() / pending.count())
+                   if pending.count() else 100,
+        })
+
         embedded = models.ReelEmbedding.objects.count()
         stages.append({"key": "embed", "label": "Embedding", "done": embedded,
                        "pending": max(0, total - embedded), "failed": 0,

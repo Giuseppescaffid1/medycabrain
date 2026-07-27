@@ -104,6 +104,20 @@ export default function Documentation() {
               </div>
             </section>
 
+            {/* ── Known limits: say it before the client discovers it ── */}
+            <section>
+              <h2 className="mb-3 text-xs font-bold uppercase tracking-wider text-muted">
+                {t("docs.limits.title")}
+              </h2>
+              <ul className="space-y-2">
+                {(t("docs.limits.items", { returnObjects: true }) as string[]).map((l) => (
+                  <li key={l} className="rounded-xl border border-border bg-white p-3 text-sm text-navy shadow-card">
+                    {l}
+                  </li>
+                ))}
+              </ul>
+            </section>
+
             {/* ── Downloads ────────────────────────────────────────── */}
             <section>
               <h2 className="mb-1 text-xs font-bold uppercase tracking-wider text-muted">

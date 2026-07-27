@@ -146,19 +146,33 @@ OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "qwen2.5:7b-instruct-q4_K_M")
 # DeepSeek / Together. ~100-300 tok/s vs ~1-3 tok/s for a 7B on this CPU, so
 # it is tried FIRST whenever a key is present. Ollama stays as the offline
 # backstop. Set FAST_LLM_API_KEY in .env to activate.
-FAST_LLM_API_KEY = os.environ.get("FAST_LLM_API_KEY", "")
-FAST_LLM_BASE_URL = os.environ.get("FAST_LLM_BASE_URL", "https://api.groq.com/openai/v1")
-FAST_LLM_MODEL = os.environ.get("FAST_LLM_MODEL", "llama-3.3-70b-versatile")
+# The LLM layer is provider-agnostic: any OpenAI-compatible endpoint works
+# (Groq, OpenAI, Anthropic-compatible gateways, OpenRouter, a self-hosted
+# proxy). Nothing below names a vendor — swapping provider is a config change,
+# never a code change.
+#
+# Two models, because the two workloads have opposite needs:
+#   BULK      hundreds of structured-extraction calls; cheap and fast wins
+#   REASONING a handful of strategy briefs a day; quality wins
+LLM_BASE_URL = os.environ.get("LLM_BASE_URL", "")
+LLM_API_KEY = os.environ.get("LLM_API_KEY", "")
+LLM_MODEL_BULK = os.environ.get("LLM_MODEL_BULK", "")
+LLM_MODEL_REASONING = os.environ.get("LLM_MODEL_REASONING", "")
+
+FAST_LLM_API_KEY = LLM_API_KEY or os.environ.get("FAST_LLM_API_KEY", "")
+FAST_LLM_BASE_URL = LLM_BASE_URL or os.environ.get("FAST_LLM_BASE_URL", "https://api.groq.com/openai/v1")
+FAST_LLM_MODEL = LLM_MODEL_REASONING or os.environ.get("FAST_LLM_MODEL", "llama-3.3-70b-versatile")
 # Bulk extraction (enrichment, arguments) runs hundreds of calls and would
 # exhaust the big model's daily token budget in one night. A small model is
 # both adequate for structured extraction and has its own, larger budget.
-FAST_LLM_MODEL_BULK = os.environ.get("FAST_LLM_MODEL_BULK", "llama-3.1-8b-instant")
+FAST_LLM_MODEL_BULK = LLM_MODEL_BULK or os.environ.get("FAST_LLM_MODEL_BULK", "llama-3.1-8b-instant")
 # Free tiers cap tokens PER MODEL PER DAY. Reprocessing the whole corpus needs
 # more than any single model's budget, so bulk work walks down this chain:
 # when one model's daily budget is gone we move to the next model's own budget.
 FAST_LLM_MODEL_CHAIN = [
     m.strip() for m in os.environ.get(
         "FAST_LLM_MODEL_CHAIN",
+        "" if LLM_BASE_URL else
         "llama-3.3-70b-versatile,openai/gpt-oss-120b,qwen/qwen3.6-27b,llama-3.1-8b-instant",
     ).split(",") if m.strip()
 ]

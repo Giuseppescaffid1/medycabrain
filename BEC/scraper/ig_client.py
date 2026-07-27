@@ -28,7 +28,7 @@ from typing import Optional
 
 from curl_cffi import requests as curl_requests
 
-from .types import IGBlocked, IGSchemaChanged, ProfileMeta, ReelMeta
+from .types import IGBlocked, IGSchemaChanged, IGThrottled, ProfileMeta, ReelMeta
 
 logger = logging.getLogger(__name__)
 
@@ -85,11 +85,14 @@ def _request(session, method: str, url: str, csrftoken: str = "", **kwargs) -> d
                 try:
                     return resp.json()
                 except json.JSONDecodeError as exc:
+                    head = (resp.text or "")[:400].lstrip().lower()
+                    if head.startswith("<!doctype") or head.startswith("<html"):
+                        raise IGThrottled(f"quota esaurita su {url}") from exc
                     raise IGSchemaChanged(f"non-JSON 200 on {url}: {exc}") from exc
             last_err = f"HTTP {resp.status_code}"
         except IGBlocked:
             raise
-        except IGSchemaChanged:
+        except (IGSchemaChanged, IGThrottled):
             raise
         except Exception as exc:  # noqa: BLE001 — network/JSON
             last_err = repr(exc)

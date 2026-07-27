@@ -16,12 +16,16 @@ from __future__ import annotations
 
 import logging
 import subprocess
+import time
 from pathlib import Path
 
 import requests
 from django.conf import settings
 
+from django.db.models import Case, IntegerField, Value, When
+
 from core.models import DONE, FAILED, PENDING, SKIPPED, Reel
+from scraper.types import IGThrottled
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +34,7 @@ _UA = (
     "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
 )
 _MAX_ATTEMPTS = 3
+_THROTTLE_STREAK = 3  # consecutive quota errors that end a run
 
 
 def _download(url: str, dest: Path) -> None:
@@ -133,6 +138,23 @@ def _fetch_media_details(reel: Reel) -> dict:
     return details
 
 
+def _url_expired(url: str, margin_s: int = 900) -> bool:
+    """True when a signed CDN url is past (or about to pass) its `oe` expiry.
+
+    Instagram signs media urls with `oe=<hex unix ts>`; using one after that
+    returns 403. Without the parameter we cannot tell, so we assume it is
+    still good and let the download attempt decide.
+    """
+    import re as _re
+    m = _re.search(r"[?&]oe=([0-9A-Fa-f]+)", url or "")
+    if not m:
+        return False
+    try:
+        return time.time() + margin_s >= int(m.group(1), 16)
+    except ValueError:
+        return False
+
+
 def _process_one(reel: Reel) -> bool:
     scratch = Path(settings.TMP_DIR)
     scratch.mkdir(parents=True, exist_ok=True)
@@ -142,18 +164,23 @@ def _process_one(reel: Reel) -> bool:
     mp3 = Path(settings.MEDIA_ROOT) / rel_audio
     thumb = Path(settings.MEDIA_ROOT) / rel_thumb
 
-    # Clips nodes lack a usable video_url, so always fetch media details
-    # (this also backfills caption/timestamp/duration/audio).
-    details = _fetch_media_details(reel)
+    # media/info is the throttled endpoint — roughly 35 calls per run before
+    # Instagram starts answering HTML. A cached, unexpired CDN url lets us skip
+    # it entirely: the CDN itself is not rate-limited.
+    if reel.video_url and not _url_expired(reel.video_url):
+        details = {"video_url": reel.video_url, "has_audio": True}
+        logger.debug("[downloader] %s: uso url in cache, nessuna chiamata API", reel.shortcode)
+    else:
+        details = _fetch_media_details(reel)
 
-    # media/info reports has_audio authoritatively; skip the video download
-    # entirely for silent reels (no audio to extract).
     has_audio = details.get("has_audio", True)
     if has_audio:
         video_url = details.get("video_url") or reel.video_url
         try:
             _download(video_url, mp4)
-        except Exception:  # noqa: BLE001 — likely expired URL
+        except Exception:  # noqa: BLE001 — expired or revoked url
+            # Targeted renewal, once. Previously this fired on every download
+            # error and doubled the API quota a failing reel consumed.
             video_url = _fetch_media_details(reel).get("video_url", "")
             if not video_url:
                 raise
@@ -198,7 +225,15 @@ def run(ctx) -> dict:
     dl_delay = ScraperConfig.get("download_delay_s", {"value": 4})
     dl_delay = dl_delay.get("value", 4) if isinstance(dl_delay, dict) else dl_delay
 
-    qs = Reel.objects.filter(media_status=PENDING, is_active=True).select_related("account")
+    # Priority: Medyca's own content first, then each competitor's best
+    # performing reels. A 122-reel account must not starve the other twelve.
+    qs = (
+        Reel.objects.filter(media_status=PENDING, is_active=True)
+        .select_related("account")
+        .annotate(is_owned=Case(When(account__owner_type="owned", then=Value(0)),
+                                default=Value(1), output_field=IntegerField()))
+        .order_by("is_owned", "-view_count", "-posted_at")
+    )
     # Instagram throttles media/info after a few hundred rapid calls: it starts
     # answering HTML with a 200, which is what turned a 394-reel batch into 379
     # failures. Cap each run and let the backlog drain across scheduled runs.
@@ -209,13 +244,31 @@ def run(ctx) -> dict:
     elif cap:
         qs = qs[:cap]
     done = failed = skipped = 0
+    throttled_streak = 0
+    stopped_early = False
     for i, reel in enumerate(qs):
         if i > 0:
             time.sleep(random.uniform(dl_delay, dl_delay * 2))  # media/info is an API call
         try:
             _process_one(reel)
             done += 1
+            throttled_streak = 0
+        except IGThrottled as exc:
+            # The quota for this window is gone: every further call in this run
+            # would fail too (measured: once it starts, 45/45 failed). Stop, and
+            # do NOT charge the reel an attempt — it did nothing wrong.
+            throttled_streak += 1
+            reel.media_status = PENDING
+            reel.last_error = f"quota Instagram esaurita: {exc}"[:500]
+            reel.save(update_fields=["media_status", "last_error"])
+            logger.warning("[downloader] quota esaurita (%s consecutivi) su %s",
+                           throttled_streak, reel.shortcode)
+            if throttled_streak >= _THROTTLE_STREAK:
+                stopped_early = True
+                logger.warning("[downloader] interrompo il run: riprende alla prossima esecuzione")
+                break
         except Exception as exc:  # noqa: BLE001
+            throttled_streak = 0
             reel.media_attempts += 1
             reel.last_error = repr(exc)[:500]
             if reel.media_attempts >= _MAX_ATTEMPTS:
@@ -231,4 +284,5 @@ def run(ctx) -> dict:
     Reel.objects.filter(media_status=FAILED, media_attempts__lt=_MAX_ATTEMPTS).update(
         media_status=PENDING
     )
-    return {"downloaded": done, "failed": failed, "skipped": skipped}
+    return {"downloaded": done, "failed": failed, "skipped": skipped,
+            "stopped_early": stopped_early}
