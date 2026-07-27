@@ -1,5 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { Badge } from "../ui/primitives";
+import { elapsedNow, fmtDuration, useTicker } from "./live";
 
 /**
  * How long each pipeline run actually took, stage by stage.
@@ -13,9 +14,11 @@ export interface RunStage {
   stage: string;
   label: string;
   started: string | null;
-  finished: string;
+  finished: string | null;
   seconds: number;
   result: string;
+  /** Started and not yet finished: its duration is still growing. */
+  running?: boolean;
 }
 
 export interface Run {
@@ -23,6 +26,7 @@ export interface Run {
   finished?: string;
   seconds: number;
   stages: RunStage[];
+  running?: boolean;
 }
 
 const STAGE_COLOUR: Record<string, string> = {
@@ -35,22 +39,24 @@ const STAGE_COLOUR: Record<string, string> = {
   cluster: "bg-heading",
 };
 
-export const fmtDuration = (s: number) =>
-  s < 90 ? `${s}s` : s < 5400 ? `${Math.round(s / 60)} min` : `${(s / 3600).toFixed(1)} h`;
-
 const fmtStart = (iso: string) =>
   new Date(iso).toLocaleString("it-IT", {
     day: "numeric", month: "short", hour: "2-digit", minute: "2-digit",
   });
 
-export function RunTimeline({ runs }: { runs: Run[] }) {
+export function RunTimeline({ runs, updatedAt }: { runs: Run[]; updatedAt?: number }) {
   const { t } = useTranslation();
+  // A run in flight has a segment that grows; without a tick it would only
+  // move when the poll lands, and the bar would look stuck between polls.
+  useTicker(runs?.some((r) => r.running) ?? false);
   if (!runs?.length) return <p className="text-sm text-muted">{t("ops.noRuns")}</p>;
 
   return (
     <div className="space-y-3">
       {runs.map((run) => {
-        const total = Math.max(run.seconds, 1);
+        const secs = (s: RunStage) =>
+          s.running ? elapsedNow(s.seconds, updatedAt) : s.seconds;
+        const total = Math.max(run.stages.reduce((n, s) => n + secs(s), 0), 1);
         return (
           <div
             key={run.started}
@@ -58,9 +64,20 @@ export function RunTimeline({ runs }: { runs: Run[] }) {
           >
             <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
               <span className="text-sm font-bold text-navy">{fmtStart(run.started)}</span>
-              <Badge className="bg-white text-heading">
-                {t("ops.total")} {fmtDuration(run.seconds)}
-              </Badge>
+              <span className="flex items-center gap-2">
+                {run.running && (
+                  <Badge className="bg-success/10 text-success">
+                    <span
+                      className="mr-1.5 inline-block h-1.5 w-1.5 rounded-full bg-success motion-safe:animate-pulse"
+                      aria-hidden
+                    />
+                    {t("ops.running")}
+                  </Badge>
+                )}
+                <Badge className="bg-white text-heading">
+                  {t("ops.total")} {fmtDuration(total)}
+                </Badge>
+              </span>
             </div>
 
             {/* proportional bar: one segment per stage */}
@@ -68,9 +85,12 @@ export function RunTimeline({ runs }: { runs: Run[] }) {
               {run.stages.map((s) => (
                 <div
                   key={s.stage}
-                  className={STAGE_COLOUR[s.stage] ?? "bg-muted"}
-                  style={{ width: `${Math.max((s.seconds / total) * 100, 0.8)}%` }}
-                  title={`${s.label}: ${fmtDuration(s.seconds)}`}
+                  className={
+                    (STAGE_COLOUR[s.stage] ?? "bg-muted") +
+                    (s.running ? " motion-safe:animate-pulse" : "")
+                  }
+                  style={{ width: `${Math.max((secs(s) / total) * 100, 0.8)}%` }}
+                  title={`${s.label}: ${fmtDuration(secs(s))}`}
                 />
               ))}
             </div>
@@ -84,12 +104,19 @@ export function RunTimeline({ runs }: { runs: Run[] }) {
                     }
                     aria-hidden
                   />
-                  <span className="min-w-0 flex-1 truncate text-navy">{s.label}</span>
+                  <span className="min-w-0 flex-1 truncate text-navy">
+                    {s.label}
+                    {s.running && (
+                      <span className="ml-1.5 font-semibold text-success">
+                        · {t("ops.running")}
+                      </span>
+                    )}
+                  </span>
                   <span className="shrink-0 tabular-nums font-semibold text-muted">
-                    {fmtDuration(s.seconds)}
+                    {fmtDuration(secs(s))}
                   </span>
                   <span className="w-12 shrink-0 text-right tabular-nums text-muted/70">
-                    {Math.round((s.seconds / total) * 100)}%
+                    {Math.round((secs(s) / total) * 100)}%
                   </span>
                 </li>
               ))}

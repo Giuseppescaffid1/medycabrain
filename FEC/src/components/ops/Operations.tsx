@@ -1,5 +1,6 @@
 import { useTranslation } from "react-i18next";
 import { Badge, Skeleton } from "../ui/primitives";
+import { fmtDuration } from "./live";
 
 /**
  * What is actually running, read from the machine at request time: the
@@ -16,9 +17,6 @@ export interface OperationsData {
   models: { task: string; model: string; why: string }[];
   provider: string;
 }
-
-const fmtDuration = (s: number) =>
-  s < 90 ? `${s}s` : s < 5400 ? `${Math.round(s / 60)} min` : `${(s / 3600).toFixed(1)} h`;
 
 const fmtWhen = (iso: string) => {
   const d = new Date(iso);

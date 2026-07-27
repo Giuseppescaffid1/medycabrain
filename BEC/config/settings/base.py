@@ -186,6 +186,14 @@ FAST_LLM_MODEL_CHAIN = [
 # medical Italian than the local `small` model, and it costs the VPS nothing.
 FAST_STT_MODEL = os.environ.get("FAST_STT_MODEL", "whisper-large-v3")
 USE_REMOTE_STT = os.environ.get("USE_REMOTE_STT", "1") == "1"
+# Transcription keeps its own endpoint, deliberately not LLM_BASE_URL: a text
+# gateway need not expose /audio/transcriptions, and when it does not, every
+# request 404s and silently falls back to the local `small` model — which
+# mangles the vocabulary this pipeline exists to read ("umonibirentici" for
+# "ormoni bioidentici"). That happened for 37 of 37 transcriptions on
+# 2026-07-27, so the two providers are now configured separately.
+STT_BASE_URL = os.environ.get("FAST_LLM_BASE_URL", "https://api.groq.com/openai/v1")
+STT_API_KEY = os.environ.get("FAST_LLM_API_KEY", "")
 
 # Serialize local Ollama calls: the CPU fits exactly one 3B/7B generation.
 # Concurrent calls (nightly pipeline + a client clicking "Analizza") make

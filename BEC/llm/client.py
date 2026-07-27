@@ -249,16 +249,16 @@ def transcribe_audio(path: str, prompt: str = "", language: str = "it") -> dict:
     terms the local `small` model mangles ("ormoni bioidentici").
     Raises LLMError so the caller can fall back to the local model.
     """
-    if not settings.FAST_LLM_API_KEY:
-        raise LLMError("no fast-provider key for STT")
-    url = f"{settings.FAST_LLM_BASE_URL.rstrip('/')}/audio/transcriptions"
+    if not settings.STT_API_KEY:
+        raise LLMError("no STT provider key")
+    url = f"{settings.STT_BASE_URL.rstrip('/')}/audio/transcriptions"
     data = {"model": settings.FAST_STT_MODEL, "language": language,
             "response_format": "verbose_json", "temperature": "0"}
     if prompt:
         data["prompt"] = prompt[:800]
     with open(path, "rb") as fh:
         resp = requests.post(
-            url, headers={"Authorization": f"Bearer {settings.FAST_LLM_API_KEY}"},
+            url, headers={"Authorization": f"Bearer {settings.STT_API_KEY}"},
             files={"file": (os.path.basename(path), fh, "audio/mpeg")},
             data=data, timeout=300,
         )

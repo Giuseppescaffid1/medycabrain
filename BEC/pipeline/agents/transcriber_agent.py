@@ -48,7 +48,7 @@ def _transcribe(mp3_path: Path) -> dict:
     for "ormoni bioidentici"); large-v3 conditioned on the glossary gets it
     right, in about a second, without loading the VPS.
     """
-    if settings.USE_REMOTE_STT and settings.FAST_LLM_API_KEY:
+    if settings.USE_REMOTE_STT and settings.STT_API_KEY:
         import time as _time
 
         from llm import client, prompts

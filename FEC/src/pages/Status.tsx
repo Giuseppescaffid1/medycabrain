@@ -5,6 +5,7 @@ import { Skeleton } from "../components/ui/primitives";
 import { PageTransition } from "../components/ui/motion";
 import { Operations, type OperationsData } from "../components/ops/Operations";
 import { RunTimeline, type Run } from "../components/ops/RunTimeline";
+import { LiveActivity, type Job, type Reanalysis } from "../components/ops/LiveActivity";
 
 interface Stage {
   key: string;
@@ -17,7 +18,11 @@ interface Stage {
 }
 
 interface StatusPayload {
-  operations?: OperationsData & { history?: Run[] };
+  operations?: OperationsData & {
+    history?: Run[];
+    activity?: Job[];
+    reanalysis?: Reanalysis | null;
+  };
   totals: Record<string, number>;
   stages: Stage[];
   jobs: { id: number; kind: string; status: string; progress: number; message: string }[];
@@ -78,6 +83,14 @@ export default function Status() {
               <Skeleton className="h-64" />
             ) : (
               <>
+                {/* What is moving right now — first, because it is the
+                    question the page is opened to answer. */}
+                <LiveActivity
+                  jobs={data.operations?.activity ?? []}
+                  reanalysis={data.operations?.reanalysis}
+                  updatedAt={dataUpdatedAt}
+                />
+
                 {/* Totals */}
                 <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                   {[
@@ -133,7 +146,10 @@ export default function Status() {
                     {t("ops.timeline")}
                   </h2>
                   <p className="mb-3 text-xs text-muted/80">{t("ops.timelineHint")}</p>
-                  <RunTimeline runs={data.operations?.history ?? []} />
+                  <RunTimeline
+                    runs={data.operations?.history ?? []}
+                    updatedAt={dataUpdatedAt}
+                  />
                 </section>
 
                 {/* Running jobs */}

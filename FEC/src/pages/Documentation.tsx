@@ -5,6 +5,7 @@ import { PageTransition, staggerContainer, staggerItem } from "../components/ui/
 import { FlowCanvas } from "../components/docs/FlowCanvas";
 import { Operations, type OperationsData } from "../components/ops/Operations";
 import { RunTimeline, type Run } from "../components/ops/RunTimeline";
+import { LiveActivity, type Job, type Reanalysis } from "../components/ops/LiveActivity";
 import { useQuery } from "@tanstack/react-query";
 import { apiClient } from "../api/client";
 
@@ -24,8 +25,15 @@ export default function Documentation() {
   // reassures the reader about a job that was changed weeks ago.
   const ops = useQuery({
     queryKey: ["ops-status"],
-    queryFn: async () => (await apiClient.get("/ops/status/")).data as { operations: OperationsData & { history?: Run[] } },
-    refetchInterval: 30000,
+    queryFn: async () =>
+      (await apiClient.get("/ops/status/")).data as {
+        operations: OperationsData & {
+          history?: Run[];
+          activity?: Job[];
+          reanalysis?: Reanalysis | null;
+        };
+      },
+    refetchInterval: 10000,
   });
 
   const inputs = t("docs.inputs.items", { returnObjects: true }) as string[];
@@ -121,6 +129,15 @@ export default function Documentation() {
                 {t("ops.title")}
               </h2>
               <p className="mb-3 text-xs text-muted/80">{t("ops.subtitle")}</p>
+
+              <div className="mb-6">
+                <LiveActivity
+                  jobs={ops.data?.operations?.activity ?? []}
+                  reanalysis={ops.data?.operations?.reanalysis}
+                  updatedAt={ops.dataUpdatedAt}
+                />
+              </div>
+
               <Operations data={ops.data?.operations} />
 
               <div className="mt-6">
@@ -128,7 +145,10 @@ export default function Documentation() {
                   {t("ops.timeline")}
                 </h3>
                 <p className="mb-3 text-xs text-muted/80">{t("ops.timelineHint")}</p>
-                <RunTimeline runs={ops.data?.operations?.history ?? []} />
+                <RunTimeline
+                  runs={ops.data?.operations?.history ?? []}
+                  updatedAt={ops.dataUpdatedAt}
+                />
               </div>
             </section>
 

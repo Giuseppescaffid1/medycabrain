@@ -47,6 +47,10 @@ _CRON_HUMAN = {
 }
 
 
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
 def _run(cmd: list[str], timeout: int = 5) -> str:
     try:
         return subprocess.run(cmd, capture_output=True, text=True,
@@ -166,6 +170,8 @@ def run_history(limit_runs: int = 6, limit_lines: int = 12000) -> list[dict]:
     runs: list[dict] = []
     current: dict | None = None
     pending: dict[str, str] = {}
+    order = list(STAGE_LABELS)
+    last_pos = len(order)  # forces the first start to open a run
 
     def _ts(raw: str) -> datetime | None:
         try:
@@ -180,11 +186,20 @@ def run_history(limit_runs: int = 6, limit_lines: int = 12000) -> list[dict]:
             if not started:
                 continue
             stage = m.group("stage")
-            # A new run begins when a stage starts that the current run already
-            # has: the pipeline walks its stages once, in order.
-            if current is None or any(s["stage"] == stage for s in current["stages"]):
+            # A new run begins when the pipeline steps backwards. It walks its
+            # stages once, in order, so a start that is not past the previous
+            # start can only be the next execution — including a partial run
+            # like `--only embed`, which begins mid-order.
+            #
+            # Boundaries cannot be read from the completion lines instead: a
+            # stage is only recorded when it finishes, so the first stage of a
+            # run finishes after the run has already begun and would be filed
+            # under its predecessor.
+            pos = order.index(stage) if stage in order else len(order)
+            if current is None or pos <= last_pos:
                 current = {"started": started.isoformat(), "stages": []}
                 runs.append(current)
+            last_pos = pos
             pending[stage] = started.isoformat()
             continue
 
@@ -205,10 +220,139 @@ def run_history(limit_runs: int = 6, limit_lines: int = 12000) -> list[dict]:
         })
         current["finished"] = finished.isoformat()
 
+    # Whatever started and never wrote a completion line is still going. It has
+    # to be shown: a stage like the transcription runs for the best part of an
+    # hour, and while it does, a timeline built only from completions is frozen
+    # — which reads as "nothing is happening" at the exact moment most is.
+    if current is not None:
+        run_started = current["started"]
+        for stage, started in pending.items():
+            if started < run_started:
+                continue  # left over from an earlier run that died mid-stage
+            begun = _ts(started.replace("T", " ")[:19])
+            elapsed = round((_now() - begun).total_seconds()) if begun else 0
+            current["stages"].append({
+                "stage": stage,
+                "label": STAGE_LABELS.get(stage, stage),
+                "started": started,
+                "finished": None,
+                "seconds": max(elapsed, 0),
+                "result": "",
+                "running": True,
+            })
+            current["running"] = True
+
     for r in runs:
         r["seconds"] = sum(s["seconds"] for s in r["stages"])
     # newest first, and only runs that actually did something
     return [r for r in reversed(runs) if r["stages"]][:limit_runs]
+
+
+# The commands this project runs itself. Nothing outside this map is ever
+# reported, so a stray process on the machine cannot appear in the client's
+# page as if it were part of the pipeline.
+JOBS = {
+    "run_pipeline": ("Pipeline completa", "pipeline.log"),
+    "reprocess": ("Rianalisi dei contenuti", "reprocess.log"),
+    "ingest_blog": ("Import del blog", "blog.log"),
+}
+
+# The lines worth showing: what an agent reports about a single item. Only
+# INFO — a warning carries a Python repr in English, which on a page the
+# client reads is alarming noise rather than progress. Failures belong in the
+# log, not in the answer to "what is it doing right now".
+_ACTIVITY = re.compile(r"INFO\s+(?:pipeline|core)\.[\w.]+\s+(?P<msg>.+)")
+
+
+def _last_activity_line(log: str, tail: int = 400) -> str:
+    path = Path(settings.BASE_DIR) / "logs" / log
+    if not path.exists():
+        return ""
+    try:
+        with path.open(errors="ignore") as fh:
+            lines = fh.readlines()[-tail:]
+    except OSError:
+        return ""
+    for line in reversed(lines):
+        m = _ACTIVITY.search(line)
+        if m:
+            return m.group("msg").strip()[:180]
+    return ""
+
+
+def _running_stage(history: list[dict]) -> str:
+    """The stage the pipeline is inside right now, or "" if between stages."""
+    for run in history[:1]:
+        for s in run["stages"]:
+            if s.get("running"):
+                return s["label"]
+    return ""
+
+
+def activity(history: list[dict] | None = None) -> list[dict]:
+    """The project's own commands executing right now, with what they just did.
+
+    Read from the process table rather than from a job record: a command
+    started by hand or by cron leaves no row in the database, and those are
+    exactly the long runs someone watches this page to follow.
+    """
+    out = []
+    history = run_history(limit_runs=1) if history is None else history
+    raw = _run(["ps", "-eo", "pid,etimes,args", "--no-headers"], timeout=6)
+    for line in raw.splitlines():
+        parts = line.split(None, 2)
+        if len(parts) < 3:
+            continue
+        pid, etimes, args = parts
+        # The real process, not the shell that spawned it: a wrapper's command
+        # line quotes the same words and would double every entry.
+        if not Path(args.split()[0]).name.startswith("python"):
+            continue
+        if "manage.py" not in args:
+            continue
+        tokens = args.split()
+        try:
+            cmd = tokens[tokens.index("manage.py") + 1]
+        except (ValueError, IndexError):
+            continue
+        if cmd not in JOBS:
+            continue
+        label, log = JOBS[cmd]
+        out.append({
+            "job": cmd,
+            "label": label,
+            "pid": int(pid) if pid.isdigit() else 0,
+            "seconds": int(etimes) if etimes.isdigit() else 0,
+            "stage": _running_stage(history) if cmd == "run_pipeline" else "",
+            "detail": _last_activity_line(log),
+        })
+    return sorted(out, key=lambda j: -j["seconds"])
+
+
+def reanalysis() -> dict | None:
+    """How far the switch to the current analysis model has got.
+
+    The stage counters cannot show this: these reels were already analysed, so
+    "analizzati" does not move while every one of them is being redone. What
+    moves is which model produced the analysis.
+    """
+    from core import models as m
+    from llm import client
+
+    target = (client.model_for("analysis") or "").split("/")[-1]
+    if not target:
+        return None
+    qs = m.Enrichment.objects.exclude(evidence="insufficient")
+    total = qs.count()
+    if not total:
+        return None
+    done = qs.filter(llm_model__icontains=target).count()
+    return {
+        "model": target,
+        "done": done,
+        "total": total,
+        "pct": round(done * 100 / total),
+    }
 
 
 def models() -> list[dict]:
@@ -230,11 +374,17 @@ def models() -> list[dict]:
 
 
 def snapshot() -> dict:
+    # Read once and share: this endpoint is polled every five seconds per open
+    # tab, and each call would otherwise re-read the whole pipeline log.
+    history = run_history()
     return {
         "services": services(),
         "schedules": schedules(),
         "last_runs": last_runs(),
-        "history": run_history(),
+        "history": history,
+        "activity": activity(history),
+        "reanalysis": reanalysis(),
+        "now": _now().isoformat(),
         "models": models(),
         "provider": settings.FAST_LLM_BASE_URL,
     }

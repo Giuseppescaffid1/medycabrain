@@ -334,7 +334,8 @@
       "items": [
         "Instagram limita quante schede video possiamo chiedere al giorno da un singolo server: la raccolta di grandi arretrati procede a scaglioni, non tutta in una volta.",
         "Vengono letti i contenuti dalla scheda Reel; i post video normali e i caroselli non sono inclusi.",
-        "Il monitoraggio di siti e blog riguarda per ora solo medyca.it, non i competitor."
+        "Il monitoraggio di siti e blog riguarda per ora solo medyca.it, non i competitor.",
+        "37 video trascritti il 27 luglio hanno usato il modello locale di riserva, meno preciso sui termini medici: il servizio di trascrizione remoto rispondeva \"non trovato\". Il collegamento è stato corretto e quelle trascrizioni verranno rifatte."
       ]
     },
     "models": {
@@ -493,6 +494,13 @@
     "noRuns": "Nessuna esecuzione registrata",
     "total": "totale",
     "timeline": "Tempo impiegato per esecuzione",
-    "timelineHint": "Ogni barra è una esecuzione completa della pipeline: la larghezza dei segmenti mostra quanto è durato ciascun passaggio."
+    "timelineHint": "Ogni barra è una esecuzione completa della pipeline: la larghezza dei segmenti mostra quanto è durato ciascun passaggio.",
+    "live": "Ora in esecuzione",
+    "liveHint": "Letto dai processi attivi sulla macchina. Se qui c'è qualcosa, il sistema sta lavorando in questo momento.",
+    "idle": "Nessuna elaborazione in corso adesso. Il prossimo avvio è nelle esecuzioni programmate qui sotto.",
+    "running": "in corso",
+    "since": "da",
+    "reanalysis": "Rianalisi con il modello più recente",
+    "reanalysisHint": "I contenuti analizzati in passato da un modello più economico vengono rifatti con {{model}}. Le analisi già fatte restano consultabili nel frattempo."
   }
 }
