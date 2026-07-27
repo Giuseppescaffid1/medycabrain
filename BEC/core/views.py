@@ -538,15 +538,44 @@ class PipelineStatusView(APIView):
         reels = models.Reel.objects.all()
         total = reels.count()
 
+        SCOPES = (("owned", "Medyca"), ("competitor", "Competitor"))
+
         def stage(field):
-            counts = dict(reels.values_list(field).annotate(n=Count("id")))
-            done = counts.get("done", 0) + counts.get("skipped", 0)
+            # Grouped once by owner as well as by state: a single percentage
+            # hides the one thing the client asks about first. "30% scaricati"
+            # reads as broken, when in fact every Medyca reel is done and the
+            # remainder is competitor backlog draining against Instagram's
+            # quota. One query, not one per scope: this endpoint is polled
+            # every five seconds.
+            rows = reels.values("account__owner_type", field).annotate(n=Count("id"))
+            counts: dict[str, int] = {}
+            per_scope: dict[str, dict[str, int]] = {}
+            for r in rows:
+                state, n = r[field], r["n"]
+                counts[state] = counts.get(state, 0) + n
+                bucket = per_scope.setdefault(r["account__owner_type"], {})
+                bucket[state] = bucket.get(state, 0) + n
+
+            def _done(c: dict[str, int]) -> int:
+                return c.get("done", 0) + c.get("skipped", 0)
+
+            done = _done(counts)
+            scopes = []
+            for owner, label in SCOPES:
+                c = per_scope.get(owner)
+                if not c:
+                    continue
+                n = sum(c.values())
+                d = _done(c)
+                scopes.append({"scope": owner, "label": label, "done": d,
+                               "total": n, "pct": round(100 * d / n) if n else 0})
             return {
                 "done": done,
                 "pending": counts.get("pending", 0),
                 "failed": counts.get("failed", 0),
                 "total": total,
                 "pct": round(100 * done / total) if total else 0,
+                "scopes": scopes,
             }
 
         stages = [

@@ -15,6 +15,7 @@ interface Stage {
   failed: number;
   total: number;
   pct: number;
+  scopes?: { scope: string; label: string; done: number; total: number; pct: number }[];
 }
 
 interface StatusPayload {
@@ -135,6 +136,34 @@ export default function Status() {
                             style={{ width: `${Math.max(s.pct, 1)}%` }}
                           />
                         </div>
+
+                        {/* Whose content the percentage is made of. Without
+                            this, a figure driven entirely by the competitor
+                            backlog reads as if Medyca's own reels were
+                            missing. */}
+                        {s.scopes && s.scopes.length > 1 && (
+                          <div className="mt-2.5 flex flex-wrap gap-x-5 gap-y-1">
+                            {s.scopes.map((sc) => (
+                              <span
+                                key={sc.scope}
+                                className="flex items-center gap-1.5 text-xs text-muted"
+                              >
+                                <span
+                                  className={
+                                    "h-1.5 w-1.5 rounded-full " +
+                                    (sc.scope === "owned" ? "bg-secondary" : "bg-warning")
+                                  }
+                                  aria-hidden
+                                />
+                                {sc.label}
+                                <span className="font-semibold tabular-nums text-navy">
+                                  {sc.done}/{sc.total}
+                                </span>
+                                <span className="tabular-nums">· {sc.pct}%</span>
+                              </span>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
