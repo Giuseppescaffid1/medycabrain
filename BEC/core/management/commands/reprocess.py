@@ -114,29 +114,45 @@ class Command(BaseCommand):
         todo = list(qs[: opts["limit"]] if opts["limit"] else qs)
         self.stdout.write(f"[enrich] {len(todo)} reel")
 
+        def _one(reel):
+            ea._enrich_one(reel)
+            n = ea._extract_arguments(reel)
+            reel.enrich_status = DONE
+            reel.argument_status = DONE
+            reel.save(update_fields=["enrich_status", "argument_status"])
+            return n
+
+        # Both calls are network waits, so these run several at a time. In
+        # chunks rather than all at once: a spent daily budget must still be
+        # able to stop the command cleanly, and a single submitted batch of
+        # hundreds could not be called back.
+        #
+        # A per-minute rate limit is retried inside the worker. It used to be
+        # slept off here and then fall through to the NEXT reel, which left
+        # the current one neither done nor failed — silently skipped.
+        chunk = max(ea._WORKERS * 4, 8)
         ok = fail = skipped = 0
-        for i, reel in enumerate(todo, 1):
-            try:
-                ea._enrich_one(reel)
-                n = ea._extract_arguments(reel)
-                reel.enrich_status = DONE
-                reel.argument_status = DONE
-                reel.save(update_fields=["enrich_status", "argument_status"])
-                ok += 1
-                if n == 0:
-                    skipped += 1
-            except LLMRateLimit as exc:
-                if exc.daily:
+        done = 0
+        stop = False
+        for start in range(0, len(todo), chunk):
+            if stop:
+                break
+            for reel, n, exc in ea._parallel(todo[start:start + chunk], _one):
+                done += 1
+                if exc is None:
+                    ok += 1
+                    if n == 0:
+                        skipped += 1
+                elif isinstance(exc, LLMRateLimit) and exc.daily:
                     # Every model's daily budget is gone. Stop cleanly: the
                     # next run picks up where this one left off.
-                    self.stdout.write(self.style.WARNING(
-                        f"budget giornaliero esaurito dopo {ok} reel — riprendi domani"))
-                    break
-                time.sleep(min(exc.retry_after, 60))
-            except Exception as exc:  # noqa: BLE001
-                self.stderr.write(f"  {reel.shortcode}: {exc!r}")
-                fail += 1
-            if i % 20 == 0:
-                self.stdout.write(f"  {i}/{len(todo)} (ok={ok} ko={fail})")
+                    stop = True
+                else:
+                    self.stderr.write(f"  {reel.shortcode}: {exc!r}")
+                    fail += 1
+            self.stdout.write(f"  {done}/{len(todo)} (ok={ok} ko={fail})")
+        if stop:
+            self.stdout.write(self.style.WARNING(
+                f"budget giornaliero esaurito dopo {ok} reel — riprendi domani"))
         self.stdout.write(self.style.SUCCESS(
             f"[enrich] ok={ok} falliti={fail} senza affermazioni={skipped}"))
