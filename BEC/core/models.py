@@ -173,6 +173,12 @@ class Enrichment(models.Model):
 class ReelEmbedding(models.Model):
     reel = models.OneToOneField(Reel, on_delete=models.CASCADE, related_name="embedding")
     vector = models.JSONField(default=list)  # list[float]
+    # One vector per passage of the text, in the order core.knowledge._chunks
+    # produces them. The chat picks the passage that answers the question
+    # rather than the head of the document, and re-encoding those passages on
+    # every question cost 15-18s per query — the whole of its latency. The
+    # text is not stored again: chunking is deterministic from the source.
+    chunk_vectors = models.JSONField(default=list, blank=True)  # list[list[float]]
     model_name = models.CharField(max_length=128, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -366,6 +372,8 @@ class KnowledgeDocument(models.Model):
     summary_it = models.TextField(blank=True, default="")
     topics = models.JSONField(default=list, blank=True)
     embedding = models.JSONField(default=list, blank=True)
+    # See ReelEmbedding.chunk_vectors — same purpose, for blog articles.
+    chunk_vectors = models.JSONField(default=list, blank=True)
     embedding_model = models.CharField(max_length=128, blank=True, default="")
 
     enrich_status = models.CharField(max_length=16, choices=STATUS_CHOICES, default=PENDING)

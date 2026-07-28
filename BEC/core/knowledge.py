@@ -22,6 +22,8 @@ import numpy as np
 
 from django.conf import settings
 
+from django.db.models import Count
+
 from core.models import DONE, KnowledgeDocument, Reel
 from llm import client
 
@@ -41,6 +43,26 @@ def _embed_query(text: str) -> np.ndarray:
     return np.asarray(v, dtype=np.float32)
 
 
+_INDEX_CACHE: dict = {}
+
+
+def _corpus_stamp() -> tuple:
+    """Cheap fingerprint of the indexed corpus.
+
+    Two counts and the newest embedding: enough to notice the pipeline
+    adding, re-embedding or deactivating anything, without reading 900 rows
+    on every question just to discover nothing changed.
+    """
+    from django.db.models import Max
+
+    from core.models import ReelEmbedding
+
+    agg = ReelEmbedding.objects.aggregate(n=Count("id"), last=Max("created_at"))
+    return (agg["n"], agg["last"],
+            KnowledgeDocument.objects.filter(is_active=True).count(),
+            Reel.objects.filter(is_active=True, enrich_status=DONE).count())
+
+
 def _load_index(scope: str = "all") -> list[dict]:
     """Every embedded item the chat can answer from.
 
@@ -48,6 +70,11 @@ def _load_index(scope: str = "all") -> list[dict]:
     reels carry their account, because "who said this" is half the answer when
     the client compares themselves to the market.
     """
+    stamp = _corpus_stamp()
+    hit = _INDEX_CACHE.get(scope)
+    if hit and hit[0] == stamp:
+        return hit[1]
+
     items = []
     want_owned = scope in ("all", "medyca", "owned")
     want_comp = scope in ("all", "competitor")
@@ -58,6 +85,7 @@ def _load_index(scope: str = "all") -> list[dict]:
                 "url": d.source_url, "summary": d.summary_it,
                 "text": d.content_text, "topics": d.topics,
                 "vec": np.asarray(d.embedding, dtype=np.float32),
+                "chunks": d.chunk_vectors or None,
             })
     owners = ([] if not want_owned else ["owned"]) + ([] if not want_comp else ["competitor"])
     reels = (
@@ -83,7 +111,9 @@ def _load_index(scope: str = "all") -> list[dict]:
             "text": (tr.text if tr else "") or r.caption,
             "topics": enr.topics if enr else [],
             "vec": np.asarray(emb.vector, dtype=np.float32),
+            "chunks": emb.chunk_vectors or None,
         })
+    _INDEX_CACHE[scope] = (stamp, items)
     return items
 
 
@@ -149,7 +179,8 @@ def semantic_search(query: str, top_k: int = 6, scope: str = "all") -> list[dict
     out = []
     for score, i, lex in scored[:top_k]:
         it = index[i]
-        passage = _best_passage(it["text"] or it["summary"], q) or _snippet(it["text"])
+        passage = (_best_passage(it["text"] or it["summary"], q, it.get("chunks"))
+                   or _snippet(it["text"]))
         out.append({
             "kind": it["kind"], "owner": it.get("owner", "owned"),
             "account": it.get("account", ""),
@@ -162,15 +193,28 @@ def semantic_search(query: str, top_k: int = 6, scope: str = "all") -> list[dict
     return out
 
 
-def _best_passage(text: str, qvec) -> str:
-    """The chunk of `text` closest to the query vector."""
+def _best_passage(text: str, qvec, cached=None) -> str:
+    """The chunk of `text` closest to the query vector.
+
+    `cached` are the passage vectors computed once by the embed stage, in the
+    order _chunks produces them. Encoding them per question instead cost
+    15-18s — the whole of the chat's latency — so they are only computed here
+    when a document predates the change or its text moved on since.
+    """
     parts = _chunks(text)
     if not parts:
         return ""
     if len(parts) == 1:
         return parts[0]
-    vecs = _get_embedder().encode(parts, normalize_embeddings=True, show_progress_bar=False)
-    sims = np.asarray(vecs, dtype=np.float32) @ qvec
+    if cached is not None and len(cached) == len(parts):
+        vecs = np.asarray(cached, dtype=np.float32)
+    else:
+        vecs = np.asarray(
+            _get_embedder().encode(parts, normalize_embeddings=True,
+                                   show_progress_bar=False),
+            dtype=np.float32,
+        )
+    sims = vecs @ qvec
     return parts[int(np.argmax(sims))]
 
 
