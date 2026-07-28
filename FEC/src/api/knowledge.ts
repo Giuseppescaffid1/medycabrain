@@ -15,7 +15,8 @@ export interface KnowledgeDoc {
 }
 
 export interface KnowledgeHit {
-  owner?: "owned" | "competitor";
+  /** "external" is a page pasted into the chat, not knowledge-bank material. */
+  owner?: "owned" | "competitor" | "external";
   account?: string;
   cited?: boolean;
   keyword_match?: number;
@@ -30,6 +31,8 @@ export interface KnowledgeHit {
 }
 
 export interface AskResult {
+  /** Pages that could not be read, with the reason. */
+  reference_problems?: { url: string; error: string }[];
   model?: string;
   answer: string;
   sources: KnowledgeHit[];
@@ -55,6 +58,8 @@ export interface AskOptions {
   scope?: "all" | "medyca" | "competitor";
   history?: { role: "user" | "assistant"; content: string }[];
   topK?: number;
+  /** Pages to read for this question only. Never added to the knowledge bank. */
+  references?: string[];
 }
 
 export async function askKnowledge(query: string, opts: AskOptions = {}): Promise<AskResult> {
@@ -66,6 +71,7 @@ export async function askKnowledge(query: string, opts: AskOptions = {}): Promis
       top_k: opts.topK ?? 8,
       scope: opts.scope ?? "all",
       history: opts.history ?? [],
+      references: opts.references ?? [],
     },
     { timeout: 300000 }
   );

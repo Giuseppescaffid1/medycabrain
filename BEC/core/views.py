@@ -362,8 +362,16 @@ class KnowledgeAskView(APIView):
         history = request.data.get("history") or []
         if not isinstance(history, list):
             history = []
+        # Pages the user pasted into this conversation. Read once, used for
+        # this answer only, never added to the knowledge bank.
+        from core.knowledge import MAX_REFERENCES
+        refs = request.data.get("references") or []
+        if isinstance(refs, str):
+            refs = [refs]
+        refs = [str(u).strip() for u in refs if str(u).strip()][:MAX_REFERENCES]
         from core.knowledge import answer
-        return Response(answer(query, top_k=top_k, scope=scope, history=history))
+        return Response(answer(query, top_k=top_k, scope=scope, history=history,
+                               references=refs))
 
 
 class ContentIdeaViewSet(viewsets.ModelViewSet):

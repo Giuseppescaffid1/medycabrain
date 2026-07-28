@@ -108,7 +108,7 @@
   },
   "kb": {
     "title": "Knowledge Bank",
-    "subtitle": "Chiedi qualcosa ai contenuti di Medyca: risponde citando articoli e reel, senza aggiungere nulla di esterno.",
+    "subtitle": "Chiedi qualcosa ai contenuti di Medyca e dei competitor: risponde citando le fonti, senza inventare. Incolla un link per farle leggere una pagina esterna e confrontarla.",
     "browse": "Sfoglia",
     "search": "Cerca",
     "ask": "Chiedi",
@@ -136,7 +136,7 @@
     "scopeMedyca": "Solo Medyca",
     "scopeCompetitor": "Solo competitor",
     "send": "Invia",
-    "placeholder": "Scrivi una domanda…",
+    "placeholder": "Scrivi una domanda, o incolla il link di una pagina da confrontare…",
     "reading": "Sto leggendo le fonti…",
     "suggest": "Prova a chiedere",
     "suggestions": [
@@ -144,7 +144,10 @@
       "Di cosa parlano i competitor che io non tratto?",
       "Quali sono i miei contenuti che hanno funzionato meglio e perché?"
     ],
-    "clear": "Nuova conversazione"
+    "clear": "Nuova conversazione",
+    "reading_page": "leggo",
+    "refHint": "Incolla un link nella domanda per farglielo leggere e confrontare con la knowledge bank.",
+    "externalRef": "fonte esterna"
   },
   "jobs": {
     "ideation": "Generazione idee di contenuto",
@@ -380,7 +383,8 @@
         "La domanda viene cercata in due modi insieme: per significato (vettori) e per parola esatta — serve per nomi come Bijuva, che la ricerca semantica da sola può mancare.",
         "Di ogni contenuto trovato viene estratto il passaggio che riguarda davvero la domanda, non l'inizio dell'articolo.",
         "Il modello risponde usando solo quei passaggi e cita ogni affermazione con un numero.",
-        "Le fonti effettivamente citate vengono evidenziate, così puoi verificarle una per una."
+        "Le fonti effettivamente citate vengono evidenziate, così puoi verificarle una per una.",
+        "Se incolli il link di una pagina nella domanda, viene letta sul momento e usata solo per quella risposta: resta marcata come fonte esterna, non entra nella knowledge bank e non viene mai confusa con i contenuti di Medyca."
       ]
     }
   },

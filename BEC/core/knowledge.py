@@ -233,7 +233,12 @@ ANSWER_SYSTEM = (
     "- Se le fonti si contraddicono, segnalalo invece di sceglierne una.\n"
     "- Ogni fonte indica se \u00e8 di Medyca o di un COMPETITOR: distinguilo "
     "sempre nella risposta. Confondere ci\u00f2 che dice Medyca con ci\u00f2 che dicono "
-    "gli altri \u00e8 l'errore peggiore che puoi fare qui."
+    "gli altri \u00e8 l'errore peggiore che puoi fare qui.\n"
+    "- Una fonte marcata RIFERIMENTO ESTERNO \u00e8 una pagina che l'utente ti ha "
+    "indicato in questa conversazione: non fa parte della knowledge bank e non "
+    "\u00e8 materiale di Medyca. Serve per il confronto. Quando \u00e8 presente, dì "
+    "esplicitamente cosa il riferimento tratta e il materiale di Medyca no: "
+    "\u00e8 questa la risposta utile, non il riassunto della pagina."
 )
 ANSWER_USER = """\
 DOMANDA:
@@ -248,8 +253,50 @@ in modo completo, parziale o nullo.
 Scrivi ESCLUSIVAMENTE in lingua italiana."""
 
 
+MAX_REFERENCES = 3
+
+
+def _reference_hits(urls: list[str], qvec, per_ref: int = 3) -> tuple[list[dict], list[dict]]:
+    """Read the pages the user pasted, and pull the passages that match.
+
+    Returns (hits, problems). A page that cannot be read is reported rather
+    than dropped: silently answering from Medyca's material alone, when the
+    user asked for a comparison, looks like an answer and is not one.
+    """
+    from core.external_ref import RefusedURL, fetch_reference
+
+    hits, problems = [], []
+    for url in urls[:MAX_REFERENCES]:
+        try:
+            ref = fetch_reference(url)
+        except RefusedURL as exc:
+            problems.append({"url": url, "error": str(exc)})
+            continue
+        except Exception as exc:  # noqa: BLE001 — a bad page must not break the chat
+            problems.append({"url": url, "error": f"Non raggiungibile ({type(exc).__name__})."})
+            continue
+        parts = _chunks(ref["text"])
+        if not parts:
+            continue
+        vecs = np.asarray(
+            _get_embedder().encode(parts, normalize_embeddings=True,
+                                   show_progress_bar=False),
+            dtype=np.float32,
+        )
+        sims = vecs @ qvec
+        for i in np.argsort(-sims)[:per_ref]:
+            hits.append({
+                "kind": "reference", "owner": "external", "account": "",
+                "id": f"{url}#{int(i)}", "title": ref["title"], "url": url,
+                "summary": "", "topics": [], "snippet": parts[int(i)],
+                "score": round(float(sims[int(i)]), 3), "keyword_match": 0.0,
+            })
+    return hits, problems
+
+
 def answer(query: str, top_k: int = 8, scope: str = "all",
-           history: list | None = None) -> dict:
+           history: list | None = None,
+           references: list[str] | None = None) -> dict:
     """RAG over the knowledge bank.
 
     Retrieval is hybrid (embeddings + verbatim keywords) and sends the
@@ -258,10 +305,20 @@ def answer(query: str, top_k: int = 8, scope: str = "all",
     reading several sources and refusing to over-claim is judgement work.
     """
     hits = semantic_search(query, top_k=top_k, scope=scope)
+    ref_hits, ref_problems = [], []
+    if references:
+        ref_hits, ref_problems = _reference_hits(
+            references, _embed_query(query))
+        # The pasted page leads: it is the thing the user is asking about, and
+        # burying it under eight of our own passages loses the comparison.
+        hits = ref_hits + hits
     if not hits:
         return {"answer": "La knowledge bank è ancora vuota o non indicizzata.",
-                "sources": [], "model": ""}
+                "sources": [], "model": "", "reference_problems": ref_problems}
+
     def _label(h):
+        if h.get("owner") == "external":
+            return "RIFERIMENTO ESTERNO indicato dall'utente"
         who = "Medyca" if h.get("owner") != "competitor" else f"COMPETITOR @{h.get('account', '')}"
         what = "articolo blog" if h["kind"] == "blog" else "reel"
         return f"{what}, {who}"
@@ -298,4 +355,5 @@ def answer(query: str, top_k: int = 8, scope: str = "all",
     cited = {int(n) for n in re.findall(r"\[(\d+)\]", text or "")}
     for i, h in enumerate(hits, start=1):
         h["cited"] = i in cited
-    return {"answer": (text or "").strip(), "sources": hits, "model": used}
+    return {"answer": (text or "").strip(), "sources": hits, "model": used,
+            "reference_problems": ref_problems}

@@ -13,7 +13,27 @@ interface Message {
   content: string;
   sources?: KnowledgeHit[];
   model?: string;
+  /** Pages read for this turn, and any that could not be. */
+  refs?: string[];
+  refProblems?: { url: string; error: string }[];
 }
+
+/** Links written in the message itself.
+ *
+ * No separate field for this: someone asking "look at this page and tell me
+ * what we are missing" pastes the link into the sentence, and a second box
+ * would be a rule to remember rather than a feature. */
+const URL_RE = /https?:\/\/[^\s<>"')]+/gi;
+const findUrls = (text: string) =>
+  Array.from(new Set(text.match(URL_RE) ?? [])).slice(0, 3);
+
+const hostOf = (u: string) => {
+  try {
+    return new URL(u).hostname.replace(/^www\./, "");
+  } catch {
+    return u;
+  }
+};
 
 /**
  * A chat over everything the platform knows — Medyca's own reels and articles
@@ -35,11 +55,15 @@ export default function KnowledgeBank() {
       askKnowledge(query, {
         scope,
         history: messages.slice(-6).map((m) => ({ role: m.role, content: m.content })),
+        references: findUrls(query),
       }),
     onSuccess: (data) =>
       setMessages((m) => [
         ...m,
-        { role: "assistant", content: data.answer, sources: data.sources, model: data.model },
+        {
+          role: "assistant", content: data.answer, sources: data.sources,
+          model: data.model, refProblems: data.reference_problems,
+        },
       ]),
     onError: () =>
       setMessages((m) => [...m, { role: "assistant", content: t("common.error") }]),
@@ -63,7 +87,7 @@ export default function KnowledgeBank() {
   const send = (text: string) => {
     const q = text.trim();
     if (q.length < 3 || ask.isPending) return;
-    setMessages((m) => [...m, { role: "user", content: q }]);
+    setMessages((m) => [...m, { role: "user", content: q, refs: findUrls(q) }]);
     setInput("");
     ask.mutate(q);
   };
@@ -139,8 +163,22 @@ export default function KnowledgeBank() {
                 className={m.role === "user" ? "flex justify-end" : ""}
               >
                 {m.role === "user" ? (
-                  <div className="max-w-[85%] rounded-2xl rounded-br-md bg-secondary px-4 py-2.5 text-sm font-medium text-white">
-                    {m.content}
+                  <div className="flex max-w-[85%] flex-col items-end gap-1.5">
+                    <div className="rounded-2xl rounded-br-md bg-secondary px-4 py-2.5 text-sm font-medium text-white">
+                      {m.content}
+                    </div>
+                    {/* Say which pages are being read. A link in the sentence
+                        silently changing what the answer draws on would be a
+                        surprise, and the point here is knowing the source. */}
+                    {m.refs && m.refs.length > 0 && (
+                      <div className="flex flex-wrap justify-end gap-1.5">
+                        {m.refs.map((u) => (
+                          <Badge key={u} className="bg-warning/10 text-warning">
+                            {t("kb.reading_page")} {hostOf(u)}
+                          </Badge>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <div className="flex flex-col gap-2">
@@ -149,6 +187,15 @@ export default function KnowledgeBank() {
                         {m.content}
                       </p>
                     </div>
+                    {m.refProblems && m.refProblems.length > 0 && (
+                      <div className="rounded-xl border border-danger/30 bg-danger/5 p-3">
+                        {m.refProblems.map((p) => (
+                          <p key={p.url} className="text-xs text-danger">
+                            <span className="font-semibold">{hostOf(p.url)}</span> — {p.error}
+                          </p>
+                        ))}
+                      </div>
+                    )}
                     {m.sources && m.sources.length > 0 && (
                       <Sources hits={m.sources} model={m.model} />
                     )}
@@ -209,6 +256,10 @@ function Sources({ hits, model }: { hits: KnowledgeHit[]; model?: string }) {
       <div className="flex flex-col gap-1.5">
         {hits.map((h, i) => {
           const comp = h.owner === "competitor";
+          // A pasted page is not Medyca's material and must never be dressed
+          // as it: mistaking someone else's content for our own is the worst
+          // failure this screen can make.
+          const ext = h.owner === "external";
           return (
             <a
               key={`${h.kind}-${h.id}`}
@@ -227,12 +278,27 @@ function Sources({ hits, model }: { hits: KnowledgeHit[]; model?: string }) {
                 </span>
                 <span className="mt-0.5 flex flex-wrap items-center gap-1.5">
                   <Badge
-                    className={comp ? "bg-warning/10 text-warning" : "bg-secondary/10 text-secondary"}
+                    className={
+                      ext
+                        ? "bg-heading/10 text-heading"
+                        : comp
+                          ? "bg-warning/10 text-warning"
+                          : "bg-secondary/10 text-secondary"
+                    }
                   >
-                    {comp ? `competitor${h.account ? " @" + h.account : ""}` : "Medyca"}
+                    {ext
+                      ? t("kb.externalRef")
+                      : comp
+                        ? `competitor${h.account ? " @" + h.account : ""}`
+                        : "Medyca"}
                   </Badge>
                   <span className="text-muted/80">
-                    {h.kind === "blog" ? "articolo" : "reel"} · {(h.score * 100).toFixed(0)}%
+                    {ext
+                      ? hostOf(h.url)
+                      : h.kind === "blog"
+                        ? "articolo"
+                        : "reel"}{" "}
+                    · {(h.score * 100).toFixed(0)}%
                   </span>
                 </span>
               </span>
