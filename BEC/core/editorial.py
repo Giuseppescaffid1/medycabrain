@@ -77,7 +77,10 @@ def _medyca_material(limit: int = 25) -> tuple[str, dict]:
     reels = {r.id: r for r in Reel.objects.filter(account__owner_type="owned",
                                                   is_active=True)}
     rows, by_title = [], {}
-    for item in _load_index():
+    # "medyca", not the default "all": this list is presented to the model as
+    # what Medyca has already published, and it was quietly including the
+    # competitors' reels.
+    for item in _load_index("medyca"):
         weight = ""
         if item["kind"] == "reel" and item["id"] in reels:
             w = normalized_engagement(reels[item["id"]], medians)

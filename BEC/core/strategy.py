@@ -134,7 +134,10 @@ def analyze(input_text: str, source_kind: str = "input", job=None,
         qv = _embed_query(input_text)
 
     # Medyca coverage (owned reels + blog), attach engagement weight to reels.
-    medyca_hits = _rank(qv, _load_index(), top_k=6)
+    # Scoped explicitly: _load_index() defaults to "all", so this used to rank
+    # 825 competitor reels as "what Medyca has covered" and the coverage
+    # verdict below was decided by someone else's content.
+    medyca_hits = _rank(qv, _load_index("medyca"), top_k=6)
     medians = account_medians()
     reel_by_id = {r.id: r for r in Reel.objects.filter(account__owner_type="owned")}
     for h, _ in medyca_hits:

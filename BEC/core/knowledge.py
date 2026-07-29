@@ -18,6 +18,8 @@ Medyca's own material.
 
 from __future__ import annotations
 
+import re
+
 import numpy as np
 
 from django.conf import settings
@@ -100,6 +102,15 @@ def _load_index(scope: str = "all") -> list[dict]:
             continue
         enr = getattr(r, "enrichment", None)
         tr = getattr(r, "transcript", None)
+        # A reel whose video was never downloaded and that has no caption is
+        # marked enriched (evidence='insufficient') and still gets a vector —
+        # of the empty string, which sits at a fixed point close to everything.
+        # Ten of those scored 0.84 on "Bijuva", taking the top three places
+        # ahead of the reel actually called "bijuva pro e contro". A source
+        # with nothing in it cannot answer anything: keep it out.
+        if not ((tr.text if tr else "") or r.caption or
+                (enr.summary_it if enr else "")).strip():
+            continue
         items.append({
             "kind": "reel",
             "owner": r.account.owner_type,
@@ -155,6 +166,52 @@ def _lexical_score(query: str, text: str) -> float:
     return sum(1 for w in words if w in hay) / len(words)
 
 
+# Medyca's own material is 70 items against 835 competitor ones. On one global
+# ranking those odds decide the outcome: measured, the first Medyca result for
+# "Bijuva" landed 27th, for "perimenopausa" 66th, for "cosa manca ai nostri
+# contenuti" 99th — so the chat, asked to compare, truthfully reported having no
+# Medyca material and looked disconnected from its own knowledge bank.
+#
+# The two sides are therefore ranked separately and merged. This is a deliberate
+# trade: a guaranteed slot sometimes shows a Medyca item less relevant than the
+# competitor it displaced. That is the point of a comparison tool — but only up
+# to a point, hence the floor below.
+# Expressed as a share, not a count, so the balance survives a smaller top_k —
+# which is exactly what happens when a pasted page takes some of the slots.
+# Trimming a merged list instead would silently undo the quota: the leftovers
+# are re-sorted by score, and on score the competitors win again.
+OWNED_SHARE = 5 / 12
+
+# Each side is filtered against its OWN best, not against the global best.
+#
+# Two reasons. An absolute cutoff does not work: on the nonsense query "ricetta
+# della pasta al forno" the best competitor still scored 0.50, because
+# similarity values in this space are compressed. And a global reference is
+# quietly unfair — the maximum of 835 samples runs higher than the maximum of
+# 70 by sample size alone, so measuring Medyca against the competitors' best
+# penalises it for being the smaller corpus, which is the very bias this whole
+# change exists to remove. It showed up immediately: "cosa manca ai nostri
+# contenuti" returned zero Medyca sources, on the one question that is entirely
+# about Medyca's own material.
+#
+# Within a side, 60% of that side's best keeps the real match for "Bijuva"
+# (0.40 of 0.40) and drops the padding ("donna", 0.21).
+RELEVANCE_FLOOR = 0.60
+
+
+def _rank(index: list[dict], query: str, qvec) -> list[tuple[float, dict, float]]:
+    if not index:
+        return []
+    mat = np.vstack([it["vec"] for it in index])
+    dense = mat @ qvec  # normalized vectors → cosine
+    out = []
+    for i, it in enumerate(index):
+        lex = _lexical_score(query, f"{it['title']} {it['summary']} {it['text']}")
+        out.append((0.75 * float(dense[i]) + 0.25 * lex, it, lex))
+    out.sort(key=lambda r: -r[0])
+    return out
+
+
 def semantic_search(query: str, top_k: int = 6, scope: str = "all") -> list[dict]:
     """Hybrid retrieval over the knowledge bank.
 
@@ -162,23 +219,42 @@ def semantic_search(query: str, top_k: int = 6, scope: str = "all") -> list[dict
     keyword evidence; the winning passage inside each document is then
     selected so the generator receives the text that answers the question,
     not the opening lines of the article.
+
+    Under scope "all" the two sides are ranked separately and merged, so
+    Medyca's own material is present whenever it has something to say.
     """
     index = _load_index(scope)
     if not index:
         return []
     q = _embed_query(query)
-    mat = np.vstack([it["vec"] for it in index])
-    dense = mat @ q  # normalized vectors → cosine
 
-    scored = []
-    for i, it in enumerate(index):
-        lex = _lexical_score(query, f"{it['title']} {it['summary']} {it['text']}")
-        scored.append((0.75 * float(dense[i]) + 0.25 * lex, i, lex))
-    scored.sort(reverse=True)
+    if scope in ("all",):
+        owned = _rank([i for i in index if i.get("owner") != "competitor"], query, q)
+        comp = _rank([i for i in index if i.get("owner") == "competitor"], query, q)
+
+        def _keep(ranked, slots):
+            # Padding a quota with weak matches is another way of answering
+            # badly, so a slot the side cannot fill well is left to the other.
+            if not ranked:
+                return []
+            floor = ranked[0][0] * RELEVANCE_FLOOR
+            return [r for r in ranked[:slots] if r[0] >= floor]
+
+        owned_slots = max(1, round(top_k * OWNED_SHARE))
+        take_owned = _keep(owned, owned_slots)
+        take_comp = _keep(comp, top_k - owned_slots)
+        spare = top_k - len(take_owned) - len(take_comp)
+        if spare > 0:
+            seen = {id(r[1]) for r in take_owned + take_comp}
+            rest = sorted((r for r in owned + comp if id(r[1]) not in seen),
+                          key=lambda r: -r[0])
+            take_comp += rest[:spare]
+        scored = sorted(take_owned + take_comp, key=lambda r: -r[0])
+    else:
+        scored = _rank(index, query, q)
 
     out = []
-    for score, i, lex in scored[:top_k]:
-        it = index[i]
+    for score, it, lex in scored[:top_k]:
         passage = (_best_passage(it["text"] or it["summary"], q, it.get("chunks"))
                    or _snippet(it["text"]))
         out.append({
@@ -238,13 +314,22 @@ ANSWER_SYSTEM = (
     "indicato in questa conversazione: non fa parte della knowledge bank e non "
     "\u00e8 materiale di Medyca. Serve per il confronto. Quando \u00e8 presente, dì "
     "esplicitamente cosa il riferimento tratta e il materiale di Medyca no: "
-    "\u00e8 questa la risposta utile, non il riassunto della pagina."
+    "\u00e8 questa la risposta utile, non il riassunto della pagina.\n"
+    "- Le fonti sono una SELEZIONE per questa domanda, non l'inventario della "
+    "knowledge bank. Se fra le fonti non c'\u00e8 materiale di Medyca, scrivi che "
+    "non \u00e8 emerso nulla di Medyca su questo punto \u2014 NON che Medyca non ha "
+    "pubblicato nulla in merito. Sono due affermazioni diverse e la seconda "
+    "non la puoi sapere.\n\n"
+    "FORMATO: usa markdown \u2014 grassetto per i punti chiave, elenchi puntati, "
+    "tabelle dove servono. Niente titoli di primo livello (#): la risposta vive "
+    "gi\u00e0 dentro una scheda. Vai al punto: chi legge \u00e8 una professionista."
 )
 ANSWER_USER = """\
 DOMANDA:
 {query}
 
-FONTI (estratti selezionati dai contenuti di Medyca):
+{inventory}
+FONTI SELEZIONATE per questa domanda, raggruppate per origine:
 {sources}
 
 Rispondi alla domanda basandoti SOLO sulle fonti, citando con [n].
@@ -294,6 +379,97 @@ def _reference_hits(urls: list[str], qvec, per_ref: int = 3) -> tuple[list[dict]
     return hits, problems
 
 
+def _inventory_line() -> str:
+    """What the knowledge bank actually holds, told to the model.
+
+    Without it the model can only see the handful of sources it was handed,
+    and when none of them are Medyca's it concludes Medyca has published
+    nothing — which is what the client read, and what made the chat look
+    disconnected from its own data.
+    """
+    index = _load_index("all")
+    reels = sum(1 for i in index if i["kind"] == "reel" and i.get("owner") != "competitor")
+    blog = sum(1 for i in index if i["kind"] == "blog")
+    comp = sum(1 for i in index if i.get("owner") == "competitor")
+    return (f"LA KNOWLEDGE BANK CONTIENE: {reels} reel di Medyca, {blog} articoli "
+            f"del blog Medyca, {comp} reel dei competitor.\n")
+
+
+_GROUPS = (
+    ("external", "RIFERIMENTI ESTERNI indicati dall'utente (non sono materiale Medyca)"),
+    ("owned", "MATERIALE DI MEDYCA"),
+    ("competitor", "MATERIALE DEI COMPETITOR"),
+)
+
+
+def _sources_block(hits: list[dict]) -> str:
+    """The sources, grouped by whose they are.
+
+    A flat list let the model lose track of which side a passage came from —
+    the one confusion this screen must never make.
+    """
+    numbered = {id(h): i + 1 for i, h in enumerate(hits)}
+    blocks = []
+    for key, heading in _GROUPS:
+        group = [h for h in hits
+                 if (h.get("owner") if h.get("owner") in ("external", "competitor")
+                     else "owned") == key]
+        if not group:
+            continue
+        lines = []
+        for h in group:
+            what = "articolo blog" if h["kind"] == "blog" else "reel"
+            who = f" @{h['account']}" if h.get("account") else ""
+            lines.append(f"[{numbered[id(h)]}] {h['title']} ({what}{who})\n{h['snippet']}")
+        blocks.append(f"### {heading}\n" + "\n\n".join(lines))
+    if not any(h.get("owner") not in ("external", "competitor") for h in hits):
+        blocks.append("### MATERIALE DI MEDYCA\n(nessuna fonte di Medyca è emersa "
+                      "per questa domanda)")
+    return "\n\n".join(blocks)
+
+
+def _prepare(query: str, top_k: int, scope: str,
+             history: list | None, references: list[str] | None) -> dict:
+    """Everything that happens before the model speaks.
+
+    Shared by `answer` and `answer_stream` so the prompt cannot drift between
+    the blocking and the streaming path and produce two different styles of
+    answer depending on which endpoint was called.
+    """
+    ref_hits, ref_problems = [], []
+    if references:
+        ref_hits, ref_problems = _reference_hits(references, _embed_query(query))
+    # The pasted page leads — it is the thing being asked about — but it must
+    # not push the internal material out of the context in exactly the
+    # comparison it was needed for. So the retrieval budget is reduced FIRST
+    # and the quota applied to what remains, rather than trimming afterwards.
+    budget = max(top_k - len(ref_hits), top_k // 2) if ref_hits else top_k
+    hits = ref_hits + semantic_search(query, top_k=budget, scope=scope)
+
+    convo = ""
+    for turn in (history or [])[-6:]:
+        role = "UTENTE" if turn.get("role") == "user" else "ASSISTENTE"
+        convo += f"{role}: {str(turn.get('content', ''))[:500]}\n"
+    if convo:
+        convo = f"CONVERSAZIONE FINORA:\n{convo}\n"
+
+    return {
+        "hits": hits,
+        "ref_problems": ref_problems,
+        "system": ANSWER_SYSTEM,
+        "user": convo + ANSWER_USER.format(
+            query=query, inventory=_inventory_line(),
+            sources=_sources_block(hits)),
+    }
+
+
+def _mark_cited(text: str, hits: list[dict]) -> None:
+    """Flag the sources the answer actually leaned on."""
+    cited = {int(n) for n in re.findall(r"\[(\d+)\]", text or "")}
+    for i, h in enumerate(hits, start=1):
+        h["cited"] = i in cited
+
+
 def answer(query: str, top_k: int = 8, scope: str = "all",
            history: list | None = None,
            references: list[str] | None = None) -> dict:
@@ -304,44 +480,18 @@ def answer(query: str, top_k: int = 8, scope: str = "all",
     the reasoning model — the same one that analyses transcripts — because
     reading several sources and refusing to over-claim is judgement work.
     """
-    hits = semantic_search(query, top_k=top_k, scope=scope)
-    ref_hits, ref_problems = [], []
-    if references:
-        ref_hits, ref_problems = _reference_hits(
-            references, _embed_query(query))
-        # The pasted page leads: it is the thing the user is asking about, and
-        # burying it under eight of our own passages loses the comparison.
-        hits = ref_hits + hits
+    p = _prepare(query, top_k, scope, history, references)
+    hits = p["hits"]
     if not hits:
         return {"answer": "La knowledge bank è ancora vuota o non indicizzata.",
-                "sources": [], "model": "", "reference_problems": ref_problems}
-
-    def _label(h):
-        if h.get("owner") == "external":
-            return "RIFERIMENTO ESTERNO indicato dall'utente"
-        who = "Medyca" if h.get("owner") != "competitor" else f"COMPETITOR @{h.get('account', '')}"
-        what = "articolo blog" if h["kind"] == "blog" else "reel"
-        return f"{what}, {who}"
-
-    sources_txt = "\n\n".join(
-        f"[{i+1}] {h['title']} ({_label(h)})\n{h['snippet']}"
-        for i, h in enumerate(hits)
-    )
-    # A few turns of memory: enough for follow-ups ("e sui competitor?")
-    # without letting an old topic drag the retrieval off course.
-    convo = ""
-    for turn in (history or [])[-6:]:
-        role = "UTENTE" if turn.get("role") == "user" else "ASSISTENTE"
-        convo += f"{role}: {str(turn.get('content', ''))[:500]}\n"
-    if convo:
-        convo = f"CONVERSAZIONE FINORA:\n{convo}\n"
+                "sources": [], "model": "", "reference_problems": p["ref_problems"]}
     if not client.available():
         return {"answer": "(LLM non disponibile — mostro solo le fonti recuperate.)",
-                "sources": hits, "model": ""}
+                "sources": hits, "model": "",
+                "reference_problems": p["ref_problems"]}
     try:
         text = client.chat(
-            ANSWER_SYSTEM,
-            convo + ANSWER_USER.format(query=query, sources=sources_txt),
+            p["system"], p["user"],
             max_tokens=900, temperature=0.2, priority=True, timeout=600,
             # Deliberately the reasoning tier, not the analysis one: the chat
             # answers many questions a day and does not need the deepest model.
@@ -350,10 +500,6 @@ def answer(query: str, top_k: int = 8, scope: str = "all",
         used = client.last_model_used()
     except Exception as exc:  # noqa: BLE001
         text, used = f"(Errore nella generazione: {exc!r})", ""
-    # Surface which sources the answer actually leaned on.
-    import re
-    cited = {int(n) for n in re.findall(r"\[(\d+)\]", text or "")}
-    for i, h in enumerate(hits, start=1):
-        h["cited"] = i in cited
+    _mark_cited(text, hits)
     return {"answer": (text or "").strip(), "sources": hits, "model": used,
-            "reference_problems": ref_problems}
+            "reference_problems": p["ref_problems"]}

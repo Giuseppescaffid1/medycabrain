@@ -335,13 +335,25 @@ class KnowledgeSearchView(APIView):
         query = (request.data.get("query") or request.data.get("q") or "").strip()
         if not query:
             return Response({"detail": "query richiesta."}, status=400)
-        top_k = int(request.data.get("top_k", 6))
+        # Clamped: an unbounded top_k here would load and score the whole
+        # corpus into one response on request.
+        try:
+            top_k = max(1, min(int(request.data.get("top_k", 6)), 24))
+        except (TypeError, ValueError):
+            top_k = 6
+        # scope was accepted nowhere and silently defaulted to "all", so a
+        # caller asking for Medyca's own material got the competitors too.
+        scope = (request.data.get("scope") or "all").lower()
+        if scope not in ("all", "medyca", "competitor"):
+            scope = "all"
         from core.knowledge import semantic_search
-        return Response({"query": query, "results": semantic_search(query, top_k=top_k)})
+        return Response({"query": query, "scope": scope,
+                         "results": semantic_search(query, top_k=top_k, scope=scope)})
 
     def get(self, request):
         request._full_data = {"query": request.query_params.get("q", ""),
-                              "top_k": request.query_params.get("top_k", 6)}
+                              "top_k": request.query_params.get("top_k", 6),
+                              "scope": request.query_params.get("scope", "all")}
         return self.post(request)
 
 
