@@ -343,7 +343,7 @@
     "limits": {
       "title": "Limiti noti",
       "items": [
-        "I video vengono recuperati tramite un servizio esterno (Apify) che gestisce l'accesso a Instagram: questo evita il blocco che fermava il recupero degli arretrati. Il servizio si paga a consumo, circa 2,60 $ ogni 1.000 reel.",
+        "La raccolta da Instagram è in migrazione alle API ufficiali di Meta: al momento è sospesa e riparte appena il collegamento è attivo. Con le API ufficiali i profili personali (non Business/Creator) non sono leggibili, e per i video dei competitor Meta non fornisce il conteggio delle visualizzazioni.",
         "Vengono letti i contenuti dalla scheda Reel; i post video normali e i caroselli non sono inclusi.",
         "I blog vengono monitorati come i profili Instagram: quello di Medyca e i blog dei competitor aggiunti dalla pagina Account. L'importazione parte dai ~40 articoli più recenti per fonte e completa l'archivio nelle notti successive — importiamo il recente, non tutto lo storico.",
         "37 video trascritti il 27 luglio avevano usato il modello locale di riserva, meno preciso sui termini medici. Il collegamento al servizio di trascrizione è stato corretto e quelle trascrizioni sono state rifatte.",

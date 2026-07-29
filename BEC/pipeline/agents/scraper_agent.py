@@ -175,6 +175,78 @@ def _scrape_account_graphql(account: TrackedAccount, budget: list[int]) -> tuple
     return new_count, True
 
 
+def _scrape_account_graph(account: TrackedAccount, budget: list[int]) -> tuple[int, bool]:
+    """The official path: business_discovery via the Graph API.
+
+    Same contract as the GraphQL scraper — (new_reels, complete), budget
+    mutated — but no cookies, no impersonation, no quota guessing: the rate
+    limits are documented and the caller is an app we registered.
+
+    A personal target account raises NotDiscoverable; that is a property of
+    the account, not a transient failure, so it is recorded on the row and
+    the account is skipped in future runs until it changes.
+    """
+    from django.conf import settings
+
+    from scraper import graph_client
+
+    caller = settings.IG_GRAPH_USER_ID or graph_client.resolve_caller_ig_id()
+    max_pages = int(_cfg("max_pages_per_account", 3))
+    page_size = min(int(_cfg("page_size", 12)) * 2, 25)  # API pages are cheap
+    full_backfill = bool(_cfg("full_backfill", False))
+
+    state = account.scrape_state or {}
+    if state.get("graph_not_discoverable"):
+        logger.info("[scraper] @%s: non-Business, salto (business_discovery)",
+                    account.username)
+        return 0, True
+
+    known = set(
+        Reel.objects.filter(account=account).values_list("shortcode", flat=True)
+    )
+    new_count, cursor = 0, ""
+    for page_idx in range(max_pages):
+        if budget[0] <= 0:
+            logger.warning("[scraper] global request budget exhausted")
+            return new_count, False
+        try:
+            profile, reels, paging = graph_client.discover(
+                account.username, caller, after=cursor, page_size=page_size)
+        except graph_client.NotDiscoverable as exc:
+            # Permanent property of the target, surfaced once, not retried
+            # nightly into noise. Flipping the account to Business clears it
+            # by hand (scrape_state) or via a fresh graph_check.
+            account.scrape_state = {**state, "graph_not_discoverable": str(exc)[:200]}
+            account.save(update_fields=["scrape_state"])
+            logger.warning("[scraper] @%s non è Business/Creator: %s",
+                           account.username, exc)
+            return 0, True
+        budget[0] -= 1
+        if page_idx == 0:
+            _apply_profile(account, profile)
+
+        page_new = 0
+        for reel in reels:
+            raw_path = _dump_raw(account.username, reel)
+            if _upsert_reel(account, reel, raw_path):
+                page_new += 1
+        new_count += page_new
+        logger.info("[scraper] @%s (graph) page %s: %s video, %s new",
+                    account.username, page_idx + 1, len(reels), page_new)
+
+        if not full_backfill and reels and page_new == 0 \
+                and all(r.shortcode in known for r in reels):
+            break
+        if not paging.get("has_next_page"):
+            break
+        cursor = paging.get("after", "")
+        # Documented, generous limits — a short fixed pause is courtesy, not
+        # the elaborate jitter the unofficial endpoint needed.
+        time.sleep(2)
+
+    return new_count, True
+
+
 def _scrape_account_instaloader(account: TrackedAccount) -> tuple[int, bool]:
     known = set(Reel.objects.filter(account=account).values_list("shortcode", flat=True))
     max_pages = int(_cfg("max_pages_per_account", 3))
@@ -204,21 +276,22 @@ def _apply_profile(account: TrackedAccount, profile: ProfileMeta):
 
 
 def run(ctx) -> dict:
-    # No session file = no Instagram scraping, by explicit decision: the
-    # cookies belonged to Giuseppe's personal account (2026-07-29, removed at
-    # his request) and scraping must never run signed as him again. The stage
-    # skips cleanly — noisy per-account failures would read as an incident —
-    # until the official Instagram API replaces this path entirely.
-    from scraper.session_store import load_cookies
-    try:
-        load_cookies()
-    except FileNotFoundError:
-        logger.warning("[scraper] nessuna sessione Instagram: raccolta sospesa "
-                       "in attesa delle API ufficiali")
-        return {"accounts": 0, "new_reels": 0,
-                "note": "sospeso: nessuna sessione IG (migrazione ad API ufficiali)"}
+    # The official Graph API is the collection path. The cookie scrapers ran
+    # as Giuseppe's personal account and were removed by explicit decision
+    # (2026-07-29): without a Graph token the stage skips cleanly — noisy
+    # per-account failures would read as an incident when this is a choice.
+    from scraper import graph_client
 
-    provider_order = _cfg("provider_order", ["graphql", "instaloader"])
+    if graph_client.configured():
+        provider_order = _cfg("provider_order", ["graph"])
+        if "graph" not in provider_order:
+            provider_order = ["graph"] + list(provider_order)
+    else:
+        logger.warning("[scraper] Graph API non configurata (IG_GRAPH_TOKEN): "
+                       "raccolta sospesa — vedi docs/instagram-graph-api-setup.md")
+        return {"accounts": 0, "new_reels": 0,
+                "note": "sospeso: Graph API non configurata "
+                        "(docs/instagram-graph-api-setup.md)"}
     budget = [int(_cfg("global_request_budget", 40))]
     accounts = TrackedAccount.objects.filter(is_active=True)
     if not accounts:
@@ -252,7 +325,9 @@ def _scrape_one(account, provider_order, budget):
     last_err = None
     for provider in provider_order:
         try:
-            if provider == "graphql":
+            if provider == "graph":
+                n, complete = _scrape_account_graph(account, budget)
+            elif provider == "graphql":
                 n, _ = _scrape_account_graphql(account, budget)
             elif provider == "instaloader":
                 n, _ = _scrape_account_instaloader(account)

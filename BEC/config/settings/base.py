@@ -200,6 +200,14 @@ STT_API_KEY = os.environ.get("FAST_LLM_API_KEY", "")
 # calls to Instagram's media/info throttle after ~35 and then answer HTML.
 # Billed per result, so callers batch per account — never per reel.
 APIFY_TOKEN = os.environ.get("APIFY_TOKEN", "")
+
+# Instagram Graph API — the official replacement for cookie scraping, which
+# was removed 2026-07-29 (it ran as Giuseppe's personal account). The caller
+# is a Meta app + an IG BUSINESS account; competitors are read through
+# business_discovery. Human setup steps: docs/instagram-graph-api-setup.md.
+IG_GRAPH_TOKEN = os.environ.get("IG_GRAPH_TOKEN", "")
+IG_GRAPH_USER_ID = os.environ.get("IG_GRAPH_USER_ID", "")
+IG_GRAPH_API_VERSION = os.environ.get("IG_GRAPH_API_VERSION", "v21.0")
 APIFY_REEL_ACTOR = os.environ.get("APIFY_REEL_ACTOR", "apify~instagram-reel-scraper")
 
 # Serialize local Ollama calls: the CPU fits exactly one 3B/7B generation.
