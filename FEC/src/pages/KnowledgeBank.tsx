@@ -5,6 +5,7 @@ import { motion } from "framer-motion";
 import { askKnowledge, type AskResult, type KnowledgeHit } from "../api/knowledge";
 import { Badge, Button, fieldCls } from "../components/ui/primitives";
 import { PageTransition, EASE } from "../components/ui/motion";
+import { AnswerBody } from "../components/knowledge/AnswerBody";
 
 type Scope = "all" | "medyca" | "competitor";
 
@@ -48,6 +49,9 @@ export default function KnowledgeBank() {
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
   const [elapsed, setElapsed] = useState(0);
+  // Which citation the reader just clicked, so the matching source can be
+  // scrolled to and highlighted. Inert [n] text was the old behaviour.
+  const [focus, setFocus] = useState<{ msg: number; n: number } | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
 
   const ask = useMutation<AskResult, unknown, string>({
@@ -83,6 +87,13 @@ export default function KnowledgeBank() {
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages.length, ask.isPending]);
+
+  const focusSource = (msg: number, n: number) => {
+    setFocus({ msg, n });
+    document.getElementById(`fonte-${msg}-${n}`)?.scrollIntoView({
+      behavior: "smooth", block: "center",
+    });
+  };
 
   const send = (text: string) => {
     const q = text.trim();
@@ -183,9 +194,7 @@ export default function KnowledgeBank() {
                 ) : (
                   <div className="flex flex-col gap-2">
                     <div className="rounded-2xl rounded-bl-md border border-border bg-white p-4 shadow-card">
-                      <p className="whitespace-pre-wrap text-sm leading-relaxed text-navy">
-                        {m.content}
-                      </p>
+                      <AnswerBody content={m.content} onCite={(n) => focusSource(i, n)} />
                     </div>
                     {m.refProblems && m.refProblems.length > 0 && (
                       <div className="rounded-xl border border-danger/30 bg-danger/5 p-3">
@@ -197,7 +206,8 @@ export default function KnowledgeBank() {
                       </div>
                     )}
                     {m.sources && m.sources.length > 0 && (
-                      <Sources hits={m.sources} model={m.model} />
+                      <Sources hits={m.sources} model={m.model} msgIndex={i}
+                               focused={focus?.msg === i ? focus.n : null} />
                     )}
                   </div>
                 )}
@@ -245,7 +255,18 @@ export default function KnowledgeBank() {
   );
 }
 
-function Sources({ hits, model }: { hits: KnowledgeHit[]; model?: string }) {
+/** Origin decides the colour, and grouping makes the comparison visible:
+ *  the whole product rests on never confusing Medyca's material with the
+ *  competitors'. Blue is Medyca and amber the competition, the same coding
+ *  ScopeBadge and the constellation map already use. */
+const originOf = (h: KnowledgeHit) =>
+  h.owner === "external" ? "external" : h.owner === "competitor" ? "competitor" : "owned";
+
+const ORIGINS = ["external", "owned", "competitor"] as const;
+
+function Sources({ hits, model, msgIndex, focused }: {
+  hits: KnowledgeHit[]; model?: string; msgIndex: number; focused: number | null;
+}) {
   const { t } = useTranslation();
   return (
     <div className="rounded-2xl border border-border bg-surface p-3">
@@ -253,8 +274,19 @@ function Sources({ hits, model }: { hits: KnowledgeHit[]; model?: string }) {
         {t("kb.sources")}
         {model && <Badge className="bg-white normal-case text-muted">🤖 {model}</Badge>}
       </div>
-      <div className="flex flex-col gap-1.5">
-        {hits.map((h, i) => {
+      <div className="flex flex-col gap-3">
+        {ORIGINS.map((origin) => {
+          const group = hits
+            .map((h, i) => ({ h, n: i + 1 }))
+            .filter(({ h }) => originOf(h) === origin);
+          if (!group.length) return null;
+          return (
+            <div key={origin} className="flex flex-col gap-1.5">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-muted/70">
+                {t(`kb.origin.${origin}`)} · {group.length}
+              </div>
+              {group.map(({ h, n }) => {
+          const i = n - 1;
           const comp = h.owner === "competitor";
           // A pasted page is not Medyca's material and must never be dressed
           // as it: mistaking someone else's content for our own is the worst
@@ -262,19 +294,26 @@ function Sources({ hits, model }: { hits: KnowledgeHit[]; model?: string }) {
           const ext = h.owner === "external";
           return (
             <a
-              key={`${h.kind}-${h.id}`}
+              key={`${h.kind}-${h.id}-${n}`}
+              id={`fonte-${msgIndex}-${n}`}
               href={h.url}
               target="_blank"
               rel="noreferrer"
               className={
-                "flex items-start gap-2 rounded-xl border bg-white px-3 py-2 text-xs transition hover:shadow-card " +
-                (h.cited ? "border-secondary/40" : "border-border")
+                "flex items-start gap-2 rounded-xl border bg-white px-3 py-2 text-xs transition duration-200 hover:shadow-card " +
+                (focused === n
+                  ? "border-secondary ring-2 ring-secondary/30"
+                  : h.cited
+                    ? "border-secondary/40"
+                    : "border-border")
               }
             >
-              <span className="font-bold text-muted">[{i + 1}]</span>
+              <span className="font-bold text-muted">[{n}]</span>
               <span className="min-w-0 flex-1">
                 <span className="line-clamp-1 font-semibold text-navy">
-                  {h.title.replace(/ — Medyca$/, "")}
+                  {h.title.replace(/ — Medyca$/, "").trim() ||
+                    h.snippet?.slice(0, 60) ||
+                    t("kb.untitled")}
                 </span>
                 <span className="mt-0.5 flex flex-wrap items-center gap-1.5">
                   <Badge
@@ -303,6 +342,9 @@ function Sources({ hits, model }: { hits: KnowledgeHit[]; model?: string }) {
                 </span>
               </span>
             </a>
+                );
+              })}
+            </div>
           );
         })}
       </div>

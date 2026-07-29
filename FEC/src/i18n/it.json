@@ -108,7 +108,6 @@
   },
   "kb": {
     "title": "Knowledge Bank",
-    "subtitle": "Chiedi qualcosa ai contenuti di Medyca e dei competitor: risponde citando le fonti, senza inventare. Incolla un link per farle leggere una pagina esterna e confrontarla.",
     "browse": "Sfoglia",
     "search": "Cerca",
     "ask": "Chiedi",
@@ -131,7 +130,7 @@
     "cited": "citata nella risposta",
     "askIntro": "Fai una domanda e ottieni una risposta costruita solo sui contenuti di Medyca, con le fonti citate. Le altre schede servono per sfogliare il materiale grezzo.",
     "chatTitle": "Chat sui contenuti",
-    "chatSubtitle": "Chiedi qualsiasi cosa ai contenuti di Medyca e dei competitor. Risponde citando le fonti, senza aggiungere nulla di esterno.",
+    "chatSubtitle": "Chiedi qualcosa ai contenuti di Medyca e dei competitor: risponde citando le fonti, senza inventare. Incolla un link per farle leggere una pagina esterna e confrontarla.",
     "scopeAll": "Tutti",
     "scopeMedyca": "Solo Medyca",
     "scopeCompetitor": "Solo competitor",
@@ -147,7 +146,13 @@
     "clear": "Nuova conversazione",
     "reading_page": "leggo",
     "refHint": "Incolla un link nella domanda per farglielo leggere e confrontare con la knowledge bank.",
-    "externalRef": "fonte esterna"
+    "externalRef": "fonte esterna",
+    "origin": {
+      "external": "Riferimenti esterni",
+      "owned": "Materiale di Medyca",
+      "competitor": "Materiale dei competitor"
+    },
+    "untitled": "(senza titolo)"
   },
   "jobs": {
     "ideation": "Generazione idee di contenuto",
