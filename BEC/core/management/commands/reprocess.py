@@ -12,13 +12,15 @@ re-run has to be resumable rather than one long shot.
 
 from __future__ import annotations
 
+from django.db.models import Q
+
 import time
 
 from django.core.management.base import BaseCommand
 
 from core.models import DONE, PENDING, Reel
 
-STAGES = ("transcribe", "enrich")
+STAGES = ("transcribe", "enrich", "knowledge")
 
 
 class Command(BaseCommand):
@@ -48,6 +50,23 @@ class Command(BaseCommand):
             owner = "owned" if opts["scope"].lower() in ("medyca", "owned") else "competitor"
             qs = qs.filter(account__owner_type=owner)
         qs = qs.order_by("-view_count")  # highest-value content first
+
+        if "knowledge" in stages:
+            # The explicit retry for blog documents: FAILED stays FAILED in
+            # the pipeline by rule, so this is the one place that re-queues.
+            from core.models import FAILED as DOC_FAILED
+            from core.models import KnowledgeDocument
+            from pipeline.agents import knowledge_agent
+            from pipeline.dag import Context
+            n = (KnowledgeDocument.objects
+                 .filter(is_active=True)
+                 .filter(Q(enrich_status=DOC_FAILED) | Q(embed_status=DOC_FAILED)
+                         | Q(argument_status=DOC_FAILED))
+                 .update(enrich_status=PENDING, embed_status=PENDING,
+                         argument_status=PENDING, last_error=""))
+            self.stdout.write(f"[knowledge] {n} documenti falliti rimessi in coda")
+            res = knowledge_agent.run(Context(limit=opts["limit"] or None))
+            self.stdout.write(self.style.SUCCESS(f"[knowledge] {res}"))
 
         if "transcribe" in stages:
             self._transcribe(qs, opts, settings)

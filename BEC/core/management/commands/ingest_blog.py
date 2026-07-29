@@ -40,24 +40,36 @@ class Command(BaseCommand):
 
         urls = []
         if opts["crawl"]:
-            urls = blog_agent.crawl_index(opts["crawl"], limit=opts["limit"])
-            self.stdout.write(f"discovered {len(urls)} article URLs")
+            # Discovery moved to the agent: --crawl now expects a BlogSource
+            # index_url already registered, and delegates to it.
+            from core.models import BlogSource
+            src = BlogSource.objects.filter(
+                index_url=opts["crawl"].rstrip("/")).first()
+            if not src:
+                raise CommandError(
+                    "Nessuna BlogSource con questo index_url. Creala prima "
+                    "(API /blog-sources/ o admin), poi rilancia.")
+            from pipeline.agents import blogscrape_agent
+            res = blogscrape_agent.crawl_source(src, force=True,
+                                                enrich=opts["enrich"])
+            self.stdout.write(self.style.SUCCESS(str(res)))
+            return
         if opts["url"]:
             urls.append(opts["url"])
 
         created = updated = failed = 0
         for u in urls:
             try:
-                doc, was_created = blog_agent.ingest(u)
-                if doc is None:
+                doc, action = blog_agent.ingest(u)
+                if action == "failed":
                     failed += 1
                     self.stdout.write(self.style.WARNING(f"  ✗ could not extract {u}"))
-                elif was_created:
+                elif action == "created":
                     created += 1
                     self.stdout.write(self.style.SUCCESS(f"  + {doc.title[:70]}"))
                 else:
                     updated += 1
-                    self.stdout.write(f"  = {doc.title[:70]} (updated)")
+                    self.stdout.write(f"  = {doc.title[:70]} ({action})")
             except Exception as exc:  # noqa: BLE001
                 failed += 1
                 self.stdout.write(self.style.ERROR(f"  ✗ {u}: {exc!r}"))

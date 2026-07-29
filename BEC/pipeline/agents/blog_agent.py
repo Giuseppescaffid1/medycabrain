@@ -32,14 +32,20 @@ _UA = (
 
 
 def _download(url: str, attempts: int = 3) -> str | None:
-    """Fetch page HTML with a browser UA + retries (trafilatura.fetch_url is
-    flaky under rapid sequential calls; requests is reliable)."""
+    """Fetch page HTML through the SSRF-validated fetcher, with retries.
+
+    Every body this module STORES comes through here, so redirects are
+    validated hop by hop — a crawled site must not become a way of reading
+    addresses only this server can reach.
+    """
+    from core.external_ref import RefusedURL, safe_get
+
     for i in range(attempts):
         try:
-            r = requests.get(url, headers={"User-Agent": _UA}, timeout=30,
-                             allow_redirects=True)
-            if r.status_code == 200 and r.text:
-                return r.text
+            return safe_get(url, max_bytes=5_000_000)
+        except RefusedURL as exc:
+            logger.debug("[blog] fetch rifiutato per %s: %s", url, exc)
+            return None  # a refusal is a verdict, not a transient error
         except Exception as exc:  # noqa: BLE001
             logger.debug("[blog] fetch attempt %d failed for %s: %r", i + 1, url, exc)
         time.sleep(1.5 * (i + 1))
@@ -87,50 +93,89 @@ def fetch_article(url: str) -> dict | None:
         "title": title,
         "markdown": markdown.strip(),
         "text": plain,
+        "language": _detect_language(downloaded, plain),
         "author": author,
         "published_at": published,
     }
 
 
-def crawl_index(index_url: str, limit: int = 50) -> list[str]:
-    """Discover article URLs from a blog index page (same host, /blog/ paths)."""
-    downloaded = _download(index_url)
-    if not downloaded:
-        return []
-    host = urlparse(index_url).netloc
-    index_path = urlparse(index_url).path.rstrip("/")
-    hrefs = set(re.findall(r'href=["\']([^"\']+)["\']', downloaded))
-    urls = []
-    for h in hrefs:
-        full = urljoin(index_url, h).split("?")[0].split("#")[0]
-        p = urlparse(full)
-        # article pages live under /blog/<slug>; skip the index and category pages
-        if (p.netloc == host and re.search(r"/blog/[^/]+$", p.path)
-                and "/category/" not in p.path
-                and p.path.rstrip("/") != index_path):
-            urls.append(full)
-    return sorted(set(urls))[:limit]
+def _detect_language(html: str, text: str) -> str:
+    """it/en, cheapest signal first. No new dependency for a 2-way guess."""
+    m = re.search(r'<html[^>]+lang=["\']?([a-zA-Z]{2})', html or "")
+    if m:
+        return m.group(1).lower()
+    words = re.findall(r"[a-zàèéìòù]+", (text or "").lower())[:200]
+    if not words:
+        return ""
+    it = {"il", "la", "che", "di", "per", "con", "una", "sono", "della", "anche"}
+    en = {"the", "and", "for", "with", "that", "this", "are", "from", "have", "which"}
+    it_n = sum(1 for w in words if w in it)
+    en_n = sum(1 for w in words if w in en)
+    return "it" if it_n >= en_n else "en"
 
 
-def ingest(url: str, source_type: str = "blog") -> tuple[KnowledgeDocument | None, bool]:
-    """Fetch + store one article. Returns (doc, created)."""
+def ingest(url: str, *, source=None,
+           source_type: str = "blog") -> tuple[KnowledgeDocument | None, str]:
+    """Fetch + store one article. Returns (doc, action):
+    'created' | 'updated' | 'unchanged' | 'failed'.
+
+    A boolean cannot express what matters here. 'unchanged' makes recrawls
+    free — the body hash matched, nothing is touched, the enrich queue does
+    not churn over articles nobody edited. 'updated' resets the enrichment
+    statuses: this used to be the bug — a rewritten article kept forever the
+    summary and vector of its old text, because update_or_create left both
+    statuses at done.
+
+    `source` sets provenance AND owner_type — this function and the seed
+    migration are the only writers of owner_type, by rule.
+    """
+    import hashlib
+
     art = fetch_article(url)
     if not art:
-        return None, False
+        return None, "failed"
+    # Crawled sources get a higher floor than the 120-char extraction check:
+    # a cookie-consent wall plus a title clears 120 and then pollutes the
+    # index as an "article" whose text is a banner. Measured on imsociety.org.
+    if source is not None and len(art["text"]) < 400:
+        return None, "failed"
+
+    new_hash = hashlib.sha256(art["markdown"].encode()).hexdigest()
+    owner = source.owner_type if source is not None else "owned"
+
+    existing = KnowledgeDocument.objects.filter(source_url=url).first()
+    if existing and existing.content_hash == new_hash:
+        # Same body: touch nothing, not even updated_at.
+        changed = []
+        if source is not None and existing.source_id != source.id:
+            existing.source, existing.owner_type = source, owner
+            changed += ["source", "owner_type"]
+        if changed:
+            existing.save(update_fields=changed)
+        return existing, "unchanged"
+
     doc, created = KnowledgeDocument.objects.update_or_create(
         source_url=url,
         defaults={
             "source_type": source_type,
+            "source": source,
+            "owner_type": owner,
             "title": art["title"][:300],
             "content_md": art["markdown"],
             "content_text": art["text"],
+            "content_hash": new_hash,
+            "language": art.get("language", ""),
             "author": art["author"],
             "published_at": art["published_at"],
             "is_active": True,
+            # New text means the old analysis no longer describes it. The
+            # stale summary stays visible until re-enrichment lands — a stale
+            # summary beats an empty card while the queue drains — but the
+            # statuses go back to pending so it WILL be redone.
+            "enrich_status": PENDING,
+            "embed_status": PENDING,
+            "argument_status": PENDING,
+            "last_error": "",
         },
     )
-    if created:
-        doc.enrich_status = PENDING
-        doc.embed_status = PENDING
-        doc.save(update_fields=["enrich_status", "embed_status"])
-    return doc, created
+    return doc, ("created" if created else "updated")

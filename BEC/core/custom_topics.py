@@ -82,9 +82,12 @@ def _load_assets() -> list[dict]:
                 "vec": np.asarray(r.embedding.vector, dtype=np.float32),
                 "text": _reel_haystack(r),
             })
-    for d in KnowledgeDocument.objects.filter(is_active=True).exclude(embedding=[]):
+    for d in KnowledgeDocument.objects.filter(
+            is_active=True, is_on_topic=True).exclude(embedding=[]):
         assets.append({
-            "kind": "doc", "obj": d, "scope": "owned",
+            # owner_type is denormalised on the doc precisely so hot loops
+            # like this one never dereference the source FK.
+            "kind": "doc", "obj": d, "scope": d.owner_type,
             "vec": np.asarray(d.embedding, dtype=np.float32),
             "text": _fold(f"{d.title}\n{d.summary_it}\n{' '.join(d.topics or [])}\n{d.content_text}"),
         })

@@ -34,9 +34,13 @@ def _cluster_reels(cluster: TopicCluster):
 
 
 def _cluster_docs(cluster: TopicCluster) -> list[KnowledgeDocument]:
+    # Owned only: run_cluster_blog feeds docs[0] to the model as "the existing
+    # article" to expand. Without this filter it would hand a competitor's
+    # article over to be rewritten as Medyca's own.
     return [
         a.document for a in DocClusterAssignment.objects
-        .filter(cluster=cluster).select_related("document")
+        .filter(cluster=cluster, document__owner_type="owned")
+        .select_related("document")
     ]
 
 

@@ -80,16 +80,25 @@ def _load_index(scope: str = "all") -> list[dict]:
     items = []
     want_owned = scope in ("all", "medyca", "owned")
     want_comp = scope in ("all", "competitor")
-    if want_owned:
-        for d in KnowledgeDocument.objects.filter(is_active=True).exclude(embedding=[]):
-            items.append({
-                "kind": "blog", "owner": "owned", "id": d.id, "title": d.title,
-                "url": d.source_url, "summary": d.summary_it,
-                "text": d.content_text, "topics": d.topics,
-                "vec": np.asarray(d.embedding, dtype=np.float32),
-                "chunks": d.chunk_vectors or None,
-            })
     owners = ([] if not want_owned else ["owned"]) + ([] if not want_comp else ["competitor"])
+    docs = (KnowledgeDocument.objects
+            # is_on_topic=False is the model's own verdict that this page is
+            # not editorial content (cookie walls, event pages, recipes):
+            # letting it into the index means the chat can cite a banner.
+            .filter(is_active=True, is_on_topic=True, owner_type__in=owners)
+            .exclude(embedding=[])
+            .select_related("source"))
+    for d in docs:
+        items.append({
+            "kind": "blog", "owner": d.owner_type, "id": d.id, "title": d.title,
+            "url": d.source_url, "summary": d.summary_it,
+            # The source name plays the role a reel's account plays: for a
+            # competitor article, "whose blog said this" is half the answer.
+            "account": d.source.name if d.source else "",
+            "text": d.content_text, "topics": d.topics,
+            "vec": np.asarray(d.embedding, dtype=np.float32),
+            "chunks": d.chunk_vectors or None,
+        })
     reels = (
         Reel.objects.filter(account__owner_type__in=owners, is_active=True,
                             enrich_status=DONE)
@@ -228,6 +237,14 @@ def semantic_search(query: str, top_k: int = 6, scope: str = "all") -> list[dict
         return []
     q = _embed_query(query)
 
+    # A question that names the blogs must be answered from the blogs. Neither
+    # signal catches this on its own: "blog" is four letters, under the
+    # lexical scorer's length floor, and in embedding space an article about a
+    # subject sits next to a reel about the same subject. Measured: asked to
+    # compare blogs, retrieval returned 11 reels and 1 article while 30
+    # articles sat in the bank — and the model rightly refused to answer.
+    wants_articles = bool(re.search(r"\bblog\b|\barticol\w*", query, re.I))
+
     if scope in ("all",):
         owned = _rank([i for i in index if i.get("owner") != "competitor"], query, q)
         comp = _rank([i for i in index if i.get("owner") == "competitor"], query, q)
@@ -238,7 +255,27 @@ def semantic_search(query: str, top_k: int = 6, scope: str = "all") -> list[dict
             if not ranked:
                 return []
             floor = ranked[0][0] * RELEVANCE_FLOOR
-            return [r for r in ranked[:slots] if r[0] >= floor]
+            take = [r for r in ranked[:slots] if r[0] >= floor]
+            if wants_articles:
+                # Reserve up to half the side's slots for its best articles,
+                # displacing its weakest reels. The articles are measured
+                # against the best ARTICLE, not the side floor — the side
+                # floor is set by the reels, and asking blogs to clear a bar
+                # set by reels is the same per-group unfairness the two-side
+                # split exists to remove, one level down.
+                side_blogs = [r for r in ranked if r[1]["kind"] == "blog"]
+                b_floor = side_blogs[0][0] * RELEVANCE_FLOOR if side_blogs else 0.0
+                blogs = [r for r in side_blogs
+                         if r[0] >= b_floor and r not in take][:max(1, slots // 2)]
+                for b in blogs:
+                    non_blog = [r for r in take if r[1]["kind"] != "blog"]
+                    if len(take) < slots:
+                        take.append(b)
+                    elif non_blog:
+                        take.remove(non_blog[-1])
+                        take.append(b)
+                take.sort(key=lambda r: -r[0])
+            return take
 
         owned_slots = max(1, round(top_k * OWNED_SHARE))
         take_owned = _keep(owned, owned_slots)
@@ -388,11 +425,16 @@ def _inventory_line() -> str:
     disconnected from its own data.
     """
     index = _load_index("all")
-    reels = sum(1 for i in index if i["kind"] == "reel" and i.get("owner") != "competitor")
-    blog = sum(1 for i in index if i["kind"] == "blog")
-    comp = sum(1 for i in index if i.get("owner") == "competitor")
-    return (f"LA KNOWLEDGE BANK CONTIENE: {reels} reel di Medyca, {blog} articoli "
-            f"del blog Medyca, {comp} reel dei competitor.\n")
+
+    def _count(kind, owner):
+        comp = owner == "competitor"
+        return sum(1 for i in index if i["kind"] == kind
+                   and (i.get("owner") == "competitor") == comp)
+
+    return (f"LA KNOWLEDGE BANK CONTIENE: {_count('reel', 'owned')} reel di Medyca, "
+            f"{_count('blog', 'owned')} articoli del blog Medyca, "
+            f"{_count('reel', 'competitor')} reel dei competitor, "
+            f"{_count('blog', 'competitor')} articoli dei blog dei competitor.\n")
 
 
 _GROUPS = (
@@ -419,7 +461,10 @@ def _sources_block(hits: list[dict]) -> str:
         lines = []
         for h in group:
             what = "articolo blog" if h["kind"] == "blog" else "reel"
-            who = f" @{h['account']}" if h.get("account") else ""
+            # A blog source carries a site name, a reel an IG handle: the @
+            # only belongs on the latter.
+            acct = h.get("account") or ""
+            who = f" di {acct}" if (acct and h["kind"] == "blog") else (f" @{acct}" if acct else "")
             lines.append(f"[{numbered[id(h)]}] {h['title']} ({what}{who})\n{h['snippet']}")
         blocks.append(f"### {heading}\n" + "\n\n".join(lines))
     if not any(h.get("owner") not in ("external", "competitor") for h in hits):

@@ -80,6 +80,12 @@ class Command(BaseCommand):
             n = int(job.params.get("n", 8))
             created = generate_ideas(n=n, job=job)
             return {"idea_ids": [c.id for c in created], "count": len(created)}
+        if job.kind == "blogsource_discover":
+            from core.models import BlogSource
+            from pipeline.agents import blogscrape_agent
+            src = BlogSource.objects.get(id=int(job.params["source_id"]))
+            return blogscrape_agent.crawl_source(
+                src, job=job, force=bool(job.params.get("force")), enrich=True)
         if job.kind == "blog":
             from core.blog_workflow import run_cluster_blog
             return run_cluster_blog(int(job.params["cluster_id"]), job=job)

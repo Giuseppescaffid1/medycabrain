@@ -6,9 +6,11 @@
 # Covers MEDYC-11 (weekly social import happens daily here).
 30 3 * * * cd /home/giuseppe/projects/medycabrain/BEC && venv/bin/python manage.py run_pipeline >> logs/pipeline.log 2>&1
 
-# Midday top-up: scrape + process new reels, skip the recluster.
-15 14 * * * cd /home/giuseppe/projects/medycabrain/BEC && venv/bin/python manage.py run_pipeline --skip-cluster >> logs/pipeline.log 2>&1
+# Midday top-up: scrape + process new reels, skip the recluster. Blog
+# discovery skipped too: a third-party site should not see two visits a day.
+15 14 * * * cd /home/giuseppe/projects/medycabrain/BEC && venv/bin/python manage.py run_pipeline --skip-cluster --skip-blogscrape >> logs/pipeline.log 2>&1
 
-# Weekly blog crawl (Mon 04:00) — new medyca.it/blog articles into the
-# knowledge bank, then enrich + embed. Covers MEDYC-12.
-0 4 * * 1 cd /home/giuseppe/projects/medycabrain/BEC && venv/bin/python manage.py ingest_blog --crawl https://www.medyca.it/blog --enrich >> logs/blog.log 2>&1
+# The old weekly medyca.it crawl is gone: blog discovery is now the
+# `blogscrape` stage of the nightly pipeline, driven by BlogSource rows —
+# each source carries its own cadence (crawl_interval_h), so a hardcoded
+# URL here would be a second, drifting source of truth.

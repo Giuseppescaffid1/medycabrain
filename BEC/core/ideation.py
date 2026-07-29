@@ -58,7 +58,10 @@ def _medyca_coverage(max_topics: int = 40) -> list[str]:
         enr = getattr(r, "enrichment", None)
         if enr:
             topics.update(enr.topics or [])
-    for d in KnowledgeDocument.objects.filter(is_active=True):
+    # owned only, explicitly: a competitor article counted here would mark
+    # its topics as "already covered by Medyca" and silently blind the gap
+    # engine to exactly the opportunities it exists to find.
+    for d in KnowledgeDocument.objects.filter(is_active=True, owner_type="owned"):
         topics.update(d.topics or [])
     return sorted(topics)[:max_topics]
 

@@ -18,6 +18,49 @@ class AnnotationSerializer(serializers.ModelSerializer):
         fields = ["is_favorite", "is_inspiration", "note", "tags", "updated_at"]
 
 
+class BlogSourceSerializer(serializers.ModelSerializer):
+    document_count = serializers.IntegerField(read_only=True, required=False)
+
+    class Meta:
+        model = models.BlogSource
+        fields = [
+            "id", "name", "index_url", "site_url", "owner_type", "language",
+            "is_active", "notes", "crawl_interval_h", "strategy",
+            "last_crawled_at", "consecutive_failures", "last_error",
+            "document_count", "created_at",
+        ]
+        read_only_fields = [
+            "site_url", "strategy", "language", "last_crawled_at",
+            "consecutive_failures", "last_error", "created_at",
+        ]
+
+    def validate_index_url(self, value):
+        """The URL a crawler will visit on a schedule: only public http(s).
+
+        Reuses the chat's SSRF chain — its refusal messages are already
+        user-facing Italian.
+        """
+        from urllib.parse import urlparse
+
+        from core.external_ref import RefusedURL, _check_public
+
+        value = (value or "").strip().rstrip("/")
+        if urlparse(value).scheme not in ("http", "https"):
+            raise serializers.ValidationError("Sono ammessi solo indirizzi http e https.")
+        try:
+            _check_public(value)
+        except RefusedURL as exc:
+            raise serializers.ValidationError(str(exc)) from exc
+        return value
+
+    def create(self, validated_data):
+        from urllib.parse import urlparse
+
+        u = urlparse(validated_data["index_url"])
+        validated_data.setdefault("site_url", f"{u.scheme}://{u.netloc}")
+        return super().create(validated_data)
+
+
 class AccountSerializer(serializers.ModelSerializer):
     reel_count = serializers.IntegerField(read_only=True, required=False)
 
@@ -167,21 +210,40 @@ class UserSerializer(serializers.ModelSerializer):
         fields = ["id", "username"]
 
 
+class _DocSourceField(serializers.Serializer):
+    id = serializers.IntegerField()
+    name = serializers.CharField()
+    owner_type = serializers.CharField()
+
+
 class KnowledgeDocListSerializer(serializers.ModelSerializer):
+    source = _DocSourceField(read_only=True, allow_null=True)
+
     class Meta:
         model = models.KnowledgeDocument
         fields = [
             "id", "source_type", "source_url", "title", "author",
-            "published_at", "summary_it", "topics", "enrich_status", "created_at",
+            "published_at", "summary_it", "topics", "primary_topic",
+            "owner_type", "language", "source", "enrich_status", "created_at",
         ]
 
 
+class DocumentArgumentSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = models.DocumentArgument
+        fields = ["id", "text_it", "quote"]
+
+
 class KnowledgeDocDetailSerializer(serializers.ModelSerializer):
+    source = _DocSourceField(read_only=True, allow_null=True)
+    arguments = DocumentArgumentSerializer(many=True, read_only=True)
+
     class Meta:
         model = models.KnowledgeDocument
         fields = [
             "id", "source_type", "source_url", "title", "author", "published_at",
-            "summary_it", "topics", "content_md", "enrich_status", "embed_status",
+            "summary_it", "topics", "primary_topic", "owner_type", "language",
+            "source", "content_md", "arguments", "enrich_status", "embed_status",
             "created_at", "updated_at",
         ]
 
@@ -213,9 +275,11 @@ class CustomTopicSerializer(serializers.ModelSerializer):
     medyca_matches = serializers.IntegerField(read_only=True, required=False)
     competitor_matches = serializers.IntegerField(read_only=True, required=False)
     doc_matches = serializers.IntegerField(read_only=True, required=False)
+    competitor_doc_matches = serializers.IntegerField(read_only=True, required=False)
 
     class Meta:
         model = models.CustomTopic
         fields = ["id", "label", "keywords", "is_active", "created_at",
-                  "medyca_matches", "competitor_matches", "doc_matches"]
+                  "medyca_matches", "competitor_matches", "doc_matches",
+                  "competitor_doc_matches"]
         read_only_fields = ["created_at"]

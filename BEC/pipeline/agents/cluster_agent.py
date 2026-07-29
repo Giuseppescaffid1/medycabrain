@@ -208,10 +208,13 @@ def _run_scope(scope: str) -> dict:
     # Second Brain clusters span every Medyca asset, not just reels.
     assets = [{"kind": "reel", "obj": r, "vec": emb_map[r.id],
                "text": _reel_text(r, getattr(r, "enrichment", None))} for r in reels]
-    docs = []
-    if scope == "owned":
-        from core.models import KnowledgeDocument
-        docs = [d for d in KnowledgeDocument.objects.filter(is_active=True).exclude(embedding=[])]
+    # Docs cluster in BOTH scopes now that blogs are a tracked competitor
+    # surface too — the owned-only gate predates competitor blog sources.
+    from core.models import KnowledgeDocument
+    docs = [d for d in KnowledgeDocument.objects
+            .filter(is_active=True, is_on_topic=True, owner_type=scope)
+            .exclude(embedding=[])]
+    if docs:
         for d in docs:
             assets.append({
                 "kind": "doc", "obj": d,

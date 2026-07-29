@@ -37,7 +37,8 @@ STAGE_LABELS = {
     "transcribe": "Trascrizione audio",
     "enrich": "Analisi dei contenuti",
     "embed": "Indicizzazione per la ricerca",
-    "knowledge": "Import del blog",
+    "blogscrape": "Scoperta articoli blog",
+    "knowledge": "Analisi degli articoli",
     "cluster": "Raggruppamento per tema",
 }
 

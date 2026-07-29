@@ -34,6 +34,14 @@ class ClusterRunAdmin(admin.ModelAdmin):
     list_filter = ("status", "is_current")
 
 
+@admin.register(models.BlogSource)
+class BlogSourceAdmin(admin.ModelAdmin):
+    list_display = ("name", "owner_type", "is_active", "strategy",
+                    "last_crawled_at", "consecutive_failures")
+    list_filter = ("owner_type", "is_active", "strategy")
+    search_fields = ("name", "index_url")
+
+
 @admin.register(models.KnowledgeDocument)
 class KnowledgeDocumentAdmin(admin.ModelAdmin):
     list_display = ("title", "source_type", "enrich_status", "embed_status", "published_at")

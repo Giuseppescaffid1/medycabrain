@@ -260,6 +260,29 @@ class ReelArgument(models.Model):
         return self.text_it[:60]
 
 
+class DocumentArgument(models.Model):
+    """A standalone claim extracted from a blog article.
+
+    The parallel table to ReelArgument — the polymorphism pattern this
+    codebase already chose (see DocClusterAssignment) — with the same
+    grounding rule: `quote` is a verbatim span of the article's text, and a
+    claim that cannot be quoted is not stored.
+    """
+
+    document = models.ForeignKey("KnowledgeDocument", on_delete=models.CASCADE,
+                                 related_name="arguments")
+    text_it = models.TextField()
+    quote = models.TextField(blank=True, default="")
+    embedding = models.JSONField(default=list, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = "document_arguments"
+
+    def __str__(self):
+        return self.text_it[:60]
+
+
 class ArgumentAssignment(models.Model):
     run = models.ForeignKey(ClusterRun, on_delete=models.CASCADE, related_name="argument_assignments")
     argument = models.ForeignKey(ReelArgument, on_delete=models.CASCADE, related_name="assignments")
@@ -276,9 +299,9 @@ class ArgumentAssignment(models.Model):
 class DocClusterAssignment(models.Model):
     """A blog KnowledgeDocument's membership in a topic cluster.
 
-    Lets the Second Brain cluster span ALL Medyca assets — reels AND blog
-    articles together (Alberto's model: the second brain is the thematic
-    layer over every asset). Only meaningful for the 'owned' scope.
+    Lets a cluster span reels AND blog articles together, in both scopes:
+    Medyca's own second brain, and the competitors' map since blogs became
+    a tracked competitor surface too.
     """
 
     run = models.ForeignKey(ClusterRun, on_delete=models.CASCADE, related_name="doc_assignments")
@@ -350,6 +373,58 @@ class ReelAnnotation(models.Model):
         return f"annotation:{self.reel.shortcode}"
 
 
+class BlogSource(models.Model):
+    """A blog we crawl for articles — what TrackedAccount is for Instagram.
+
+    Deliberately NOT a generalisation of TrackedAccount: that model is
+    Instagram-native (unique username, ig_user_id, followers). The shared
+    thing is only the role — a tracked origin with an owner_type.
+
+    `discovery` holds what the crawler LEARNED about this site: which sitemap
+    or feed to use, and which URL shapes are articles. The LLM classification
+    that fills it is paid once per site; every later crawl reads the cache
+    and costs nothing.
+    """
+
+    OWNER_CHOICES = [("competitor", "competitor"), ("owned", "owned")]
+    STRATEGY_CHOICES = [("unknown", "unknown"), ("sitemap", "sitemap"),
+                        ("feed", "feed"), ("index", "index"), ("mixed", "mixed")]
+
+    name = models.CharField(max_length=120)
+    site_url = models.URLField(max_length=300, blank=True, default="")
+    index_url = models.URLField(max_length=500, unique=True)
+    owner_type = models.CharField(max_length=16, choices=OWNER_CHOICES,
+                                  default="competitor")
+    language = models.CharField(max_length=8, blank=True, default="")
+    is_active = models.BooleanField(default=True)
+    notes = models.TextField(blank=True, default="")
+
+    # Cadence lives on the row, not in the crontab: our own blog matters
+    # daily, a third-party site should not see us more than weekly.
+    crawl_interval_h = models.IntegerField(default=168)
+
+    strategy = models.CharField(max_length=16, choices=STRATEGY_CHOICES,
+                                default="unknown")
+    discovery = models.JSONField(default=dict, blank=True)
+    crawl_state = models.JSONField(default=dict, blank=True)
+
+    # Real columns, not JSON: auto-deactivation queries them and the UI
+    # shows them next to the source.
+    consecutive_failures = models.IntegerField(default=0)
+    last_error = models.TextField(blank=True, default="")
+    last_crawled_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "blog_sources"
+        ordering = ["name"]
+        indexes = [models.Index(fields=["is_active", "owner_type"])]
+
+    def __str__(self):
+        return f"{self.name} ({self.owner_type})"
+
+
 class KnowledgeDocument(models.Model):
     """A text document in the Medyca knowledge bank — e.g. a blog article
     from medyca.it, fetched and stored as Markdown, then enriched + embedded.
@@ -361,6 +436,22 @@ class KnowledgeDocument(models.Model):
     SOURCE_CHOICES = [("blog", "Blog"), ("manual", "Manual"), ("other", "Other")]
 
     source_type = models.CharField(max_length=16, choices=SOURCE_CHOICES, default="blog")
+    # Provenance. SET_NULL: deleting a source must never destroy the bank.
+    source = models.ForeignKey(BlogSource, null=True, blank=True,
+                               on_delete=models.SET_NULL, related_name="documents")
+    # THE rule: whoever needs to know whose a document is reads THIS field,
+    # never source.owner_type. Denormalised on purpose — the hot paths iterate
+    # every doc, and "source is null => owned" is a silent invariant that
+    # breaks the first time a competitor source is deleted with SET_NULL. The
+    # way it breaks is competitor text entering Medyca's own-material prompts,
+    # the worst failure this product can make. Only blog_agent.ingest() and
+    # the seed migration write it.
+    owner_type = models.CharField(max_length=16, db_index=True,
+                                  choices=[("competitor", "competitor"),
+                                           ("owned", "owned")],
+                                  default="owned")
+    language = models.CharField(max_length=8, blank=True, default="")
+    content_hash = models.CharField(max_length=64, blank=True, default="")
     source_url = models.URLField(max_length=500, unique=True)
     title = models.CharField(max_length=300, blank=True, default="")
     content_md = models.TextField(blank=True, default="")       # readable article as Markdown
@@ -371,6 +462,11 @@ class KnowledgeDocument(models.Model):
     # Enrichment (LLM) + embedding, mirroring the reel pipeline
     summary_it = models.TextField(blank=True, default="")
     topics = models.JSONField(default=list, blank=True)
+    # Same rule as Enrichment.primary_topic: the one specific subject, never
+    # an umbrella term — "menopausa" separates nothing in this corpus.
+    primary_topic = models.CharField(max_length=80, blank=True, default="")
+    is_on_topic = models.BooleanField(default=True)
+    off_topic_reason = models.CharField(max_length=300, blank=True, default="")
     embedding = models.JSONField(default=list, blank=True)
     # See ReelEmbedding.chunk_vectors — same purpose, for blog articles.
     chunk_vectors = models.JSONField(default=list, blank=True)
@@ -378,6 +474,7 @@ class KnowledgeDocument(models.Model):
 
     enrich_status = models.CharField(max_length=16, choices=STATUS_CHOICES, default=PENDING)
     embed_status = models.CharField(max_length=16, choices=STATUS_CHOICES, default=PENDING)
+    argument_status = models.CharField(max_length=16, choices=STATUS_CHOICES, default=PENDING)
     last_error = models.TextField(blank=True, default="")
 
     is_active = models.BooleanField(default=True)
@@ -445,8 +542,8 @@ class Job(models.Model):
     KIND_CHOICES = [
         ("ideation", "Ideation"), ("pipeline", "Pipeline"), ("blog", "Blog"),
         ("strategy", "Strategy"), ("strategy_draft", "Strategy draft"),
-    
         ("editorial", "editorial"),
+        ("blogsource_discover", "Blog source discovery"),
     ]
     STATUS_CHOICES = [
         ("queued", "Queued"),

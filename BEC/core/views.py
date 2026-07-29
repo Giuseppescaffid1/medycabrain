@@ -62,6 +62,67 @@ class AccountViewSet(viewsets.ModelViewSet):
         instance.save(update_fields=["is_active"])
 
 
+class BlogSourceViewSet(viewsets.ModelViewSet):
+    """The blogs we crawl — the TrackedAccount of the article world.
+
+    Creating one queues a discovery job immediately: the whole promise of
+    this screen is "paste a URL, the agent does the rest", and a source that
+    sits empty until the nightly run breaks that promise on first use.
+    """
+
+    serializer_class = serializers.BlogSourceSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return models.BlogSource.objects.annotate(
+            document_count=Count("documents", filter=Q(documents__is_active=True))
+        ).order_by("name")
+
+    def _queue_crawl(self, source, force=False):
+        job = _existing_job("blogsource_discover", {"source_id": source.id})
+        if job:
+            return job
+        job = models.Job.objects.create(
+            kind="blogsource_discover",
+            params={"source_id": source.id, "force": force},
+            message=f"In coda: scansione di {source.name}",
+        )
+        _spawn_job(job.id)
+        return job
+
+    def perform_create(self, serializer):
+        source = serializer.save()
+        self._queue_crawl(source)
+
+    def perform_destroy(self, instance):
+        # Soft delete, AND the documents go with it. Unlike an Instagram
+        # account — whose reels are the client's own library — a removed
+        # competitor blog must leave the analysis, or the client deletes a
+        # source and the gap engine keeps quoting it.
+        instance.is_active = False
+        instance.save(update_fields=["is_active"])
+        instance.documents.update(is_active=False)
+
+    @action(detail=True, methods=["post"], url_path="crawl")
+    def crawl(self, request, pk=None):
+        source = self.get_object()
+        job = self._queue_crawl(source, force=True)
+        return Response({"job_id": job.id, "status": job.status})
+
+    @action(detail=True, methods=["post"], url_path="reactivate")
+    def reactivate(self, request, pk=None):
+        """Deactivation is automatic after repeated failures; coming back is
+        a human decision, and it gets one fresh chance immediately."""
+        source = self.get_object()
+        source.is_active = True
+        source.consecutive_failures = 0
+        source.last_error = ""
+        source.save(update_fields=["is_active", "consecutive_failures", "last_error"])
+        source.documents.update(is_active=True)
+        job = self._queue_crawl(source, force=True)
+        return Response({"job_id": job.id, "status": job.status})
+
+
 # ── Reels ──────────────────────────────────────────────────────────────────────
 
 class ReelViewSet(viewsets.ReadOnlyModelViewSet):
@@ -198,7 +259,12 @@ class ClusterViewSet(viewsets.ReadOnlyModelViewSet):
 
     @action(detail=True, methods=["get"], url_path="arguments")
     def arguments(self, request, pk=None):
-        """Deduped arguments assigned to this cluster with source-reel counts."""
+        """Deduped claims assigned to this cluster, reels and articles merged.
+
+        Article claims join through DocClusterAssignment rather than the
+        argument-level clustering (which is layer-2 and reel-only for now):
+        an article in the cluster contributes its claims to the cluster.
+        """
         cluster = models.TopicCluster.objects.filter(id=pk).select_related("run").first()
         if not cluster:
             return Response([])
@@ -208,17 +274,29 @@ class ClusterViewSet(viewsets.ReadOnlyModelViewSet):
             .select_related("argument", "argument__reel")
         )
         # Simple dedup by normalized text (semantic dedup happens in the agent;
-        # here we merge exact/near-exact repeats and count source reels).
+        # here we merge exact/near-exact repeats and count sources).
         buckets = {}
         for a in assignments:
             key = a.argument.text_it.strip().lower()[:120]
-            b = buckets.setdefault(key, {"text": a.argument.text_it, "reels": set()})
+            b = buckets.setdefault(key, {"text": a.argument.text_it,
+                                         "reels": set(), "articles": set()})
             b["reels"].add(a.argument.reel.shortcode)
+        doc_args = (models.DocumentArgument.objects
+                    .filter(document__cluster_assignments__cluster_id=pk,
+                            document__cluster_assignments__run=cluster.run)
+                    .select_related("document"))
+        for da in doc_args:
+            key = da.text_it.strip().lower()[:120]
+            b = buckets.setdefault(key, {"text": da.text_it,
+                                         "reels": set(), "articles": set()})
+            b["articles"].add(da.document.title[:60] or da.document.source_url)
         out = [
-            {"text": v["text"], "reel_count": len(v["reels"]), "reels": sorted(v["reels"])}
+            {"text": v["text"], "reel_count": len(v["reels"]),
+             "reels": sorted(v["reels"]),
+             "article_count": len(v["articles"]), "articles": sorted(v["articles"])}
             for v in buckets.values()
         ]
-        out.sort(key=lambda x: x["reel_count"], reverse=True)
+        out.sort(key=lambda x: x["reel_count"] + x["article_count"], reverse=True)
         return Response(out)
 
     @action(detail=True, methods=["post"], url_path="blog")
@@ -307,7 +385,7 @@ class AnalyticsView(APIView):
 # ── Knowledge bank / second brain (MEDYC-10, MEDYC-13) ─────────────────────────
 
 class KnowledgeDocumentViewSet(viewsets.ReadOnlyModelViewSet):
-    """Browse the blog documents in the Medyca knowledge bank."""
+    """Browse blog articles — Medyca's own and, on request, the competitors'."""
 
     permission_classes = [IsAuthenticated]
     ordering_fields = ["published_at", "created_at", "title"]
@@ -315,7 +393,25 @@ class KnowledgeDocumentViewSet(viewsets.ReadOnlyModelViewSet):
     search_fields = ["title", "content_text", "summary_it"]
 
     def get_queryset(self):
-        return models.KnowledgeDocument.objects.filter(is_active=True)
+        qs = (models.KnowledgeDocument.objects
+              .filter(is_active=True).select_related("source"))
+        # Detail by id stays unrestricted, like ClusterViewSet does.
+        if self.action == "retrieve":
+            return qs
+        # Explicit scope. The default is Medyca's own material: this endpoint
+        # existed before competitor blogs did, and its callers assume it.
+        owner = SCOPE_MAP.get(
+            (self.request.query_params.get("scope") or "medyca").lower(), "owned")
+        qs = qs.filter(owner_type=owner)
+        source = self.request.query_params.get("source")
+        if source and str(source).isdigit():
+            qs = qs.filter(source_id=int(source))
+        search = (self.request.query_params.get("search") or "").strip()
+        if search:
+            qs = qs.filter(Q(title__icontains=search)
+                           | Q(summary_it__icontains=search)
+                           | Q(content_text__icontains=search))
+        return qs
 
     def get_serializer_class(self):
         if self.action == "retrieve":
@@ -763,14 +859,15 @@ class SecondBrainGraphView(APIView):
                         detail=(enr.summary_it if enr else "") or "",
                         url=f"https://www.instagram.com/reel/{r.shortcode}/")
                     link(cid, rid, "", "structure")
-                if scope == "owned":
-                    for a in (models.DocClusterAssignment.objects.filter(cluster=c)
-                              .select_related("document")[:3]):
-                        d = a.document
-                        add(f"doc:{d.id}", "blog", d.title.replace(" — Medyca", ""),
-                            "articolo blog", parent=cid, owner="owned",
-                            detail=d.summary_it or "", url=d.source_url)
-                        link(cid, f"doc:{d.id}", "", "structure")
+                for a in (models.DocClusterAssignment.objects.filter(cluster=c)
+                          .select_related("document", "document__source")[:3]):
+                    d = a.document
+                    site = d.source.name if d.source else ""
+                    add(f"doc:{d.id}", "blog", d.title.replace(" — Medyca", ""),
+                        f"articolo blog{' · ' + site if site else ''}",
+                        parent=cid, owner=d.owner_type,
+                        detail=d.summary_it or "", url=d.source_url)
+                    link(cid, f"doc:{d.id}", "", "structure")
             return clusters
 
         med_clusters = add_world("owned", "root:medyca")
@@ -825,7 +922,12 @@ class CustomTopicViewSet(viewsets.ModelViewSet):
         return models.CustomTopic.objects.filter(is_active=True).annotate(
             medyca_matches=Count("matches", filter=Q(matches__scope="owned", matches__reel__isnull=False)),
             competitor_matches=Count("matches", filter=Q(matches__scope="competitor")),
-            doc_matches=Count("matches", filter=Q(matches__document__isnull=False)),
+            # Scoped: now that competitor blogs exist, an unscoped doc count
+            # would silently mix them into what reads as Medyca's blog column.
+            doc_matches=Count("matches", filter=Q(matches__document__isnull=False,
+                                                  matches__scope="owned")),
+            competitor_doc_matches=Count("matches", filter=Q(
+                matches__document__isnull=False, matches__scope="competitor")),
         )
 
     def perform_create(self, serializer):

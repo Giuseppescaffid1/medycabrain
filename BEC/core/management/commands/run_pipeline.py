@@ -16,7 +16,7 @@ from django.core.management.base import BaseCommand
 
 from pipeline.dag import DAG, Context, Step
 
-STAGE_NAMES = ["scrape", "download", "transcribe", "enrich", "embed", "knowledge", "cluster"]
+STAGE_NAMES = ["scrape", "download", "transcribe", "enrich", "embed", "blogscrape", "knowledge", "cluster"]
 
 
 class Command(BaseCommand):
@@ -34,8 +34,8 @@ class Command(BaseCommand):
     def handle(self, *args, **opts):
         # Deferred agent imports (kept out of module import time).
         from pipeline.agents import (
-            cluster_agent, downloader_agent, embed_agent, enrich_agent,
-            knowledge_agent, scraper_agent, transcriber_agent,
+            blogscrape_agent, cluster_agent, downloader_agent, embed_agent,
+            enrich_agent, knowledge_agent, scraper_agent, transcriber_agent,
         )
 
         steps = [
@@ -44,6 +44,7 @@ class Command(BaseCommand):
             Step("transcribe", transcriber_agent.run),
             Step("enrich", enrich_agent.run),
             Step("embed", embed_agent.run),
+            Step("blogscrape", blogscrape_agent.run),
             Step("knowledge", knowledge_agent.run),
             Step("cluster", cluster_agent.run),
         ]

@@ -70,12 +70,21 @@ def _check_public(url: str) -> None:
             )
 
 
-def _get(url: str) -> str:
-    """Fetch with every redirect hop validated, and a hard size ceiling."""
+def safe_get(url: str, *, allow_types: tuple[str, ...] = ("html", "text"),
+             max_bytes: int = MAX_BYTES, timeout: int = TIMEOUT,
+             user_agent: str = _UA) -> str:
+    """The body of a public URL, every redirect hop re-validated, size-capped.
+
+    This is what the blog crawler uses for every body it STORES: the chat's
+    one-off fetch and the recurring crawler share the same refusal logic, so
+    there is exactly one place where "what will this server fetch" is decided.
+    `allow_types` exists because the crawler also reads sitemap/feed XML,
+    which the chat's html-only rule would refuse.
+    """
     seen = url
     for _ in range(MAX_REDIRECTS + 1):
         _check_public(seen)
-        resp = requests.get(seen, headers={"User-Agent": _UA}, timeout=TIMEOUT,
+        resp = requests.get(seen, headers={"User-Agent": user_agent}, timeout=timeout,
                             allow_redirects=False, stream=True)
         if resp.is_redirect or resp.is_permanent_redirect:
             nxt = resp.headers.get("Location")
@@ -88,13 +97,13 @@ def _get(url: str) -> str:
             resp.close()
             raise RefusedURL(f"La pagina ha risposto {resp.status_code}.")
         ctype = (resp.headers.get("Content-Type") or "").lower()
-        if "html" not in ctype and "text" not in ctype:
+        if not any(t in ctype for t in allow_types):
             resp.close()
             raise RefusedURL(f"Il contenuto non è una pagina web ({ctype.split(';')[0]}).")
         chunks, total = [], 0
         for chunk in resp.iter_content(64 * 1024, decode_unicode=False):
             total += len(chunk)
-            if total > MAX_BYTES:
+            if total > max_bytes:
                 resp.close()
                 raise RefusedURL("La pagina è troppo grande da leggere.")
             chunks.append(chunk)
@@ -102,6 +111,10 @@ def _get(url: str) -> str:
         raw = b"".join(chunks)
         return raw.decode(resp.encoding or "utf-8", errors="replace")
     raise RefusedURL("Troppi reindirizzamenti.")
+
+
+def _get(url: str) -> str:
+    return safe_get(url)
 
 
 def fetch_reference(url: str) -> dict:
