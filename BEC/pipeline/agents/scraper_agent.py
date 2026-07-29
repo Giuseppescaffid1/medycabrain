@@ -204,6 +204,20 @@ def _apply_profile(account: TrackedAccount, profile: ProfileMeta):
 
 
 def run(ctx) -> dict:
+    # No session file = no Instagram scraping, by explicit decision: the
+    # cookies belonged to Giuseppe's personal account (2026-07-29, removed at
+    # his request) and scraping must never run signed as him again. The stage
+    # skips cleanly — noisy per-account failures would read as an incident —
+    # until the official Instagram API replaces this path entirely.
+    from scraper.session_store import load_cookies
+    try:
+        load_cookies()
+    except FileNotFoundError:
+        logger.warning("[scraper] nessuna sessione Instagram: raccolta sospesa "
+                       "in attesa delle API ufficiali")
+        return {"accounts": 0, "new_reels": 0,
+                "note": "sospeso: nessuna sessione IG (migrazione ad API ufficiali)"}
+
     provider_order = _cfg("provider_order", ["graphql", "instaloader"])
     budget = [int(_cfg("global_request_budget", 40))]
     accounts = TrackedAccount.objects.filter(is_active=True)

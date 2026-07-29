@@ -82,7 +82,15 @@ def _fetch_media_details(reel: Reel) -> dict:
     from scraper import ig_client
     from scraper.session_store import load_cookies
 
-    cookies = load_cookies()
+    try:
+        cookies = load_cookies()
+    except FileNotFoundError as exc:
+        # Session removed by decision (personal account, 2026-07-29). The
+        # reel did nothing wrong: defer it like a quota hit — attempts are
+        # not charged and the run moves on with cached/Apify urls — instead
+        # of failing it three times into 'skipped'.
+        raise IGThrottled("nessuna sessione Instagram (migrazione ad API "
+                          "ufficiali)") from exc
     session = ig_client.build_session(cookies)
     data = ig_client._request(
         session, "GET",
