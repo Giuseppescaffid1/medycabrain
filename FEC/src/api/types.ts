@@ -118,6 +118,9 @@ export interface ClusterArgument {
   text: string;
   reel_count: number;
   reels: string[];
+  /** Blog articles in the cluster that state this claim. */
+  article_count?: number;
+  articles?: string[];
 }
 
 export interface ScopeStats {

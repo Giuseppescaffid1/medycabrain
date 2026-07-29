@@ -1,11 +1,14 @@
 import { useMemo, useState } from "react";
-import { useInfiniteQuery } from "@tanstack/react-query";
-import { useParams } from "react-router-dom";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { useParams, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { motion } from "framer-motion";
 import { fetchReels, type ReelFilters, type Scope } from "../api/endpoints";
 import { ReelCard } from "../components/reels/ReelCard";
 import { ReelDetailDrawer } from "../components/reels/ReelDetailDrawer";
+import { ArticleCard } from "../components/articles/ArticleCard";
+import { ArticleDetailDrawer } from "../components/articles/ArticleDetailDrawer";
+import { fetchKnowledgeDocs } from "../api/knowledge";
 import { FilterBar } from "../components/filters/FilterBar";
 import { StatBar } from "../components/layout/StatBar";
 import { Button, EmptyState, Skeleton, fieldCls } from "../components/ui/primitives";
@@ -20,7 +23,15 @@ export default function Library() {
   const [filters, setFilters] = useState<ReelFilters>({ ordering: "-posted_at" });
   const [searchInput, setSearchInput] = useState("");
   const [openReel, setOpenReel] = useState<number | null>(null);
+  const [openDoc, setOpenDoc] = useState<number | null>(null);
   const debouncedSearch = useDebounced(searchInput, 400);
+  // Content type lives in the URL (?type=article): shareable and
+  // reload-safe, without rewriting every route in the app.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const contentType: "reel" | "article" =
+    searchParams.get("type") === "article" ? "article" : "reel";
+  const setContentType = (t2: "reel" | "article") =>
+    setSearchParams(t2 === "article" ? { type: "article" } : {}, { replace: true });
 
   const effectiveFilters = useMemo(
     () => ({ ...filters, scope, search: debouncedSearch || undefined }),
@@ -34,7 +45,14 @@ export default function Library() {
       initialPageParam: 1,
       getNextPageParam: (lastPage, allPages) =>
         lastPage.next ? allPages.length + 1 : undefined,
+      enabled: contentType === "reel",
     });
+
+  const docsQuery = useQuery({
+    queryKey: ["knowledge-docs", scope, debouncedSearch],
+    queryFn: () => fetchKnowledgeDocs(debouncedSearch || undefined, scope),
+    enabled: contentType === "article",
+  });
 
   const reels = data?.pages.flatMap((p) => p.results) ?? [];
   const total = data?.pages[0]?.count ?? 0;
@@ -46,7 +64,25 @@ export default function Library() {
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
             <div>
               <h1 className="text-xl font-bold text-heading">{t("library.title")}</h1>
-              <div className="mt-1"><ScopeBadge scope={scope} /></div>
+              <div className="mt-1 flex flex-wrap items-center gap-2">
+                <ScopeBadge scope={scope} />
+                <div className="flex rounded-full border border-border bg-white p-0.5">
+                  {(["reel", "article"] as const).map((ct) => (
+                    <button
+                      key={ct}
+                      onClick={() => setContentType(ct)}
+                      className={
+                        "rounded-full px-3 py-1 text-xs font-bold transition duration-200 " +
+                        (contentType === ct
+                          ? "bg-secondary/10 text-secondary"
+                          : "text-muted hover:text-navy")
+                      }
+                    >
+                      {ct === "reel" ? "Reel" : t("articles.tab")}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
             <StatBar scope={scope} />
           </div>
@@ -56,11 +92,36 @@ export default function Library() {
             placeholder={t("library.search")}
             className={fieldCls + " w-full"}
           />
-          <FilterBar filters={filters} onChange={setFilters} scope={scope} />
+          {contentType === "reel" && (
+            <FilterBar filters={filters} onChange={setFilters} scope={scope} />
+          )}
         </div>
 
         <div className="flex-1 px-4 py-4 sm:px-6 sm:py-5">
-          {isLoading ? (
+          {contentType === "article" ? (
+            docsQuery.isLoading ? (
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <Skeleton key={i} className="h-44" />
+                ))}
+              </div>
+            ) : !docsQuery.data?.length ? (
+              <EmptyState message={t("articles.empty")} />
+            ) : (
+              <motion.div
+                variants={staggerContainer}
+                initial="initial"
+                animate="animate"
+                className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3"
+              >
+                {docsQuery.data.map((doc, i) => (
+                  <motion.div key={doc.id} className="h-full" variants={i < 20 ? staggerItem : undefined}>
+                    <ArticleCard doc={doc} onClick={() => setOpenDoc(doc.id)} />
+                  </motion.div>
+                ))}
+              </motion.div>
+            )
+          ) : isLoading ? (
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4 xl:grid-cols-5">
               {Array.from({ length: 10 }).map((_, i) => (
                 <Skeleton key={i} className="aspect-[9/16]" />
@@ -101,6 +162,7 @@ export default function Library() {
         </div>
 
         <ReelDetailDrawer reelId={openReel} onClose={() => setOpenReel(null)} />
+        <ArticleDetailDrawer docId={openDoc} onClose={() => setOpenDoc(null)} />
       </div>
     </PageTransition>
   );

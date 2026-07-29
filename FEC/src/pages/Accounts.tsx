@@ -9,6 +9,7 @@ import {
 } from "../api/endpoints";
 import { Badge, Button, Skeleton, fieldCls } from "../components/ui/primitives";
 import { PageTransition } from "../components/ui/motion";
+import { BlogSourcesPanel } from "../components/sources/BlogSourcesPanel";
 import { formatCount, formatDate } from "../lib/utils";
 
 export default function Accounts() {
@@ -48,7 +49,12 @@ export default function Accounts() {
         <h1 className="text-xl font-bold text-heading">{t("accounts.title")}</h1>
       </div>
 
-      <div className="flex-1 px-4 py-4 sm:px-6 sm:py-5">
+      <div className="flex-1 space-y-10 overflow-y-auto px-4 py-4 sm:px-6 sm:py-5">
+        <section>
+        <h2 className="mb-1 text-xs font-bold uppercase tracking-wider text-muted">
+          {t("accounts.igSection")}
+        </h2>
+        <p className="mb-4 text-sm text-muted">{t("accounts.igSubtitle")}</p>
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -137,6 +143,9 @@ export default function Accounts() {
             </table>
           </div>
         )}
+        </section>
+
+        <BlogSourcesPanel />
       </div>
     </div>
     </PageTransition>

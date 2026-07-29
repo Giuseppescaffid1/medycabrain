@@ -7,7 +7,10 @@ import {
   fetchClusterArguments,
   fetchReels,
 } from "../api/endpoints";
+import { apiClient } from "../api/client";
 import { ReelCard } from "../components/reels/ReelCard";
+import { ArticleCard } from "../components/articles/ArticleCard";
+import { ArticleDetailDrawer } from "../components/articles/ArticleDetailDrawer";
 import { ReelDetailDrawer } from "../components/reels/ReelDetailDrawer";
 import { Badge, Button, Skeleton } from "../components/ui/primitives";
 import { PageTransition } from "../components/ui/motion";
@@ -29,6 +32,18 @@ export default function ClusterDetail() {
     queryKey: ["cluster-args", clusterId],
     queryFn: () => fetchClusterArguments(clusterId),
   });
+
+  const { data: clusterDocs } = useQuery({
+    queryKey: ["cluster-docs", id],
+    queryFn: async () => {
+      const { data } = await apiClient.get("/knowledge/documents/", {
+        params: { cluster: id, page_size: 30 },
+      });
+      return (Array.isArray(data) ? data : data.results) as import("../api/knowledge").KnowledgeDoc[];
+    },
+    enabled: !!id,
+  });
+  const [openDoc, setOpenDoc] = useState<number | null>(null);
   const { data: reels, isLoading } = useQuery({
     queryKey: ["cluster-reels", clusterId],
     queryFn: () => fetchReels({ cluster: clusterId, page_size: 60 }),
@@ -64,12 +79,34 @@ export default function ClusterDetail() {
                   className="flex items-start justify-between gap-3 rounded-xl border border-border bg-surface px-4 py-2.5 shadow-card"
                 >
                   <span className="text-sm text-navy">{a.text}</span>
-                  <Badge className="shrink-0 bg-white text-heading">
-                    {t("clusters.saidInNReels", { count: a.reel_count })}
-                  </Badge>
+                  <span className="flex shrink-0 flex-col items-end gap-1">
+                    {a.reel_count > 0 && (
+                      <Badge className="bg-white text-heading">
+                        {t("clusters.saidInNReels", { count: a.reel_count })}
+                      </Badge>
+                    )}
+                    {(a.article_count ?? 0) > 0 && (
+                      <Badge className="bg-white text-heading">
+                        📄 {t("clusters.inNArticles", { count: a.article_count })}
+                      </Badge>
+                    )}
+                  </span>
                 </li>
               ))}
             </ul>
+          </section>
+        )}
+
+        {clusterDocs && clusterDocs.length > 0 && (
+          <section>
+            <h2 className="mb-3 text-xs font-bold uppercase tracking-wider text-muted">
+              {t("articles.tab")} · {clusterDocs.length}
+            </h2>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3">
+              {clusterDocs.map((d) => (
+                <ArticleCard key={d.id} doc={d} onClick={() => setOpenDoc(d.id)} />
+              ))}
+            </div>
           </section>
         )}
 
@@ -94,6 +131,7 @@ export default function ClusterDetail() {
       </div>
 
       <ReelDetailDrawer reelId={openReel} onClose={() => setOpenReel(null)} />
+      <ArticleDetailDrawer docId={openDoc} onClose={() => setOpenDoc(null)} />
     </div>
     </PageTransition>
   );

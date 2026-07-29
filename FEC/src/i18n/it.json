@@ -170,7 +170,7 @@
     "expand": "Espandi articolo",
     "draft": "Genera bozza",
     "generating": "Generazione in corso…",
-    "resultInSecondBrain": "Il risultato appare in Second Brain → Blog.",
+    "resultInSecondBrain": "La bozza viene salvata e compare tra le bozze del blog.",
     "theme": "Tema",
     "readAll": "Leggi tutto",
     "collapse": "Comprimi",
@@ -257,7 +257,8 @@
     "keywords": "Parole chiave",
     "arguments": "Argomenti del tema",
     "saidInNReels": "detto in {{count}} reel",
-    "backToClusters": "Torna ai cluster"
+    "backToClusters": "Torna ai cluster",
+    "inNArticles": "in {{count}} articoli"
   },
   "workspace": {
     "title": "Workspace",
@@ -280,7 +281,9 @@
     "inactive": "Inattivo",
     "never": "Mai",
     "remove": "Rimuovi",
-    "confirmRemove": "Rimuovere questo account dal monitoraggio? I reel già raccolti restano."
+    "confirmRemove": "Rimuovere questo account dal monitoraggio? I reel già raccolti restano.",
+    "igSection": "Account Instagram",
+    "igSubtitle": "I profili di cui raccogliamo i reel."
   },
   "common": {
     "loading": "Caricamento…",
@@ -295,7 +298,7 @@
       "items": [
         "I tuoi reel Instagram",
         "I reel dei competitor",
-        "Gli articoli del blog medyca.it",
+        "Gli articoli dei blog (medyca.it + i blog dei competitor monitorati)",
         "I temi che indichi tu (tiroide, osteoporosi, Bijuva…)"
       ]
     },
@@ -342,8 +345,10 @@
       "items": [
         "I video vengono recuperati tramite un servizio esterno (Apify) che gestisce l'accesso a Instagram: questo evita il blocco che fermava il recupero degli arretrati. Il servizio si paga a consumo, circa 2,60 $ ogni 1.000 reel.",
         "Vengono letti i contenuti dalla scheda Reel; i post video normali e i caroselli non sono inclusi.",
-        "Il monitoraggio di siti e blog riguarda per ora solo medyca.it, non i competitor.",
-        "37 video trascritti il 27 luglio avevano usato il modello locale di riserva, meno preciso sui termini medici. Il collegamento al servizio di trascrizione è stato corretto e quelle trascrizioni sono state rifatte."
+        "I blog vengono monitorati come i profili Instagram: quello di Medyca e i blog dei competitor aggiunti dalla pagina Account. L'importazione parte dai ~40 articoli più recenti per fonte e completa l'archivio nelle notti successive — importiamo il recente, non tutto lo storico.",
+        "37 video trascritti il 27 luglio avevano usato il modello locale di riserva, meno preciso sui termini medici. Il collegamento al servizio di trascrizione è stato corretto e quelle trascrizioni sono state rifatte.",
+        "Gli articoli non hanno metriche di engagement (view, like): compaiono in Libreria, Cluster, temi e chat, ma non nei grafici di Analytics, che restano sui reel. Un'analisi dedicata ai blog (cadenza di pubblicazione, copertura dei temi) è prevista in un giro successivo.",
+        "Gli articoli in lingua diversa dall'italiano (es. International Menopause Society) vengono riassunti e classificati in italiano; la ricerca dentro il testo originale inglese è meno precisa di quella sugli articoli italiani."
       ]
     },
     "models": {
@@ -430,8 +435,8 @@
     "cronSub": "3 volte al giorno",
     "ig": "Instagram",
     "igSub": "reel Medyca + competitor",
-    "blog": "Blog medyca.it",
-    "blogSub": "articoli pubblicati",
+    "blog": "Blog (Medyca + competitor)",
+    "blogSub": "articoli importati dall'agente di scoperta",
     "download": "Scarica video",
     "downloadSub": "video, copertina, numeri",
     "stt": "Trascrive l'audio",
@@ -511,5 +516,30 @@
     "since": "da",
     "reanalysis": "Rianalisi con il modello più recente",
     "reanalysisHint": "I contenuti analizzati in passato da un modello più economico vengono rifatti con {{model}}. Le analisi già fatte restano consultabili nel frattempo."
+  },
+  "sources": {
+    "title": "Blog monitorati",
+    "subtitle": "Incolla l'indirizzo della pagina articoli di un blog: un agente capisce da solo come è fatto il sito e importa gli articoli. Da lì in poi il controllo è automatico.",
+    "namePlaceholder": "Nome (opzionale)",
+    "urlPlaceholder": "https://esempio.it/blog",
+    "ownerLabel": "Di chi è questo blog",
+    "add": "Aggiungi blog",
+    "addHint": "L'importazione parte subito e procede a scaglioni: i primi articoli compaiono in pochi minuti, l'archivio si completa nelle notti successive.",
+    "empty": "Nessun blog monitorato. Aggiungi il primo qui sopra.",
+    "source": "Fonte",
+    "owner": "Proprietà",
+    "articles": "Articoli",
+    "lastCrawl": "Ultima scansione",
+    "crawlNow": "Scansiona ora",
+    "failed": "in errore",
+    "reactivateHint": "Disattivata dopo errori ripetuti: clicca per riattivarla e riprovare",
+    "confirmRemove": "Rimuovere questo blog? Gli articoli già importati verranno esclusi dall'analisi."
+  },
+  "articles": {
+    "tab": "Articoli",
+    "empty": "Nessun articolo per questa vista. Aggiungi un blog dalla pagina Account.",
+    "notEnriched": "Analisi in corso…",
+    "body": "Articolo",
+    "openOriginal": "Apri l'articolo originale"
   }
 }

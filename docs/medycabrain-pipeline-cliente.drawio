@@ -21,7 +21,7 @@
         <mxCell id="h_in2" value="I reel dei competitor" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EEF5FD;strokeColor=#D5E3F2;fontColor=#2C4984;fontSize=12;arcSize=18;" vertex="1" parent="1">
           <mxGeometry x="60" y="216" width="240" height="60" as="geometry" />
         </mxCell>
-        <mxCell id="h_in3" value="Gli articoli del blog&#10;medyca.it" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EEF5FD;strokeColor=#D5E3F2;fontColor=#2C4984;fontSize=12;arcSize=18;" vertex="1" parent="1">
+        <mxCell id="h_in3" value="Gli articoli dei blog&#10;medyca.it + competitor" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EEF5FD;strokeColor=#D5E3F2;fontColor=#2C4984;fontSize=12;arcSize=18;" vertex="1" parent="1">
           <mxGeometry x="60" y="296" width="240" height="60" as="geometry" />
         </mxCell>
         <mxCell id="h_in4" value="I temi che indichi tu&#10;(tiroide, osteoporosi, Bijuva…)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#C93B42;fontColor=#C93B42;fontSize=12;arcSize=18;" vertex="1" parent="1">
@@ -106,13 +106,13 @@
         <mxCell id="l_dl" value="downloader_agent.py&#10;url video via Apify&#10;video + thumbnail su disco" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#4A6FAC;fontColor=#2C4984;fontSize=11;align=left;spacingLeft=10;verticalAlign=top;spacingTop=8;arcSize=12;" vertex="1" parent="1">
           <mxGeometry x="60" y="214" width="340" height="56" as="geometry" />
         </mxCell>
-        <mxCell id="l_blog" value="ingest_blog.py&#10;crawl medyca.it/blog → KnowledgeDocument" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#4A6FAC;fontColor=#2C4984;fontSize=11;align=left;spacingLeft=10;verticalAlign=top;spacingTop=8;arcSize=12;" vertex="1" parent="1">
+        <mxCell id="l_blog" value="blogscrape_agent.py&#10;agente di scoperta (sitemap/feed/LLM)&#10;→ KnowledgeDocument con owner" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#4A6FAC;fontColor=#2C4984;fontSize=11;align=left;spacingLeft=10;verticalAlign=top;spacingTop=8;arcSize=12;" vertex="1" parent="1">
           <mxGeometry x="60" y="286" width="340" height="56" as="geometry" />
         </mxCell>
         <mxCell id="l_ig" value="Instagram (owned + competitor)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EEF5FD;strokeColor=#D5E3F2;fontColor=#52688A;fontSize=10;arcSize=18;" vertex="1" parent="1">
           <mxGeometry x="60" y="360" width="165" height="40" as="geometry" />
         </mxCell>
-        <mxCell id="l_web" value="medyca.it/blog" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EEF5FD;strokeColor=#D5E3F2;fontColor=#52688A;fontSize=10;arcSize=18;" vertex="1" parent="1">
+        <mxCell id="l_web" value="blog monitorati&#10;(medyca.it + competitor)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EEF5FD;strokeColor=#D5E3F2;fontColor=#52688A;fontSize=10;arcSize=18;" vertex="1" parent="1">
           <mxGeometry x="240" y="360" width="160" height="40" as="geometry" />
         </mxCell>
 
@@ -176,7 +176,7 @@
         <mxCell id="l_b6" value="PERSISTENZA — PostgreSQL 16" style="rounded=0;fillColor=none;strokeColor=#D5E3F2;dashed=1;verticalAlign=top;align=left;fontColor=#52688A;fontStyle=2;spacingLeft=10;fontSize=11;" vertex="1" parent="1">
           <mxGeometry x="40" y="450" width="380" height="330" as="geometry" />
         </mxCell>
-        <mxCell id="l_db" value="tracked_accounts · reels · transcripts&#10;enrichments · reel_arguments&#10;reel_embeddings&#10;knowledge_documents&#10;cluster_runs · topic_clusters&#10;reel_cluster_assignments&#10;doc_cluster_assignments&#10;custom_topics · custom_topic_matches&#10;strategy_briefs · blog_drafts · jobs" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#4A6FAC;fontColor=#2C4984;fontSize=11;align=left;spacingLeft=10;verticalAlign=top;spacingTop=8;arcSize=12;" vertex="1" parent="1">
+        <mxCell id="l_db" value="tracked_accounts · blog_sources&#10;reels · transcripts&#10;enrichments · reel_arguments · document_arguments&#10;reel_embeddings&#10;knowledge_documents (con owner)&#10;cluster_runs · topic_clusters&#10;reel_cluster_assignments&#10;doc_cluster_assignments&#10;custom_topics · custom_topic_matches&#10;strategy_briefs · blog_drafts · jobs" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#4A6FAC;fontColor=#2C4984;fontSize=11;align=left;spacingLeft=10;verticalAlign=top;spacingTop=8;arcSize=12;" vertex="1" parent="1">
           <mxGeometry x="60" y="486" width="340" height="180" as="geometry" />
         </mxCell>
         <mxCell id="l_cron" value="cron (nice 19)&#10;03:30 pipeline completa · 14:15 top-up&#10;lun 04:00 crawl blog" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EEF5FD;strokeColor=#D5E3F2;fontColor=#2C4984;fontSize=10;align=left;spacingLeft=10;verticalAlign=top;spacingTop=8;arcSize=12;" vertex="1" parent="1">

@@ -398,11 +398,24 @@ class KnowledgeDocumentViewSet(viewsets.ReadOnlyModelViewSet):
         # Detail by id stays unrestricted, like ClusterViewSet does.
         if self.action == "retrieve":
             return qs
-        # Explicit scope. The default is Medyca's own material: this endpoint
-        # existed before competitor blogs did, and its callers assume it.
-        owner = SCOPE_MAP.get(
-            (self.request.query_params.get("scope") or "medyca").lower(), "owned")
-        qs = qs.filter(owner_type=owner)
+        # The browse list hides what the model itself judged non-editorial
+        # (cookie walls, install pages, recipes): a card that summarises a
+        # cookie banner is noise dressed as an article. The rows stay in the
+        # DB and reachable by id — the verdict is reviewable, not a delete.
+        qs = qs.filter(is_on_topic=True)
+        # A cluster filter implies its own scope — the cluster was built from
+        # one side's material, so the owner filter would only fight it.
+        cluster = self.request.query_params.get("cluster")
+        if cluster and str(cluster).isdigit():
+            qs = qs.filter(cluster_assignments__cluster_id=int(cluster),
+                           cluster_assignments__run__is_current=True)
+        else:
+            # Explicit scope. The default is Medyca's own material: this
+            # endpoint existed before competitor blogs did, and its callers
+            # assume it.
+            owner = SCOPE_MAP.get(
+                (self.request.query_params.get("scope") or "medyca").lower(), "owned")
+            qs = qs.filter(owner_type=owner)
         source = self.request.query_params.get("source")
         if source and str(source).isdigit():
             qs = qs.filter(source_id=int(source))

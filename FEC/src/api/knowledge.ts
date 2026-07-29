@@ -10,8 +10,19 @@ export interface KnowledgeDoc {
   published_at: string | null;
   summary_it: string;
   topics: string[];
+  primary_topic?: string;
+  owner_type?: "owned" | "competitor";
+  language?: string;
+  source?: { id: number; name: string; owner_type: string } | null;
   enrich_status: string;
   created_at: string;
+}
+
+export interface KnowledgeDocDetail extends KnowledgeDoc {
+  content_md: string;
+  embed_status: string;
+  updated_at: string;
+  arguments?: { id: number; text_it: string; quote: string }[];
 }
 
 export interface KnowledgeHit {
@@ -38,10 +49,18 @@ export interface AskResult {
   sources: KnowledgeHit[];
 }
 
-export async function fetchKnowledgeDocs(search?: string): Promise<KnowledgeDoc[]> {
+export async function fetchKnowledgeDoc(id: number): Promise<KnowledgeDocDetail> {
+  const { data } = await apiClient.get<KnowledgeDocDetail>(`/knowledge/documents/${id}/`);
+  return data;
+}
+
+export async function fetchKnowledgeDocs(
+  search?: string,
+  scope: "medyca" | "competitor" = "medyca"
+): Promise<KnowledgeDoc[]> {
   const { data } = await apiClient.get<Paginated<KnowledgeDoc> | KnowledgeDoc[]>(
     "/knowledge/documents/",
-    { params: { search: search || undefined, page_size: 100 } }
+    { params: { search: search || undefined, scope, page_size: 100 } }
   );
   return Array.isArray(data) ? data : data.results;
 }
