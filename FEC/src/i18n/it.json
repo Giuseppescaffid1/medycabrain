@@ -331,7 +331,8 @@
         "Temi e Mappa — i tuoi argomenti e quelli scoperti automaticamente",
         "Second Brain — cosa hai già coperto e dove c'è un buco",
         "Brief e bozze — pronti da usare, con le fonti citate",
-        "Knowledge Bank — tutto il materiale, ricercabile"
+        "Knowledge Bank — tutto il materiale, ricercabile",
+        "Connettore per Claude (MCP): la banca dati interrogabile direttamente dal tuo Claude, in sola lettura"
       ]
     },
     "download": {

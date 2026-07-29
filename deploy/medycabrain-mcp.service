@@ -1,0 +1,21 @@
+# /etc/systemd/system/medycabrain-mcp.service
+# The knowledge bank as an MCP server for the client's own Claude.
+# Its own process on purpose: a slow MCP call must not occupy one of the
+# app's gunicorn slots. Reads MCP_SECRET + DB config from the same .env.
+[Unit]
+Description=medycabrain MCP bridge (uvicorn)
+After=network.target postgresql.service
+Requires=postgresql.service
+
+[Service]
+User=giuseppe
+Group=giuseppe
+WorkingDirectory=/home/giuseppe/projects/medycabrain/BEC
+EnvironmentFile=/home/giuseppe/projects/medycabrain/BEC/.env
+ExecStart=/home/giuseppe/projects/medycabrain/BEC/venv/bin/uvicorn \
+    mcp_bridge.server:app --host 127.0.0.1 --port 8025 --workers 1
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
