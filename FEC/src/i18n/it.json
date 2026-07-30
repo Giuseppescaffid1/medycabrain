@@ -542,5 +542,18 @@
     "notEnriched": "Analisi in corso…",
     "body": "Articolo",
     "openOriginal": "Apri l'articolo originale"
+  },
+  "evals": {
+    "hint": "La qualità del recupero misurata su domande fisse: ogni modifica al sistema deve muovere questi numeri, non le impressioni. Suite: eval_mcp, eseguita sul percorso reale (HTTPS).",
+    "empty": "Nessuna valutazione ancora eseguita. Lancia `manage.py eval_mcp` sul server.",
+    "lastRun": "Ultimo run",
+    "casesPassed": "casi superati",
+    "latency": "Latenza ricerca: mediana {{p50}}ms · max {{max}}ms",
+    "showCases": "Mostra i singoli casi",
+    "hideCases": "Nascondi i casi",
+    "run": "Run",
+    "ownership": "Proprietà",
+    "grounded": "Citazioni",
+    "judge": "Giudice"
   }
 }

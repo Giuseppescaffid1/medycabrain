@@ -12,6 +12,7 @@ from the log the agents write.
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 import subprocess
@@ -374,6 +375,35 @@ def models() -> list[dict]:
     ]
 
 
+def evals(limit: int = 12) -> list[dict]:
+    """The evaluation runs, newest first, straight from logs/evals/.
+
+    The suite (manage.py eval_mcp) is the source of truth; this just reads
+    what it wrote, so the page can never disagree with the scorecard files.
+    """
+    evdir = Path(settings.BASE_DIR) / "logs" / "evals"
+    if not evdir.exists():
+        return []
+    out = []
+    for f in sorted(evdir.glob("eval-*.json"), reverse=True)[:limit]:
+        try:
+            data = json.loads(f.read_text())
+        except (OSError, ValueError):
+            continue
+        cases = data.get("cases", {})
+        out.append({
+            "at": data.get("at"),
+            "metrics": data.get("metrics", {}),
+            "latency_ms": data.get("latency_ms", {}),
+            "cases": [{"name": k, "pass": bool(v.get("pass")),
+                       "detail": v.get("detail", "")}
+                      for k, v in cases.items()],
+            "passed": sum(1 for v in cases.values() if v.get("pass")),
+            "total": len(cases),
+        })
+    return out
+
+
 def snapshot() -> dict:
     # Read once and share: this endpoint is polled every five seconds per open
     # tab, and each call would otherwise re-read the whole pipeline log.
@@ -384,6 +414,7 @@ def snapshot() -> dict:
         "last_runs": last_runs(),
         "history": history,
         "activity": activity(history),
+        "evals": evals(),
         "reanalysis": reanalysis(),
         "now": _now().isoformat(),
         "models": models(),

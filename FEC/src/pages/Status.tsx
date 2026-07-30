@@ -6,6 +6,7 @@ import { PageTransition } from "../components/ui/motion";
 import { Operations, type OperationsData } from "../components/ops/Operations";
 import { RunTimeline, type Run } from "../components/ops/RunTimeline";
 import { LiveActivity, type Job, type Reanalysis } from "../components/ops/LiveActivity";
+import { EvalsPanel, type EvalRun } from "../components/ops/EvalsPanel";
 
 interface Stage {
   key: string;
@@ -23,6 +24,7 @@ interface StatusPayload {
     history?: Run[];
     activity?: Job[];
     reanalysis?: Reanalysis | null;
+    evals?: EvalRun[];
   };
   totals: Record<string, number>;
   stages: Stage[];
@@ -179,6 +181,15 @@ export default function Status() {
                     runs={data.operations?.history ?? []}
                     updatedAt={dataUpdatedAt}
                   />
+                </section>
+
+                {/* Evals: quality as a number, run over run */}
+                <section>
+                  <h2 className="mb-1 text-xs font-bold uppercase tracking-wider text-muted">
+                    Evals
+                  </h2>
+                  <p className="mb-3 text-xs text-muted/80">{t("evals.hint")}</p>
+                  <EvalsPanel runs={data.operations?.evals ?? []} />
                 </section>
 
                 {/* Running jobs */}
