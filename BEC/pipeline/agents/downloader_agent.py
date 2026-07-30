@@ -163,6 +163,40 @@ def _url_expired(url: str, margin_s: int = 900) -> bool:
         return False
 
 
+def _ytdlp_fetch(reel: Reel, mp4: Path) -> None:
+    """Fetch a public reel by permalink, anonymously, via yt-dlp.
+
+    Replaces the media/info renewal path, which needed a logged-in session —
+    removed 2026-07-29 because it ran as Giuseppe's personal account. This
+    path involves no account at all: measured 2026-07-30 from this VPS,
+    3/3 reels, 6-8s each, valid MP4s with correct durations.
+
+    Still unofficial: Instagram can block the IP or change the page. A block
+    surfaces as a DownloadError mentioning login/rate — mapped to IGThrottled
+    so the run defers instead of burning three attempts per reel.
+    """
+    import yt_dlp
+
+    opts = {
+        "outtmpl": str(mp4.with_suffix("")) + ".%(ext)s",
+        "merge_output_format": "mp4",
+        "quiet": True, "no_warnings": True, "noprogress": True,
+        "socket_timeout": 60,
+        "retries": 1,
+    }
+    url = f"https://www.instagram.com/reel/{reel.shortcode}/"
+    try:
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            ydl.download([url])
+    except yt_dlp.utils.DownloadError as exc:
+        msg = str(exc).lower()
+        if any(k in msg for k in ("login", "rate", "429", "wait a few minutes")):
+            raise IGThrottled(f"yt-dlp bloccato: {str(exc)[:120]}") from exc
+        raise
+    if not mp4.exists():
+        raise RuntimeError("yt-dlp: nessun file prodotto")
+
+
 def _process_one(reel: Reel) -> bool:
     scratch = Path(settings.TMP_DIR)
     scratch.mkdir(parents=True, exist_ok=True)
@@ -172,34 +206,27 @@ def _process_one(reel: Reel) -> bool:
     mp3 = Path(settings.MEDIA_ROOT) / rel_audio
     thumb = Path(settings.MEDIA_ROOT) / rel_thumb
 
-    # media/info is the throttled endpoint — roughly 35 calls per run before
-    # Instagram starts answering HTML. A cached, unexpired CDN url lets us skip
-    # it entirely: the CDN itself is not rate-limited.
+    # Cheapest first: a cached, unexpired CDN url is a plain file fetch.
+    # Otherwise yt-dlp fetches the public permalink anonymously — the
+    # media/info renewal it replaces needed a logged-in session.
     used_api = False
+    fetched = False
     if reel.video_url and not _url_expired(reel.video_url):
-        details = {"video_url": reel.video_url, "has_audio": True}
-        logger.debug("[downloader] %s: uso url in cache, nessuna chiamata API", reel.shortcode)
-    else:
-        details = _fetch_media_details(reel)
-        used_api = True
-
-    has_audio = details.get("has_audio", True)
-    if has_audio:
-        video_url = details.get("video_url") or reel.video_url
         try:
-            _download(video_url, mp4)
-        except Exception:  # noqa: BLE001 — expired or revoked url
-            # Targeted renewal, once. Previously this fired on every download
-            # error and doubled the API quota a failing reel consumed.
-            video_url = _fetch_media_details(reel).get("video_url", "")
-            used_api = True
-            if not video_url:
-                raise
-            _download(video_url, mp4)
-        # Defensive: a reel can claim audio but ship a video-only stream.
-        has_audio = _has_audio(mp4)
-        if has_audio:
-            _extract_audio(mp4, mp3)
+            _download(reel.video_url, mp4)
+            fetched = True
+            logger.debug("[downloader] %s: url in cache", reel.shortcode)
+        except Exception as exc:  # noqa: BLE001 — expired early or revoked
+            logger.debug("[downloader] %s: url in cache morto (%r), provo yt-dlp",
+                         reel.shortcode, exc)
+    if not fetched:
+        _ytdlp_fetch(reel, mp4)
+        used_api = True  # web hit on Instagram: it deserves the pacing delay
+
+    # Defensive: a reel can ship a video-only stream.
+    has_audio = _has_audio(mp4)
+    if has_audio:
+        _extract_audio(mp4, mp3)
 
     if reel.thumbnail_url:
         try:
