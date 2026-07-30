@@ -265,10 +265,19 @@ def build_app():
             await _deny(send, 503, "MCP_SECRET non configurato")
             return
         path = scope.get("path", "")
-        prefix = f"/{MCP_SECRET}"
-        if path == prefix or path.startswith(prefix + "/"):
+        # The secret segment is compared with whitespace removed. Measured
+        # failure mode (2026-07-30): the URL wrapped in a messenger, the
+        # copy gained a space mid-secret ("v%20FZ5"), and claude.ai got 404
+        # on every request while every server-side test passed. Whitespace
+        # can never occur in a token_urlsafe secret, so stripping it only
+        # forgives copy-paste damage — it accepts nothing an attacker
+        # could not already send.
+        parts = path.split("/", 2)
+        candidate = "".join((parts[1] if len(parts) > 1 else "").split())
+        if candidate == MCP_SECRET:
+            rest = "/" + parts[2] if len(parts) > 2 else "/"
             scope = dict(scope)
-            scope["path"] = path[len(prefix):] or "/"
+            scope["path"] = rest
             return await inner(scope, receive, send)
         await _deny(send, 404, "not found")
 
