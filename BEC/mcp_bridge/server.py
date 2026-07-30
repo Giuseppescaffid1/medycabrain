@@ -244,13 +244,16 @@ def build_app():
     """
     from mcp.server.transport_security import TransportSecuritySettings
 
-    # The SDK's DNS-rebinding guard checks the Host header. Behind nginx the
-    # host is the public domain, not the loopback bind — both are legitimate
-    # and everything else stays rejected.
-    security = TransportSecuritySettings(
-        allowed_hosts=["messtudent.com", "www.messtudent.com",
-                       "127.0.0.1:8025", "localhost:8025"],
-    )
+    # The SDK's DNS-rebinding guard is OFF, deliberately. It rejected
+    # claude.ai's own client: Anthropic sends `Origin: https://claude.ai`,
+    # and an allowed-hosts-only config 403s any request carrying an Origin —
+    # measured, that was the whole "Couldn't connect to the server" failure.
+    # The guard defends browser pages steering ambient credentials at a
+    # local server; this endpoint has none of that: no cookies, auth is the
+    # secret path segment, and nginx only routes the public hostname here.
+    # Enumerating Anthropic's origins instead would break on their next
+    # domain change, silently, for the client.
+    security = TransportSecuritySettings(enable_dns_rebinding_protection=False)
     inner = server.streamable_http_app(json_response=True, stateless_http=True,
                                        transport_security=security)
 
