@@ -192,7 +192,10 @@ def leggi(id: str) -> dict:
             "tema": d.primary_topic,
             "riassunto": d.summary_it,
             "argomenti": d.topics,
-            "testo": (d.content_md or d.content_text)[:12000],
+            # Plain text, not markdown: the claims' quotes are verified
+            # against this exact text, and the client's Claude checking a
+            # quote must find it verbatim in what it was given.
+            "testo": (d.content_text or d.content_md)[:12000],
             "affermazioni": [
                 {"testo": a.text_it, "citazione": a.quote}
                 for a in d.arguments.all()[:10]
