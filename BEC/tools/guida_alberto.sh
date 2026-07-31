@@ -3,8 +3,12 @@
 # inserito. L'URL è la credenziale: il messaggio va mandato in privato.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-SECRET=$(grep '^MCP_SECRET=' .env | cut -d= -f2)
-URL="https://messtudent.com/medyca-mcp/${SECRET}/mcp"
+# Il link INVITO, non l'URL col segreto: due inoltri consecutivi hanno
+# mutilato l'URL lungo (uno spazio guadagnato, tre caratteri e /mcp persi).
+# Il link corto sopravvive ai messenger; l'URL vero si copia dalla pagina
+# col bottone, che non sbaglia.
+INVITE=$(grep '^MCP_INVITE=' .env | cut -d= -f2)
+URL="https://messtudent.com/medyca-mcp/invito/${INVITE}"
 
 cat <<EOF
 Ciao Alberto! Da oggi puoi interrogare la banca dati di Medyca direttamente
@@ -12,11 +16,11 @@ dal tuo Claude — reel nostri, reel dei competitor e articoli dei blog.
 
 COME SI ATTIVA (2 minuti, serve un piano Claude a pagamento):
 
-1. Vai su claude.ai → clicca le tue iniziali in basso a sinistra →
-   Settings → Connectors
-2. Clicca "Add custom connector"
-3. Nome:  Medyca Content Intelligence
-   URL:   ${URL}
+1. Apri questa pagina: ${URL}
+2. Premi il bottone "Copia l'indirizzo"
+3. Su claude.ai: Settings → Connectors → "Add custom connector"
+   Nome:  Medyca Content Intelligence
+   URL:   (incolla quello copiato al punto 2)
 4. Clicca "Add". Non chiede login: l'indirizzo stesso è la chiave,
    quindi NON condividerlo con nessuno (è come una password).
 5. Apri una nuova chat: nel menu degli strumenti (icona ⚙/🔌 sotto la

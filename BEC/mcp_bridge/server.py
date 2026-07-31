@@ -42,6 +42,7 @@ from django.conf import settings  # noqa: E402
 from mcp.server.mcpserver import MCPServer  # noqa: E402
 
 MCP_SECRET = os.environ.get("MCP_SECRET", "")
+MCP_INVITE = os.environ.get("MCP_INVITE", "")
 
 server = MCPServer(
     name="Medyca Content Intelligence",
@@ -265,23 +266,89 @@ def build_app():
             await _deny(send, 503, "MCP_SECRET non configurato")
             return
         path = scope.get("path", "")
-        # The secret segment is compared with whitespace removed. Measured
-        # failure mode (2026-07-30): the URL wrapped in a messenger, the
-        # copy gained a space mid-secret ("v%20FZ5"), and claude.ai got 404
-        # on every request while every server-side test passed. Whitespace
-        # can never occur in a token_urlsafe secret, so stripping it only
-        # forgives copy-paste damage — it accepts nothing an attacker
-        # could not already send.
         parts = path.split("/", 2)
-        candidate = "".join((parts[1] if len(parts) > 1 else "").split())
-        if candidate == MCP_SECRET:
-            rest = "/" + parts[2] if len(parts) > 2 else "/"
+        seg = parts[1] if len(parts) > 1 else ""
+
+        # The invite page: a SHORT link that survives messengers, serving
+        # the real connector URL with a copy button. Born of two real
+        # incidents in two days: a space gained mid-secret in one paste, the
+        # last three secret characters plus /mcp lost in the next forward.
+        # Humans copy from a browser reliably; from a wrapped chat message,
+        # demonstrably not.
+        if seg == "invito" and MCP_INVITE:
+            given = _clean(parts[2] if len(parts) > 2 else "")
+            if given == MCP_INVITE and scope.get("method") == "GET":
+                return await _invite_page(send)
+            await _deny(send, 404, "not found")
+            return
+
+        # The secret is compared with whitespace and invisible characters
+        # removed — a token_urlsafe secret can never contain them, so this
+        # only forgives copy-paste damage (measured: "v%20FZ5", zero-width
+        # junk from messengers) and accepts nothing an attacker could not
+        # already send. A missing /mcp suffix is likewise forgiven: the
+        # only endpoint behind the secret IS /mcp.
+        if _clean(seg) == MCP_SECRET:
+            rest = "/" + parts[2] if len(parts) > 2 and parts[2] else "/mcp"
+            if rest == "/":
+                rest = "/mcp"
             scope = dict(scope)
             scope["path"] = rest
             return await inner(scope, receive, send)
         await _deny(send, 404, "not found")
 
     return app
+
+
+_INVISIBLE = dict.fromkeys(map(ord, "\u200b\u200c\u200d\ufeff\u00a0"))
+
+
+def _clean(segment: str) -> str:
+    """A path segment with whitespace and invisible unicode removed."""
+    return "".join(segment.translate(_INVISIBLE).split())
+
+
+async def _invite_page(send):
+    url = f"https://messtudent.com/medyca-mcp/{MCP_SECRET}/mcp"
+    html = f"""<!doctype html><html lang="it"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Medyca Content Intelligence — collegamento</title>
+<style>
+ body{{font-family:system-ui,sans-serif;background:#eef5fd;color:#2c4984;
+      display:grid;place-items:center;min-height:100vh;margin:0;padding:24px}}
+ .card{{background:#fff;border:1px solid #d5e3f2;border-radius:16px;
+       padding:28px;max-width:560px;box-shadow:0 8px 30px rgba(44,73,132,.12)}}
+ h1{{font-size:20px;color:#346faa;margin:0 0 6px}}
+ p{{font-size:14px;line-height:1.5;margin:10px 0}}
+ code{{display:block;background:#eef5fd;border:1px solid #d5e3f2;
+      border-radius:10px;padding:12px;font-size:12px;word-break:break-all;
+      user-select:all;margin:14px 0}}
+ button{{background:#c93b42;color:#fff;border:0;border-radius:999px;
+        padding:12px 22px;font-size:15px;font-weight:700;cursor:pointer}}
+ button:focus-visible{{outline:2px solid #346faa;outline-offset:2px}}
+ .ok{{color:#2e7d32;font-weight:700;display:none}}
+ ol{{font-size:14px;line-height:1.7;padding-left:20px}}
+</style></head><body><div class="card">
+<h1>Medyca Content Intelligence</h1>
+<p>Questo è l'indirizzo del connettore per il tuo Claude. È una chiave
+d'accesso: <strong>non inoltrarlo</strong>.</p>
+<code id="u">{url}</code>
+<button onclick="navigator.clipboard.writeText(document.getElementById('u').textContent.trim()).then(()=>{{document.getElementById('ok').style.display='inline'}})">
+Copia l'indirizzo</button> <span class="ok" id="ok">✓ copiato</span>
+<ol>
+<li>Su claude.ai: <strong>Settings → Connectors → Add custom connector</strong></li>
+<li>Nome: <strong>Medyca Content Intelligence</strong></li>
+<li>Incolla l'indirizzo copiato qui sopra → <strong>Add</strong></li>
+</ol>
+<p>Nessun login richiesto: l'indirizzo stesso è la chiave.</p>
+</div></body></html>"""
+    body = html.encode()
+    await send({"type": "http.response.start", "status": 200,
+                "headers": [(b"content-type", b"text/html; charset=utf-8"),
+                            (b"cache-control", b"no-store"),
+                            (b"x-robots-tag", b"noindex, nofollow")]})
+    await send({"type": "http.response.body", "body": body})
 
 
 async def _deny(send, status: int, msg: str):

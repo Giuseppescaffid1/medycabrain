@@ -5,6 +5,21 @@ Claude Desktop) e fargli domande fondate sui suoi dati: i reel di
 @medyca.menopausa, i reel dei competitor, gli articoli del blog medyca.it e
 dei blog dei competitor.
 
+## Come si consegna al cliente (IMPORTANTE)
+
+**Mai inoltrare l'URL col segreto in un messaggio.** Due inoltri consecutivi
+lo hanno mutilato (uno spazio guadagnato a metà segreto; poi tre caratteri e
+`/mcp` persi al wrap di WhatsApp). Si manda il **link invito** — corto,
+sopravvive ai messenger — e l'URL vero si copia dalla pagina col bottone:
+
+```
+bash tools/guida_alberto.sh    # stampa il messaggio con il link invito
+```
+
+Il server è comunque tollerante alla sporcizia da copia (spazi, caratteri
+invisibili, `/mcp` mancante), ma NON a un segreto incompleto: quella è
+l'autenticazione che funziona.
+
 ## L'indirizzo da dare al cliente
 
 L'URL È la credenziale (contiene un segreto): trattarlo come una password.
