@@ -290,10 +290,16 @@ def _current_cluster_labels():
 # ── Tags ───────────────────────────────────────────────────────────────────────
 
 class TagViewSet(viewsets.ModelViewSet):
-    queryset = models.Tag.objects.all()
     serializer_class = serializers.TagSerializer
     permission_classes = [IsAuthenticated]
     pagination_class = None
+
+    def get_queryset(self):
+        # Order by how much a tag is actually used (reels + articles), so the
+        # picker surfaces the useful ones first instead of alphabetical noise.
+        return models.Tag.objects.annotate(
+            usage=Count("annotations", distinct=True) + Count("documents", distinct=True)
+        ).order_by("-usage", "name")
 
 
 # ── Clusters ───────────────────────────────────────────────────────────────────
@@ -479,6 +485,9 @@ class KnowledgeDocumentViewSet(viewsets.ReadOnlyModelViewSet):
         source = self.request.query_params.get("source")
         if source and str(source).isdigit():
             qs = qs.filter(source_id=int(source))
+        tag = self.request.query_params.get("tag")
+        if tag and str(tag).isdigit():
+            qs = qs.filter(tags__id=int(tag))
         search = (self.request.query_params.get("search") or "").strip()
         if search:
             qs = qs.filter(Q(title__icontains=search)

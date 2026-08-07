@@ -46,6 +46,7 @@ const hostOf = (u: string) => {
 export default function KnowledgeBank() {
   const { t } = useTranslation();
   const [scope, setScope] = useState<Scope>("all");
+  const [ctype, setCtype] = useState<"all" | "reel" | "article">("all");
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
   const [elapsed, setElapsed] = useState(0);
@@ -58,6 +59,7 @@ export default function KnowledgeBank() {
     mutationFn: (query) =>
       askKnowledge(query, {
         scope,
+        content_type: ctype,
         history: messages.slice(-6).map((m) => ({ role: m.role, content: m.content })),
         references: findUrls(query),
       }),
@@ -135,6 +137,20 @@ export default function KnowledgeBank() {
                         ? "kb.scopeMedyca"
                         : "kb.scopeCompetitor"
                   )}
+                </button>
+              ))}
+            </div>
+            <div className="inline-flex rounded-full border border-border bg-white p-1">
+              {(["all", "reel", "article"] as const).map((c) => (
+                <button
+                  key={c}
+                  onClick={() => setCtype(c)}
+                  className={
+                    "rounded-full px-3 py-1 text-xs font-bold transition " +
+                    (ctype === c ? "bg-secondary/10 text-secondary" : "text-muted hover:text-navy")
+                  }
+                >
+                  {t(c === "all" ? "kb.typeAll" : c === "reel" ? "kb.typeReel" : "kb.typeArticle")}
                 </button>
               ))}
             </div>

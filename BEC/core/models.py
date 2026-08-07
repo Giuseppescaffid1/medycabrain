@@ -354,6 +354,10 @@ class BlogDraft(models.Model):
 class Tag(models.Model):
     name = models.CharField(max_length=50, unique=True)
     color = models.CharField(max_length=7, blank=True, default="#6366f1")
+    # True when generated from the LLM primary_topic rather than typed by
+    # hand. Lets the auto-tagger refresh its own tags without touching the
+    # client's manual ones, and the UI show where a tag came from.
+    auto = models.BooleanField(default=False)
 
     class Meta:
         db_table = "tags"
@@ -481,6 +485,11 @@ class KnowledgeDocument(models.Model):
     embed_status = models.CharField(max_length=16, choices=STATUS_CHOICES, default=PENDING)
     argument_status = models.CharField(max_length=16, choices=STATUS_CHOICES, default=PENDING)
     last_error = models.TextField(blank=True, default="")
+
+    # Tags apply to articles and uploaded interviews too, not just reels —
+    # a direct M2M rather than an annotation twin, since a document has no
+    # favourite/note the way a reel does.
+    tags = models.ManyToManyField(Tag, blank=True, related_name="documents")
 
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)

@@ -152,7 +152,10 @@
       "owned": "Materiale di Medyca",
       "competitor": "Materiale dei competitor"
     },
-    "untitled": "(senza titolo)"
+    "untitled": "(senza titolo)",
+    "typeAll": "Tutto",
+    "typeReel": "Reel",
+    "typeArticle": "Articoli"
   },
   "jobs": {
     "ideation": "Generazione idee di contenuto",
@@ -210,7 +213,8 @@
     "onlyFavorites": "Solo preferiti",
     "onlyInspiration": "Solo ispirazione",
     "reset": "Azzera",
-    "showExcluded": "Mostra esclusi"
+    "showExcluded": "Mostra esclusi",
+    "allTags": "Tutti i tag"
   },
   "reel": {
     "views": "visualizzazioni",

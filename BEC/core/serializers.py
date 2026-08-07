@@ -5,9 +5,11 @@ from . import models
 
 
 class TagSerializer(serializers.ModelSerializer):
+    usage = serializers.IntegerField(read_only=True, required=False)
+
     class Meta:
         model = models.Tag
-        fields = ["id", "name", "color"]
+        fields = ["id", "name", "color", "auto", "usage"]
 
 
 class AnnotationSerializer(serializers.ModelSerializer):

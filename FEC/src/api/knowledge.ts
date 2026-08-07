@@ -75,6 +75,7 @@ export async function searchKnowledge(query: string, topK = 6): Promise<Knowledg
 
 export interface AskOptions {
   scope?: "all" | "medyca" | "competitor";
+  content_type?: "all" | "reel" | "article";
   history?: { role: "user" | "assistant"; content: string }[];
   topK?: number;
   /** Pages to read for this question only. Never added to the knowledge bank. */
@@ -89,6 +90,7 @@ export async function askKnowledge(query: string, opts: AskOptions = {}): Promis
       query,
       top_k: opts.topK ?? 8,
       scope: opts.scope ?? "all",
+      content_type: opts.content_type ?? "all",
       history: opts.history ?? [],
       references: opts.references ?? [],
     },

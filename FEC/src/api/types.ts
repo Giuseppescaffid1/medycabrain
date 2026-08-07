@@ -18,6 +18,8 @@ export interface Tag {
   id: number;
   name: string;
   color: string;
+  auto?: boolean;
+  usage?: number;
 }
 
 export interface Annotation {

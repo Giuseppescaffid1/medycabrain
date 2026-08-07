@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { fetchAccounts, fetchClusters, type Scope } from "../../api/endpoints";
+import { fetchAccounts, fetchClusters, fetchTags, type Scope } from "../../api/endpoints";
 import type { ReelFilters } from "../../api/endpoints";
 
 const FORMATS = [
@@ -25,6 +25,10 @@ export function FilterBar({
     queryKey: ["clusters", scope],
     queryFn: () => fetchClusters(scope),
   });
+  // Tags now mean something (auto-generated from the analysis topics), so
+  // they belong in the filter bar — the backend already supported the
+  // filter, only the control was missing. Most-used first.
+  const { data: tags } = useQuery({ queryKey: ["tags"], queryFn: fetchTags });
 
   const set = (patch: Partial<ReelFilters>) => onChange({ ...filters, ...patch, page: 1 });
 
@@ -63,6 +67,19 @@ export function FilterBar({
         <option value="">{t("library.allClusters")}</option>
         {clusters?.map((c) => (
           <option key={c.id} value={c.id}>{c.label_it}</option>
+        ))}
+      </select>
+
+      <select
+        className={selectCls}
+        value={filters.tag ?? ""}
+        onChange={(e) => set({ tag: e.target.value ? Number(e.target.value) : undefined })}
+      >
+        <option value="">{t("library.allTags")}</option>
+        {tags?.filter((tg) => (tg.usage ?? 0) > 0).map((tg) => (
+          <option key={tg.id} value={tg.id}>
+            {tg.name}{tg.usage ? ` (${tg.usage})` : ""}
+          </option>
         ))}
       </select>
 
