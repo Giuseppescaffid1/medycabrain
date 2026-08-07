@@ -63,6 +63,14 @@ def _embed(texts: list[str]) -> np.ndarray:
     return np.asarray(vecs, dtype=np.float32)
 
 
+# The dense vector reads this. It used to stop at transcript[:600], while the
+# lexical scorer and the passage picker saw the WHOLE transcript — so a reel
+# whose relevant content was past ~40 seconds got ranked as if empty, and the
+# chat "didn't work well" for exactly those. 4000 chars covers a typical
+# 60-90s reel end to end while staying inside what MiniLM handles cleanly.
+_EMBED_TEXT_CHARS = 4000
+
+
 def _reel_text(reel: Reel, enr: Enrichment | None) -> str:
     parts = []
     if enr and enr.summary_it:
@@ -71,9 +79,9 @@ def _reel_text(reel: Reel, enr: Enrichment | None) -> str:
         parts.append(" ".join(enr.topics))
     tr = getattr(reel, "transcript", None)
     if tr and tr.text:
-        parts.append(tr.text[:600])
+        parts.append(tr.text[:_EMBED_TEXT_CHARS])
     if not parts:
-        parts.append(reel.caption[:600])
+        parts.append(reel.caption[:_EMBED_TEXT_CHARS])
     return "\n".join(parts)
 
 

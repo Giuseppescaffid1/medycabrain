@@ -128,8 +128,10 @@ def cerca(query: str, scope: str = "all", tipo: str = "tutti",
     scope = scope if scope in ("all", "medyca", "competitor") else "all"
     limite = max(1, min(int(limite), 20))
     # Over-fetch when filtering by kind, so the filter does not starve.
+    # rerank=True: the client's Claude gets the same LLM-sharpened order the
+    # in-app chat gets.
     hits = semantic_search(query, top_k=limite * (2 if tipo != "tutti" else 1),
-                           scope=scope)
+                           scope=scope, rerank=True)
     if tipo == "reel":
         hits = [h for h in hits if h["kind"] == "reel"]
     elif tipo == "articolo":

@@ -550,9 +550,12 @@ class KnowledgeAskView(APIView):
         if isinstance(refs, str):
             refs = [refs]
         refs = [str(u).strip() for u in refs if str(u).strip()][:MAX_REFERENCES]
+        ctype = (request.data.get("content_type") or "all").lower()
+        if ctype not in ("all", "reel", "article"):
+            ctype = "all"
         from core.knowledge import answer
         return Response(answer(query, top_k=top_k, scope=scope, history=history,
-                               references=refs))
+                               references=refs, content_type=ctype))
 
 
 class ContentIdeaViewSet(viewsets.ModelViewSet):

@@ -18,6 +18,7 @@ Medyca's own material.
 
 from __future__ import annotations
 
+import logging
 import re
 
 import numpy as np
@@ -28,6 +29,8 @@ from django.db.models import Count
 
 from core.models import DONE, KnowledgeDocument, Reel
 from llm import client
+
+logger = logging.getLogger(__name__)
 
 _embedder = None
 
@@ -59,9 +62,13 @@ def _corpus_stamp() -> tuple:
 
     from core.models import ReelEmbedding
 
-    agg = ReelEmbedding.objects.aggregate(n=Count("id"), last=Max("created_at"))
-    return (agg["n"], agg["last"],
-            KnowledgeDocument.objects.filter(is_active=True).count(),
+    # Max(updated_at), not created_at: an in-place re-embed reuses rows and
+    # leaves created_at and the counts unchanged, which used to let the chat
+    # serve a stale index until a restart. updated_at bumps on every save.
+    agg = ReelEmbedding.objects.aggregate(n=Count("id"), last=Max("updated_at"))
+    docs = KnowledgeDocument.objects.filter(is_active=True).aggregate(
+        n=Count("id"), last=Max("updated_at"))
+    return (agg["n"], agg["last"], docs["n"], docs["last"],
             Reel.objects.filter(is_active=True, enrich_status=DONE).count())
 
 
@@ -221,7 +228,11 @@ def _rank(index: list[dict], query: str, qvec) -> list[tuple[float, dict, float]
     return out
 
 
-def semantic_search(query: str, top_k: int = 6, scope: str = "all") -> list[dict]:
+RERANK_POOL = 15  # candidates the LLM reranker reorders before the top_k cut
+
+
+def semantic_search(query: str, top_k: int = 6, scope: str = "all",
+                    rerank: bool = False) -> list[dict]:
     """Hybrid retrieval over the knowledge bank.
 
     Documents are ranked by embedding similarity blended with verbatim
@@ -231,11 +242,20 @@ def semantic_search(query: str, top_k: int = 6, scope: str = "all") -> list[dict
 
     Under scope "all" the two sides are ranked separately and merged, so
     Medyca's own material is present whenever it has something to say.
+
+    With `rerank`, a wider pool is retrieved (quotas scale with it, so the
+    Medyca/competitor balance is preserved), an LLM reorders it by relevance
+    to the question — the highest-precision lever given the weak, compressed
+    cosine space of the small embedder — and the top_k best are returned. The
+    reranker failing (no LLM, bad reply) falls back to the blend order, never
+    to an error.
     """
     index = _load_index(scope)
     if not index:
         return []
     q = _embed_query(query)
+    # Retrieve a pool, cut to top_k after the LLM has had its say.
+    want = max(top_k, RERANK_POOL) if rerank else top_k
 
     # A question that names the blogs must be answered from the blogs. Neither
     # signal catches this on its own: "blog" is four letters, under the
@@ -277,10 +297,10 @@ def semantic_search(query: str, top_k: int = 6, scope: str = "all") -> list[dict
                 take.sort(key=lambda r: -r[0])
             return take
 
-        owned_slots = max(1, round(top_k * OWNED_SHARE))
+        owned_slots = max(1, round(want * OWNED_SHARE))
         take_owned = _keep(owned, owned_slots)
-        take_comp = _keep(comp, top_k - owned_slots)
-        spare = top_k - len(take_owned) - len(take_comp)
+        take_comp = _keep(comp, want - owned_slots)
+        spare = want - len(take_owned) - len(take_comp)
         if spare > 0:
             seen = {id(r[1]) for r in take_owned + take_comp}
             rest = sorted((r for r in owned + comp if id(r[1]) not in seen),
@@ -291,7 +311,7 @@ def semantic_search(query: str, top_k: int = 6, scope: str = "all") -> list[dict
         scored = _rank(index, query, q)
 
     out = []
-    for score, it, lex in scored[:top_k]:
+    for score, it, lex in scored[:want]:
         passage = (_best_passage(it["text"] or it["summary"], q, it.get("chunks"))
                    or _snippet(it["text"]))
         out.append({
@@ -303,7 +323,44 @@ def semantic_search(query: str, top_k: int = 6, scope: str = "all") -> list[dict
             "score": round(float(score), 3),
             "keyword_match": round(lex, 2),
         })
-    return out
+    if rerank and len(out) > 1:
+        out = _rerank(query, out)
+    return out[:top_k]
+
+
+def _rerank(query: str, hits: list[dict]) -> list[dict]:
+    """Reorder candidates by LLM-judged relevance to the question.
+
+    One structured call over the whole pool (the same shape eval_mcp uses to
+    judge relevance), not one per hit. On any failure the original blend
+    order is kept — the reranker sharpens, it must never break retrieval.
+    """
+    try:
+        lines = [f"{i}. [{h['kind']}] {h.get('title','')[:70]} — "
+                 f"{(h.get('snippet') or '')[:160]}"
+                 for i, h in enumerate(hits)]
+        user = ("Ordina questi risultati dal più al meno pertinente alla "
+                f"DOMANDA.\n\nDOMANDA: {query}\n\nRISULTATI:\n"
+                + "\n".join(lines)
+                + '\n\nRestituisci SOLO JSON: {"ordine": [indici dal più '
+                  'pertinente]}. Includi ogni indice una volta sola.')
+        data = client.chat_json(
+            "Sei un valutatore di pertinenza per una ricerca. Solo JSON valido.",
+            user, max_tokens=200, temperature=0.0, model=client.model_for("bulk"))
+        order = data.get("ordine") if isinstance(data, dict) else None
+        if not order:
+            return hits
+        seen, ranked = set(), []
+        for idx in order:
+            if isinstance(idx, int) and 0 <= idx < len(hits) and idx not in seen:
+                seen.add(idx)
+                ranked.append(hits[idx])
+        # Anything the model dropped keeps its blend order at the tail.
+        ranked += [h for i, h in enumerate(hits) if i not in seen]
+        return ranked
+    except Exception as exc:  # noqa: BLE001 — sharpening is optional, never fatal
+        logger.warning("[rerank] fallito, tengo l'ordine del blend: %r", exc)
+        return hits
 
 
 def _best_passage(text: str, qvec, cached=None) -> str:
@@ -474,12 +531,18 @@ def _sources_block(hits: list[dict]) -> str:
 
 
 def _prepare(query: str, top_k: int, scope: str,
-             history: list | None, references: list[str] | None) -> dict:
+             history: list | None, references: list[str] | None,
+             content_type: str = "all") -> dict:
     """Everything that happens before the model speaks.
 
     Shared by `answer` and `answer_stream` so the prompt cannot drift between
     the blocking and the streaming path and produce two different styles of
     answer depending on which endpoint was called.
+
+    The chat always reranks (it answers a handful of questions a day, the
+    precision is worth one LLM call). `content_type` lets the UI ask for
+    only reels or only articles, replacing the fragile "does the query say
+    blog?" regex.
     """
     ref_hits, ref_problems = [], []
     if references:
@@ -489,7 +552,12 @@ def _prepare(query: str, top_k: int, scope: str,
     # comparison it was needed for. So the retrieval budget is reduced FIRST
     # and the quota applied to what remains, rather than trimming afterwards.
     budget = max(top_k - len(ref_hits), top_k // 2) if ref_hits else top_k
-    hits = ref_hits + semantic_search(query, top_k=budget, scope=scope)
+    hits = semantic_search(query, top_k=budget, scope=scope, rerank=True)
+    if content_type == "reel":
+        hits = [h for h in hits if h["kind"] == "reel"]
+    elif content_type == "article":
+        hits = [h for h in hits if h["kind"] == "blog"]
+    hits = ref_hits + hits
 
     convo = ""
     for turn in (history or [])[-6:]:
@@ -517,7 +585,8 @@ def _mark_cited(text: str, hits: list[dict]) -> None:
 
 def answer(query: str, top_k: int = 8, scope: str = "all",
            history: list | None = None,
-           references: list[str] | None = None) -> dict:
+           references: list[str] | None = None,
+           content_type: str = "all") -> dict:
     """RAG over the knowledge bank.
 
     Retrieval is hybrid (embeddings + verbatim keywords) and sends the
@@ -525,7 +594,7 @@ def answer(query: str, top_k: int = 8, scope: str = "all",
     the reasoning model — the same one that analyses transcripts — because
     reading several sources and refusing to over-claim is judgement work.
     """
-    p = _prepare(query, top_k, scope, history, references)
+    p = _prepare(query, top_k, scope, history, references, content_type)
     hits = p["hits"]
     if not hits:
         return {"answer": "La knowledge bank è ancora vuota o non indicizzata.",

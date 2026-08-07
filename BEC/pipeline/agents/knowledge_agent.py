@@ -141,7 +141,10 @@ def _embed_one(doc: KnowledgeDocument) -> None:
         # each other rather than by subject.
         text = base
     else:
-        text = f"{base}\n{doc.content_text[:1500]}"
+        # Same reasoning as _reel_text: the dense vector should read most of
+        # the body, not the first 1500 chars. An interview transcript in
+        # particular has its substance spread across the whole text.
+        text = f"{base}\n{doc.content_text[:4000]}"
     vec = _embedder().encode([text], normalize_embeddings=True,
                              show_progress_bar=False)[0]
     doc.embedding = vec.tolist()

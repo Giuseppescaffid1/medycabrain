@@ -181,6 +181,11 @@ class ReelEmbedding(models.Model):
     chunk_vectors = models.JSONField(default=list, blank=True)  # list[list[float]]
     model_name = models.CharField(max_length=128, blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
+    # Bumps on every re-embed, unlike created_at. The chat's index cache keys
+    # on this: a re-embed that reuses rows (update_or_create) leaves the count
+    # and created_at unchanged, so without it the chat served a stale index
+    # until the process restarted.
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         db_table = "reel_embeddings"
