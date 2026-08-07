@@ -180,17 +180,26 @@ def run_upload_transcribe(upload_id: int, job=None) -> dict:
         knowledge_agent._extract_arguments(doc)
         knowledge_agent._embed_one(doc)
 
+        # The draft is a bonus; the document in the bank is the real result.
+        # An LLM hiccup here (rate limit, empty reply) must not fail the whole
+        # upload and lose the transcript that already made it in. Isolated,
+        # logged, and the draft stays regenerable from the document.
         progress(88, "Preparo una bozza di articolo…")
-        from core.blog_workflow import run_document_blog
-        draft_res = run_document_blog(doc.id, job=job)
-        if draft_res.get("blog_draft_id"):
-            up.blog_draft_id = draft_res["blog_draft_id"]
-            up.save(update_fields=["blog_draft"])
+        draft_id = None
+        try:
+            from core.blog_workflow import run_document_blog
+            draft_id = run_document_blog(doc.id, job=job).get("blog_draft_id")
+            if draft_id:
+                up.blog_draft_id = draft_id
+                up.save(update_fields=["blog_draft"])
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[upload] bozza fallita per doc %s (l'articolo è "
+                           "comunque in banca dati): %r", doc.id, exc)
 
         progress(100, "Fatto.")
         logger.info("[upload] %s → doc %s, draft %s",
-                    up.original_name, doc.id, draft_res.get("blog_draft_id"))
-        return {"document_id": doc.id, "blog_draft_id": draft_res.get("blog_draft_id"),
+                    up.original_name, doc.id, draft_id)
+        return {"document_id": doc.id, "blog_draft_id": draft_id,
                 "chars": len(text)}
 
     except Exception as exc:  # noqa: BLE001

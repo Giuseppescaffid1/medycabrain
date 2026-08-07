@@ -21,7 +21,7 @@
         <mxCell id="h_in2" value="I reel dei competitor" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EEF5FD;strokeColor=#D5E3F2;fontColor=#2C4984;fontSize=12;arcSize=18;" vertex="1" parent="1">
           <mxGeometry x="60" y="216" width="240" height="60" as="geometry" />
         </mxCell>
-        <mxCell id="h_in3" value="Gli articoli dei blog&#10;medyca.it + competitor" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EEF5FD;strokeColor=#D5E3F2;fontColor=#2C4984;fontSize=12;arcSize=18;" vertex="1" parent="1">
+        <mxCell id="h_in3" value="Gli articoli dei blog&#10;medyca.it + competitor&#10;+ interviste audio/video caricate" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EEF5FD;strokeColor=#D5E3F2;fontColor=#2C4984;fontSize=12;arcSize=18;" vertex="1" parent="1">
           <mxGeometry x="60" y="296" width="240" height="60" as="geometry" />
         </mxCell>
         <mxCell id="h_in4" value="I temi che indichi tu&#10;(tiroide, osteoporosi, Bijuva…)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#C93B42;fontColor=#C93B42;fontSize=12;arcSize=18;" vertex="1" parent="1">

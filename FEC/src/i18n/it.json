@@ -299,7 +299,8 @@
         "I tuoi reel Instagram",
         "I reel dei competitor",
         "Gli articoli dei blog (medyca.it + i blog dei competitor monitorati)",
-        "I temi che indichi tu (tiroide, osteoporosi, Bijuva…)"
+        "I temi che indichi tu (tiroide, osteoporosi, Bijuva…)",
+        "Le interviste audio/video che carichi tu (del medico): trascritte e trasformate in materiale + bozza articolo"
       ]
     },
     "flow": {
@@ -349,7 +350,8 @@
         "I blog vengono monitorati come i profili Instagram: quello di Medyca e i blog dei competitor aggiunti dalla pagina Account. L'importazione parte dai ~40 articoli più recenti per fonte e completa l'archivio nelle notti successive — importiamo il recente, non tutto lo storico.",
         "37 video trascritti il 27 luglio avevano usato il modello locale di riserva, meno preciso sui termini medici. Il collegamento al servizio di trascrizione è stato corretto e quelle trascrizioni sono state rifatte.",
         "Gli articoli non hanno metriche di engagement (view, like): compaiono in Libreria, Cluster, temi e chat, ma non nei grafici di Analytics, che restano sui reel. Un'analisi dedicata ai blog (cadenza di pubblicazione, copertura dei temi) è prevista in un giro successivo.",
-        "Gli articoli in lingua diversa dall'italiano (es. International Menopause Society) vengono riassunti e classificati in italiano; la ricerca dentro il testo originale inglese è meno precisa di quella sugli articoli italiani."
+        "Gli articoli in lingua diversa dall'italiano (es. International Menopause Society) vengono riassunti e classificati in italiano; la ricerca dentro il testo originale inglese è meno precisa di quella sugli articoli italiani.",
+        "Le interviste caricate si trascrivono in italiano; dei file video conserviamo solo l'audio (non il video). File molto grandi: caricali con una connessione stabile."
       ]
     },
     "models": {
@@ -555,5 +557,21 @@
     "ownership": "Proprietà",
     "grounded": "Citazioni",
     "judge": "Giudice"
+  },
+  "uploads": {
+    "title": "Carica un'intervista",
+    "subtitle": "Hai un'intervista audio o video del medico? Caricala qui: viene trascritta, entra nella banca dati come contenuto di Medyca e genera subito una bozza di articolo.",
+    "titlePlaceholder": "Titolo (opzionale, es. 'Intervista Dr. Rossi sulla menopausa')",
+    "drop": "Trascina qui il file, o clicca per sceglierlo",
+    "formats": "Audio (mp3, m4a, wav…) o video (mp4, mov…). Del video conserviamo solo l'audio.",
+    "uploading": "Caricamento in corso…",
+    "working": "in trascrizione",
+    "ready": "pronto",
+    "failed": "errore",
+    "file": "File",
+    "result": "Risultato",
+    "seeArticle": "→ Vedi in Libreria",
+    "seeDraft": "→ Vedi la bozza",
+    "confirmRemove": "Rimuovere questo caricamento? L'articolo generato verrà escluso dall'analisi."
   }
 }

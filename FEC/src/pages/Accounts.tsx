@@ -10,6 +10,7 @@ import {
 import { Badge, Button, Skeleton, fieldCls } from "../components/ui/primitives";
 import { PageTransition } from "../components/ui/motion";
 import { BlogSourcesPanel } from "../components/sources/BlogSourcesPanel";
+import { UploadPanel } from "../components/uploads/UploadPanel";
 import { formatCount, formatDate } from "../lib/utils";
 
 export default function Accounts() {
@@ -146,6 +147,8 @@ export default function Accounts() {
         </section>
 
         <BlogSourcesPanel />
+
+        <UploadPanel />
       </div>
     </div>
     </PageTransition>
