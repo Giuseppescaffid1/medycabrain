@@ -248,6 +248,20 @@ class KnowledgeDocDetailSerializer(serializers.ModelSerializer):
         ]
 
 
+class UploadedMediaSerializer(serializers.ModelSerializer):
+    document = serializers.PrimaryKeyRelatedField(read_only=True)
+    blog_draft = serializers.PrimaryKeyRelatedField(read_only=True)
+
+    class Meta:
+        model = models.UploadedMedia
+        fields = ["id", "kind", "original_name", "title", "size_bytes",
+                  "duration_s", "transcribe_status", "document",
+                  "blog_draft", "last_error", "created_at"]
+        read_only_fields = ["kind", "size_bytes", "duration_s",
+                            "transcribe_status", "document", "blog_draft",
+                            "last_error", "created_at"]
+
+
 class JobSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.Job

@@ -6,6 +6,7 @@ from . import views
 router = DefaultRouter()
 router.register(r"accounts", views.AccountViewSet, basename="account")
 router.register(r"blog-sources", views.BlogSourceViewSet, basename="blog-source")
+router.register(r"uploads", views.UploadedMediaViewSet, basename="upload")
 router.register(r"reels", views.ReelViewSet, basename="reel")
 router.register(r"tags", views.TagViewSet, basename="tag")
 router.register(r"clusters", views.ClusterViewSet, basename="cluster")

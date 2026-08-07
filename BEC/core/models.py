@@ -544,6 +544,7 @@ class Job(models.Model):
         ("strategy", "Strategy"), ("strategy_draft", "Strategy draft"),
         ("editorial", "editorial"),
         ("blogsource_discover", "Blog source discovery"),
+        ("upload_transcribe", "Upload transcribe"),
     ]
     STATUS_CHOICES = [
         ("queued", "Queued"),
@@ -673,3 +674,56 @@ class CustomTopicMatch(models.Model):
     class Meta:
         db_table = "custom_topic_matches"
         indexes = [models.Index(fields=["topic", "scope"])]
+
+
+def _upload_path(instance, filename):
+    """Where an uploaded interview file lands under MEDIA_ROOT."""
+    import uuid as _uuid
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else "bin"
+    return f"uploads/{_uuid.uuid4().hex}.{ext}"
+
+
+class UploadedMedia(models.Model):
+    """A media file the client uploaded — a doctor's past interview, etc.
+
+    The fourth way content enters the knowledge bank, after Instagram reels
+    and crawled blogs: the client sends an audio or video file, it is
+    transcribed, and the transcript becomes a Medyca-owned KnowledgeDocument
+    (source_type='manual') that flows through the SAME enrichment/embedding/
+    clustering pipeline, plus a blog draft grounded in the interview.
+
+    Status is tracked on the row the way Reel tracks media/transcribe: the
+    file processes asynchronously (a Job), and the UI polls this.
+    """
+
+    KIND_CHOICES = [("audio", "Audio"), ("video", "Video")]
+
+    file = models.FileField(upload_to=_upload_path)
+    kind = models.CharField(max_length=8, choices=KIND_CHOICES, default="audio")
+    original_name = models.CharField(max_length=300, blank=True, default="")
+    title = models.CharField(max_length=300, blank=True, default="")
+    size_bytes = models.BigIntegerField(default=0)
+    duration_s = models.FloatField(null=True, blank=True)
+    # mp3 (16kHz mono) derived from the upload, MEDIA_ROOT-relative — the
+    # video itself is discarded once the audio is extracted.
+    audio_file = models.CharField(max_length=500, blank=True, default="")
+
+    transcribe_status = models.CharField(max_length=16, choices=STATUS_CHOICES,
+                                         default=PENDING)
+    # The results, once ready.
+    document = models.ForeignKey("KnowledgeDocument", null=True, blank=True,
+                                 on_delete=models.SET_NULL,
+                                 related_name="uploads")
+    blog_draft = models.ForeignKey("BlogDraft", null=True, blank=True,
+                                   on_delete=models.SET_NULL,
+                                   related_name="uploads")
+    last_error = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        db_table = "uploaded_media"
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return self.title or self.original_name or f"upload {self.pk}"

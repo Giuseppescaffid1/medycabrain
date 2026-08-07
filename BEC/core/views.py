@@ -123,6 +123,66 @@ class BlogSourceViewSet(viewsets.ModelViewSet):
         return Response({"job_id": job.id, "status": job.status})
 
 
+class UploadedMediaViewSet(viewsets.ModelViewSet):
+    """The client's own audio/video interviews entering the knowledge bank.
+
+    POST a file (multipart) → it is stored, a transcription job is queued,
+    and 202 comes back with the job id. The file is transcribed, becomes a
+    Medyca-owned document, and produces a blog draft — all off the request,
+    the UI polls the job. GET lists the uploads with their status.
+    """
+
+    serializer_class = serializers.UploadedMediaSerializer
+    permission_classes = [IsAuthenticated]
+    from rest_framework.parsers import FormParser, MultiPartParser
+    parser_classes = [MultiPartParser, FormParser]
+    http_method_names = ["get", "post", "delete", "head", "options"]
+
+    _AUDIO_EXT = {"mp3", "m4a", "wav", "aac", "ogg", "flac", "opus"}
+    _VIDEO_EXT = {"mp4", "mov", "m4v", "webm", "mkv", "avi"}
+
+    def get_queryset(self):
+        return models.UploadedMedia.objects.all()
+
+    def create(self, request, *args, **kwargs):
+        f = request.FILES.get("file")
+        if not f:
+            return Response({"detail": "Nessun file caricato."}, status=400)
+        name = f.name or "upload"
+        ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
+        if ext in self._VIDEO_EXT:
+            kind = "video"
+        elif ext in self._AUDIO_EXT:
+            kind = "audio"
+        else:
+            return Response(
+                {"detail": f"Formato non supportato ({ext or '?'}). "
+                           "Ammessi audio (mp3, m4a, wav…) e video (mp4, mov…)."},
+                status=400)
+
+        up = models.UploadedMedia.objects.create(
+            file=f, kind=kind, original_name=name[:300],
+            title=(request.data.get("title") or "")[:300],
+            size_bytes=getattr(f, "size", 0) or 0,
+        )
+        job = models.Job.objects.create(
+            kind="upload_transcribe", params={"upload_id": up.id},
+            message=f"In coda: trascrizione di {up.original_name}",
+        )
+        _spawn_job(job.id)
+        data = self.get_serializer(up).data
+        data["job_id"] = job.id
+        return Response(data, status=status.HTTP_202_ACCEPTED)
+
+    def perform_destroy(self, instance):
+        # Remove the derived doc too: an interview the client deleted must
+        # leave chat/clusters, not linger as a citable source.
+        if instance.document_id:
+            models.KnowledgeDocument.objects.filter(
+                id=instance.document_id).update(is_active=False)
+        instance.delete()
+
+
 # ── Reels ──────────────────────────────────────────────────────────────────────
 
 class ReelViewSet(viewsets.ReadOnlyModelViewSet):

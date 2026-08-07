@@ -102,4 +102,7 @@ class Command(BaseCommand):
         if job.kind == "strategy_draft":
             from core.strategy import generate_draft
             return generate_draft(int(job.params["brief_id"]), job=job)
+        if job.kind == "upload_transcribe":
+            from core.upload_workflow import run_upload_transcribe
+            return run_upload_transcribe(int(job.params["upload_id"]), job=job)
         raise CommandError(f"unknown job kind: {job.kind}")

@@ -91,6 +91,63 @@ reel. Formato Markdown: un titolo (# ...), un'introduzione, 2-4 sezioni (## ...)
 e una breve conclusione. Non inserire dati o affermazioni non presenti nei reel."""
 
 
+INTERVIEW_SYSTEM = (
+    "Sei un copywriter medico per Medyca (terapie ormonali bioidentiche, "
+    "menopausa, salute femminile). Scrivi in italiano, con tono professionale "
+    "ma accessibile. Fondi l'articolo ESCLUSIVAMENTE su ciò che il medico dice "
+    "nell'intervista trascritta — non inventare fatti, dati o affermazioni non "
+    "presenti nel testo."
+)
+INTERVIEW_USER = """\
+TITOLO/CONTESTO: {title}
+
+TRASCRIZIONE DELL'INTERVISTA (usa solo questa):
+{transcript}
+
+Trasforma questa intervista in una bozza di articolo blog in italiano. Il
+parlato va riorganizzato in forma scritta e scorrevole, MA senza aggiungere
+nulla che il medico non abbia detto. Formato Markdown: un titolo (# ...),
+un'introduzione, 2-4 sezioni tematiche (## ...) e una breve conclusione.
+Mantieni le affermazioni cliniche fedeli all'intervista."""
+
+
+def run_document_blog(document_id: int, job=None) -> dict:
+    """Turn ONE document (an uploaded interview, a manual note) into a blog
+    draft grounded only in its own text.
+
+    The sibling of run_cluster_blog: that one aggregates a theme's reels,
+    this one takes a single transcript — the client's literal ask, "turn
+    this interview into a blog article." Reuses BlogDraft and the draft
+    prompt shape; grounds on doc.content_text, invents nothing.
+    """
+    def progress(p, m):
+        if job is not None:
+            job.set_progress(p, m)
+
+    doc = KnowledgeDocument.objects.filter(id=document_id).first()
+    if not doc:
+        raise RuntimeError("Documento non trovato.")
+    transcript = (doc.content_text or "").strip()
+    if len(transcript) < 100:
+        return {"blog_draft_id": None, "note": "testo troppo breve per una bozza"}
+
+    progress(90, "Scrivo la bozza dall'intervista…")
+    user = INTERVIEW_USER.format(
+        title=doc.title or "Intervista", transcript=transcript[:12000])
+    content = client.chat(INTERVIEW_SYSTEM, user, max_tokens=1600, timeout=700)
+
+    draft = BlogDraft.objects.create(
+        mode="draft", cluster_label=doc.primary_topic or "",
+        title=f"Bozza da intervista: {(doc.title or 'Intervista')[:60]}"[:300],
+        content_md=(content or "").strip(),
+        source_refs=[{"kind": "intervista", "title": doc.title or "Intervista",
+                      "url": doc.source_url}],
+        status="proposed", llm_model=client.last_model_used()[:64],
+    )
+    logger.info("[blog_workflow] document %s → BlogDraft %s", document_id, draft.id)
+    return {"blog_draft_id": draft.id, "mode": "draft"}
+
+
 def run_cluster_blog(cluster_id: int, job=None) -> dict:
     def progress(p, m):
         if job is not None:
