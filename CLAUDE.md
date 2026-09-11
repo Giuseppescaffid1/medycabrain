@@ -31,6 +31,11 @@ ORM). Dettaglio completo in `documentation/` e riassunto in
   MCP, endpoint, soglia/modello) aggiorna il file giusto in `documentation/`,
   `docs/medycabrain-pipeline-cliente.drawio` e la pagina `Documentazione` dell'app;
   i limiti noti si scrivono appena si conoscono.
+- **Non fare commit e non fare push.** Regola completa:
+  `.claude/rules/no-commit.md`. Le modifiche restano nella working tree, i
+  commit li fa Giuseppe a mano dopo aver letto il diff. Vale anche quando la
+  regola sulla documentazione dice “stesso commit”: significa *stesse
+  modifiche insieme nella working tree*, non che Claude crei il commit.
 - **UI**: seguire `.claude/skills/ui-design/` (token del brand Medyca, mobile
   first, stati vuoti/caricamento/errore sempre previsti).
 - **Testare da utente reale prima di consegnare**: gesto vero sulla UI live,

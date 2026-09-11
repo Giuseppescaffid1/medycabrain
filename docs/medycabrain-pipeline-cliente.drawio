@@ -103,8 +103,8 @@
         <mxCell id="l_scr" value="scraper_agent.py&#10;curl_cffi (Chrome impersonation)&#10;GraphQL doc_id + topsearch&#10;media/info per i metadati" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#4A6FAC;fontColor=#2C4984;fontSize=11;align=left;spacingLeft=10;verticalAlign=top;spacingTop=8;arcSize=12;" vertex="1" parent="1">
           <mxGeometry x="60" y="122" width="340" height="76" as="geometry" />
         </mxCell>
-        <mxCell id="l_dl" value="downloader_agent.py&#10;url video via Apify&#10;video + thumbnail su disco" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#4A6FAC;fontColor=#2C4984;fontSize=11;align=left;spacingLeft=10;verticalAlign=top;spacingTop=8;arcSize=12;" vertex="1" parent="1">
-          <mxGeometry x="60" y="214" width="340" height="56" as="geometry" />
+        <mxCell id="l_dl" value="downloader_agent.py&#10;url video: Apify &#8594; url CDN in cache (oe=) &#8594; yt-dlp&#10;yt-dlp = permalink pubblico, senza account&#10;blocco = IGThrottled, il reel resta pending&#10;video + thumbnail su disco" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#4A6FAC;fontColor=#2C4984;fontSize=11;align=left;spacingLeft=10;verticalAlign=top;spacingTop=8;arcSize=12;" vertex="1" parent="1">
+          <mxGeometry x="60" y="214" width="340" height="84" as="geometry" />
         </mxCell>
         <mxCell id="l_blog" value="blogscrape_agent.py&#10;agente di scoperta (sitemap/feed/LLM)&#10;→ KnowledgeDocument con owner" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#4A6FAC;fontColor=#2C4984;fontSize=11;align=left;spacingLeft=10;verticalAlign=top;spacingTop=8;arcSize=12;" vertex="1" parent="1">
           <mxGeometry x="60" y="286" width="340" height="56" as="geometry" />
