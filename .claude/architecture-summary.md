@@ -33,7 +33,12 @@ Four inputs → derived layers → themes. See `documentation/low-level/01-data-
 
 `pipeline/dag.py` (which also owns the stage list, via `build_steps()`), entry
 `core/management/commands/run_pipeline.py`, one agent per stage:
-`scrape → download → transcribe → enrich → embed → blogscrape → knowledge → cluster`.
+`scrape → download → transcribe → batch → enrich → embed → blogscrape → knowledge → cluster`.
+`batch` hands the analysis to the Anthropic Batch API (half price, answers within 24h) and
+collects finished deliveries; `enrich` is the live fallback for whatever the batch could
+not take. Remote models are a priority chain declared in `.env` (`LLM_ENDPOINTS`), each
+provider with its own key and dialect, and a dead provider is skipped rather than taking
+the whole remote layer down with it.
 **Collection is split in two on purpose**: Apify *lists* an account's reels (Instagram answers
 `401 require_login` to anyone anonymous, and yt-dlp's profile extractor is `_WORKING = False`),
 and yt-dlp *downloads* each reel anonymously and free. No Instagram account of ours is involved.

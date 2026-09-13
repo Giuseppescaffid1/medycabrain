@@ -77,7 +77,7 @@ def _enrich_one(doc: KnowledgeDocument) -> None:
     user = KB_ENRICH_USER.format(source_name=who, ownership=ownership,
                                  title=doc.title,
                                  text=(doc.content_text or "")[:6000])
-    data = client.chat_json(KB_SYSTEM, user, max_tokens=600,
+    data = client.chat_json(KB_SYSTEM, user, max_tokens=1200,
                             # The same deep-reading tier the reels get: what
                             # an article claims and how specific its subject
                             # is decide the whole thematic layer above it.
@@ -109,7 +109,7 @@ def _extract_arguments(doc: KnowledgeDocument) -> int:
     if len(text.strip()) < 200:
         return 0
     user = prompts.ARGUMENTS_USER_TEMPLATE.format(transcript=text, caption="")
-    data = client.chat_json(prompts.ARGUMENTS_SYSTEM, user, max_tokens=600,
+    data = client.chat_json(prompts.ARGUMENTS_SYSTEM, user, max_tokens=1200,
                             model=client.model_for("analysis"))
     rows = data.get("argomenti") or []
     doc.arguments.all().delete()  # idempotent re-extraction

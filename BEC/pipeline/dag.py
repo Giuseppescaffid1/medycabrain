@@ -119,7 +119,7 @@ class DAG:
 # cron entrypoint (`manage.py run_pipeline`) and the run the client starts from
 # the interface (a `Job` of kind "pipeline") — and two copies of this list would
 # eventually disagree about what "the pipeline" is.
-STAGE_NAMES = ["scrape", "download", "transcribe", "enrich", "embed",
+STAGE_NAMES = ["scrape", "download", "transcribe", "batch", "enrich", "embed",
                "blogscrape", "knowledge", "cluster"]
 
 # What each stage is called on the client's screen. Same words as core/ops.py.
@@ -144,14 +144,21 @@ def build_steps() -> list[Step]:
     touches this file — pay for them.
     """
     from pipeline.agents import (
-        blogscrape_agent, cluster_agent, downloader_agent, embed_agent,
-        enrich_agent, knowledge_agent, scraper_agent, transcriber_agent,
+        batch_agent, blogscrape_agent, cluster_agent, downloader_agent,
+        embed_agent, enrich_agent, knowledge_agent, scraper_agent,
+        transcriber_agent,
     )
 
     return [
         Step("scrape", scraper_agent.run),
         Step("download", downloader_agent.run),
         Step("transcribe", transcriber_agent.run),
+        # Batch before enrich, and collect before submit inside it: answers
+        # that are ready land first, then everything still pending is handed
+        # over at half price. What the batch could not take (batch disabled,
+        # delivery refused) stays `pending` and `enrich` does it live tonight
+        # — so the live stage is now the fallback, not the main road.
+        Step("batch", batch_agent.run),
         Step("enrich", enrich_agent.run),
         Step("embed", embed_agent.run),
         Step("blogscrape", blogscrape_agent.run),

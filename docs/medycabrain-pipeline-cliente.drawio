@@ -35,7 +35,7 @@
         <mxCell id="h_s1" value="1. RACCOGLIE&#10;&#10;Scarica ogni reel con le sue&#10;statistiche: view, like, commenti" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#4A6FAC;fontColor=#2C4984;fontSize=12;align=left;spacingLeft=12;verticalAlign=top;spacingTop=10;arcSize=12;" vertex="1" parent="1">
           <mxGeometry x="380" y="150" width="190" height="120" as="geometry" />
         </mxCell>
-        <mxCell id="h_s2" value="2. CAPISCE&#10;&#10;Trascrive l'audio e legge il testo:&#10;di cosa parla, il gancio,&#10;a chi si rivolge" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#4A6FAC;fontColor=#2C4984;fontSize=12;align=left;spacingLeft=12;verticalAlign=top;spacingTop=10;arcSize=12;" vertex="1" parent="1">
+        <mxCell id="h_s2" value="2. CAPISCE&#10;&#10;Trascrive l'audio e legge il testo:&#10;di cosa parla, il gancio,&#10;a chi si rivolge&#10;(di notte, in blocco: costa la meta&#39;)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#4A6FAC;fontColor=#2C4984;fontSize=12;align=left;spacingLeft=12;verticalAlign=top;spacingTop=10;arcSize=12;" vertex="1" parent="1">
           <mxGeometry x="590" y="150" width="190" height="120" as="geometry" />
         </mxCell>
         <mxCell id="h_s3" value="3. ORGANIZZA&#10;&#10;Raggruppa tutto per tema&#10;e collega reel e articoli&#10;che parlano della stessa cosa" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#4A6FAC;fontColor=#2C4984;fontSize=12;align=left;spacingLeft=12;verticalAlign=top;spacingTop=10;arcSize=12;" vertex="1" parent="1">
@@ -123,7 +123,7 @@
         <mxCell id="l_tr" value="transcriber_agent.py&#10;whisper-large-v3 (remoto) + glossario medico&#10;fallback locale faster-whisper" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#4A6FAC;fontColor=#2C4984;fontSize=11;align=left;spacingLeft=10;verticalAlign=top;spacingTop=8;arcSize=12;" vertex="1" parent="1">
           <mxGeometry x="470" y="122" width="340" height="66" as="geometry" />
         </mxCell>
-        <mxCell id="l_en" value="enrich_agent.py — Claude Opus 4.8 (analisi)&#10;→ summary_it · topics · hook + analisi&#10;→ target audience · content_format&#10;→ arguments (affermazioni verificabili)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#C93B42;fontColor=#2C4984;fontSize=11;align=left;spacingLeft=10;verticalAlign=top;spacingTop=8;arcSize=12;" vertex="1" parent="1">
+        <mxCell id="l_en" value="batch_agent.py + enrich_agent.py — Claude Sonnet 5&#10;batch: consegna di notte, ritiro entro 24h, meta&#39; prezzo&#10;enrich: chiamate immediate, riserva del batch&#10;→ summary_it · topics · hook + analisi&#10;→ target audience · content_format&#10;→ arguments (affermazioni verificabili)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#C93B42;fontColor=#2C4984;fontSize=11;align=left;spacingLeft=10;verticalAlign=top;spacingTop=8;arcSize=12;" vertex="1" parent="1">
           <mxGeometry x="470" y="204" width="340" height="86" as="geometry" />
         </mxCell>
         <mxCell id="l_emb" value="embeddings — sentence-transformers&#10;paraphrase-multilingual-MiniLM-L12-v2&#10;caldo nel processo web, non nei job" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#1E7E4A;fontColor=#2C4984;fontSize=11;align=left;spacingLeft=10;verticalAlign=top;spacingTop=8;arcSize=12;" vertex="1" parent="1">
@@ -238,7 +238,7 @@
         <mxCell id="n_gate" value="🚦 C'è materiale?&#10;parlato o didascalia" style="rounded=1;whiteSpace=wrap;html=1;arcSize=18;fillColor=#FFFFFF;strokeColor=#B7791F;strokeWidth=2;fontColor=#2C4984;fontSize=12;align=left;spacingLeft=10;verticalAlign=middle;" vertex="1" parent="1">
           <mxGeometry x="1000" y="90" width="200" height="66" as="geometry" />
         </mxCell>
-        <mxCell id="n_llm" value="🧠 Analisi AI · Opus 4.8&#10;tema, gancio, affermazioni citate" style="rounded=1;whiteSpace=wrap;html=1;arcSize=18;fillColor=#FFFFFF;strokeColor=#4A6FAC;strokeWidth=2;fontColor=#2C4984;fontSize=12;align=left;spacingLeft=10;verticalAlign=middle;" vertex="1" parent="1">
+        <mxCell id="n_llm" value="🧠 Analisi AI · Sonnet 5 (a lotti)&#10;tema, gancio, affermazioni citate" style="rounded=1;whiteSpace=wrap;html=1;arcSize=18;fillColor=#FFFFFF;strokeColor=#4A6FAC;strokeWidth=2;fontColor=#2C4984;fontSize=12;align=left;spacingLeft=10;verticalAlign=middle;" vertex="1" parent="1">
           <mxGeometry x="1240" y="30" width="200" height="66" as="geometry" />
         </mxCell>
         <mxCell id="n_skip" value="⛔ Non inventa nulla&#10;&quot;dati insufficienti&quot;" style="rounded=1;whiteSpace=wrap;html=1;arcSize=18;fillColor=#FFFFFF;strokeColor=#B7791F;strokeWidth=2;fontColor=#2C4984;fontSize=12;align=left;spacingLeft=10;verticalAlign=middle;" vertex="1" parent="1">

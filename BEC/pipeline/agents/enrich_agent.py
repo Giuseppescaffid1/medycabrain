@@ -148,39 +148,53 @@ def pick_primary_topic(raw: str, topics: list[str]) -> str:
     return ""
 
 
-def _enrich_one(reel: Reel) -> None:
+# Measured 2026-09-13 over the whole backlog on Sonnet 5: at 700 tokens six of
+# ~150 answers came back truncated mid-string, and at 1200 two more still did
+# (stop_reason=max_tokens at exactly the ceiling — Sonnet writes long Italian
+# summaries). A truncated answer is a LOST analysis, not a shorter one, and
+# output is billed on what is actually produced, so a high ceiling costs
+# nothing on the answers that already fit.
+ENRICH_MAX_TOKENS = 2000
+
+
+def build_enrich_prompt(reel: Reel) -> tuple[str, str, str] | None:
+    """(system, user, evidence) for one reel, or None when there is nothing
+    worth asking. Shared by the live path and the batch path so the two can
+    never drift into asking different questions of the same material.
+    """
     evidence, transcript_text = classify_evidence(reel)
-
     if evidence == "insufficient":
-        # Nothing to analyse. Asking anyway is exactly how the model ended up
-        # inventing medical claims for a reel that only said "grazie a tutti".
-        Enrichment.objects.update_or_create(
-            reel=reel,
-            defaults={"summary_it": "", "topics": [], "primary_topic": "", "hook_text": "",
-                      "hook_analysis_it": "", "target_audience_it": "",
-                      "content_format": "altro", "llm_model": "",
-                      "evidence": evidence, "raw_response": {}},
-        )
-        logger.info("[enrich] %s: dati insufficienti — nessuna chiamata LLM", reel.shortcode)
-        return
-
+        return None
     user = prompts.ENRICH_USER_TEMPLATE.format(
         caption=(reel.caption or "")[:1500],
         transcript=transcript_text[:3000] or "(nessuna trascrizione)",
     )
     if evidence == "caption_only":
         user += prompts.ENRICH_CAPTION_ONLY_NOTE
+    return prompts.ENRICH_SYSTEM, user, evidence
 
-    # Reading a transcript well is the whole point of this step.
-    data = client.chat_json(prompts.ENRICH_SYSTEM, user, max_tokens=700,
-                            model=client.model_for("analysis"))
+
+def write_enrichment(reel: Reel, data: dict, evidence: str, model_name: str) -> None:
+    """Turn one model answer into the Enrichment row.
+
+    Extracted from _enrich_one so a batch result, which arrives hours later
+    and without the model in context, is stored by exactly the same rules —
+    same canonicalisation, same truncation, same guard on the hook.
+    """
+    # The model occasionally wraps the object in an array ([{...}]) — 10 of
+    # ~150 answers on the 2026-09-13 run. The content is fine; only the
+    # envelope is wrong, and crashing on it threw away a paid answer.
+    if isinstance(data, list):
+        data = next((d for d in data if isinstance(d, dict)), None)
+    if not isinstance(data, dict):
+        raise ValueError("risposta non utilizzabile: atteso un oggetto JSON")
+
     fmt = str(data.get("content_format", "")).strip().lower()
     if fmt not in VALID_FORMATS:
         fmt = "altro"
     topics = data.get("topics") or []
     if isinstance(topics, str):
         topics = [t.strip() for t in topics.split(",") if t.strip()]
-    # Canonicalise, drop duplicates, keep order.
     seen, canon = set(), []
     for t in topics:
         c = canonical_topic(str(t))
@@ -204,13 +218,39 @@ def _enrich_one(reel: Reel) -> None:
             "hook_analysis_it": "" if not hook else str(data.get("hook_analysis_it", ""))[:1000],
             "target_audience_it": str(data.get("target_audience_it", ""))[:1000],
             "content_format": fmt,
-            "llm_model": client.last_model_used()[:64],
+            "llm_model": (model_name or "")[:64],
             "evidence": evidence,
             "is_on_topic": bool(data.get("is_on_topic", True)),
             "off_topic_reason": str(data.get("off_topic_reason", ""))[:300],
             "raw_response": data if isinstance(data, dict) else {},
         },
     )
+
+
+def _enrich_one(reel: Reel) -> None:
+    evidence, transcript_text = classify_evidence(reel)
+
+    if evidence == "insufficient":
+        # Nothing to analyse. Asking anyway is exactly how the model ended up
+        # inventing medical claims for a reel that only said "grazie a tutti".
+        Enrichment.objects.update_or_create(
+            reel=reel,
+            defaults={"summary_it": "", "topics": [], "primary_topic": "", "hook_text": "",
+                      "hook_analysis_it": "", "target_audience_it": "",
+                      "content_format": "altro", "llm_model": "",
+                      "evidence": evidence, "raw_response": {}},
+        )
+        logger.info("[enrich] %s: dati insufficienti — nessuna chiamata LLM", reel.shortcode)
+        return
+
+    built = build_enrich_prompt(reel)
+    assert built is not None  # "insufficient" returned above
+    system, user, evidence = built
+
+    # Reading a transcript well is the whole point of this step.
+    data = client.chat_json(system, user, max_tokens=ENRICH_MAX_TOKENS,
+                            model=client.model_for("analysis"))
+    write_enrichment(reel, data, evidence, client.last_model_used())
 
 
 def _extract_arguments(reel: Reel) -> int:
@@ -224,7 +264,10 @@ def _extract_arguments(reel: Reel) -> int:
         caption=(reel.caption or "")[:1500],
         transcript=transcript_text[:3000],
     )
-    data = client.chat_json(prompts.ARGUMENTS_SYSTEM, user, max_tokens=600,
+    # 1200, not 600: a reel with several claims plus its verbatim quotes does
+    # not fit in 600 tokens, and a truncated answer is unparseable JSON, not a
+    # shorter list. 74 of 139 extractions failed that way on 2026-09-13.
+    data = client.chat_json(prompts.ARGUMENTS_SYSTEM, user, max_tokens=1200,
                             model=client.model_for("analysis"))
     args = data.get("argomenti") if isinstance(data, dict) else data
     if not isinstance(args, list):

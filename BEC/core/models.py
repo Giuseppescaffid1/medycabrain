@@ -16,11 +16,16 @@ PENDING = "pending"
 DONE = "done"
 FAILED = "failed"
 SKIPPED = "skipped"
+# Handed to the Batch API and waiting for the answer. A real state, not a
+# flavour of pending: without it the next nightly run would resubmit the same
+# items and we would pay twice for the same analysis.
+BATCHED = "batched"
 STATUS_CHOICES = [
     (PENDING, "pending"),
     (DONE, "done"),
     (FAILED, "failed"),
     (SKIPPED, "skipped"),
+    (BATCHED, "batched"),
 ]
 
 CONTENT_FORMATS = [
@@ -741,3 +746,48 @@ class UploadedMedia(models.Model):
 
     def __str__(self):
         return self.title or self.original_name or f"upload {self.pk}"
+
+
+class BatchRun(models.Model):
+    """One delivery to the Batch API — the receipt we come back with.
+
+    The Batch API answers within 24h, not within seconds, so the work splits
+    into "submit" and "collect" across two nightly runs. This row is what
+    connects them: which provider batch is open, what went into it, and what
+    came back. Without it a restarted process would lose the batch id and the
+    money spent on it.
+
+    Results come back in ANY order and are matched by custom_id
+    ("reel-1251"), never by position — matching by position would file one
+    reel's analysis under another reel.
+    """
+
+    KIND_CHOICES = [("enrich", "enrich")]
+    STATUS_CHOICES = [
+        ("submitted", "submitted"),   # handed over, still working
+        ("ended", "ended"),           # provider finished, results ready
+        ("collected", "collected"),   # we have written the results down
+        ("failed", "failed"),
+        ("canceled", "canceled"),
+    ]
+
+    kind = models.CharField(max_length=16, choices=KIND_CHOICES, default="enrich")
+    batch_id = models.CharField(max_length=120, unique=True)
+    model = models.CharField(max_length=64, blank=True, default="")
+    status = models.CharField(max_length=16, choices=STATUS_CHOICES, default="submitted")
+    # The custom_ids we sent, so a collect knows what it is owed even if the
+    # rows changed in the meantime.
+    items = models.JSONField(default=list, blank=True)
+    counts = models.JSONField(default=dict, blank=True)
+    last_error = models.TextField(blank=True, default="")
+    submitted_at = models.DateTimeField(auto_now_add=True)
+    collected_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "batch_runs"
+        ordering = ["-submitted_at"]
+        indexes = [models.Index(fields=["status"])]
+
+    def __str__(self):
+        return f"{self.kind} {self.batch_id} ({self.status})"
+

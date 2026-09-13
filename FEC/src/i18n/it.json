@@ -315,7 +315,7 @@
       },
       "understand": {
         "title": "Capisce",
-        "body": "Trascrive l'audio e legge il testo: di cosa parla, qual è il gancio iniziale, a chi si rivolge."
+        "body": "Trascrive l'audio e legge il testo: di cosa parla, qual è il gancio iniziale, a chi si rivolge. L'analisi dei contenuti nuovi parte di notte e viene consegnata tutta insieme all'intelligenza artificiale: le risposte tornano entro poche ore invece che subito, e questo dimezza il costo. Se serve una risposta immediata — quando premi «Analizza» o fai una domanda — la piattaforma usa la via veloce."
       },
       "organise": {
         "title": "Organizza",
@@ -327,7 +327,7 @@
       }
     },
     "weighting": "Ogni contenuto viene pesato sul suo rendimento reale: un reel che va il doppio della tua media conta il doppio. Così i consigli seguono i numeri, non le impressioni.",
-    "nightly": "Tutto si aggiorna da solo ogni notte. Se non vuoi aspettare, puoi avviarlo tu: nella pagina «Stato pipeline» il riquadro «Coda di lavorazione» dice quanti reel mancano e quanto tempo ci vuole, e il pulsante «Aggiorna ora» fa partire subito la lavorazione. Se un aggiornamento è già in corso il pulsante resta spento: due lavorazioni insieme farebbero il doppio delle richieste a Instagram, che è proprio il punto in cui la piattaforma è più lenta.",
+    "nightly": "Tutto si aggiorna da solo ogni notte. Se non vuoi aspettare, puoi avviarlo tu: nella pagina «Stato pipeline» il riquadro «Coda di lavorazione» dice quanti reel mancano e quanto tempo ci vuole, e il pulsante «Aggiorna ora» fa partire subito la lavorazione. Se un aggiornamento è già in corso il pulsante resta spento: due lavorazioni insieme farebbero il doppio delle richieste a Instagram, che è proprio il punto in cui la piattaforma è più lenta. L'analisi in blocco della notte può completarsi poche ore dopo: i contenuti nuovi restano visibili, con l'analisi che arriva appena pronta.",
     "outputs": {
       "title": "Cosa ottieni",
       "items": [
@@ -364,7 +364,7 @@
     },
     "models": {
       "title": "I modelli che usiamo, e per cosa",
-      "hint": "Ogni passaggio usa il modello adatto al lavoro che deve fare.",
+      "hint": "Ogni passaggio usa il modello adatto al lavoro che deve fare. I modelli sono messi in fila per priorità: se il primo non risponde (credito finito, limite giornaliero raggiunto) entra il successivo, e come ultima rete c'è un modello installato sul nostro server. La piattaforma non si ferma mai, al massimo risponde un po' peggio.",
       "items": [
         {
           "step": "Trascrizione audio",
@@ -373,28 +373,38 @@
         },
         {
           "step": "Analisi del contenuto",
-          "model": "Claude Opus 5",
+          "model": "Claude Sonnet 5",
           "why": "Legge la trascrizione ed estrae il tema specifico, il gancio e le affermazioni, ognuna con la citazione testuale che la sostiene. È il livello più profondo: da qui dipende come è organizzato tutto il resto."
         },
         {
           "step": "Raggruppamento per tema",
-          "model": "Claude Opus 5",
+          "model": "Claude Sonnet 5",
           "why": "Decide come sono organizzati i temi: è un giudizio, non un'estrazione meccanica."
         },
         {
           "step": "Domande alla Knowledge Bank",
-          "model": "Claude Opus 4.8",
+          "model": "Claude Sonnet 5",
           "why": "Risponde solo dalle fonti Medyca, citandole; se le fonti non bastano lo dichiara invece di inventare."
         },
         {
           "step": "Piano editoriale",
-          "model": "Claude Opus 4.8",
+          "model": "Claude Sonnet 5",
           "why": "Confronta la copertura di Medyca con quella dei competitor e propone idee girabili: angolo, gancio, scaletta e chiusura."
         },
         {
           "step": "Indicizzazione per la ricerca",
           "model": "MiniLM multilingue",
           "why": "Trasforma i testi in vettori: è ciò che permette di cercare per significato e non per parola esatta."
+        },
+        {
+          "step": "Analisi in blocco, di notte",
+          "model": "Claude Sonnet 5 (a lotti)",
+          "why": "I contenuti nuovi non hanno bisogno di una risposta in tre secondi: di notte vengono consegnati tutti insieme e le analisi tornano entro poche ore. Stesso modello, stessa qualità, metà del costo. Rifare l'analisi di tutto l'archivio costa così intorno ai 4 dollari invece di 8."
+        },
+        {
+          "step": "Se un modello non risponde",
+          "model": "Riserva automatica",
+          "why": "Se il fornitore principale si ferma, il lavoro passa a un fornitore gratuito; se si ferma anche quello, entra il modello installato sul nostro server: più lento e meno preciso, ma niente si blocca. Per ogni contenuto resta scritto quale modello lo ha analizzato davvero."
         }
       ]
     },

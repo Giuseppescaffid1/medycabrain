@@ -22,8 +22,11 @@ Almost everything hangs off these two ideas:
 
 ## Shared vocabulary
 
-- **`STATUS_CHOICES`**: `pending` / `done` / `failed` / `skipped`. Used by the per-row "stage"
-  columns that make the pipeline idempotent (see below).
+- **`STATUS_CHOICES`**: `pending` / `done` / `failed` / `skipped` / **`batched`**. Used by the
+  per-row "stage" columns that make the pipeline idempotent (see below). `batched` means the row
+  was handed to the Batch API and is waiting for its answer — a real state, not a flavour of
+  `pending`: the pending query cannot see it, which is what stops the next nightly run from
+  resubmitting the same work and paying twice (migration `0020`).
 - **`CONTENT_FORMATS`**: `talking_head`, `voiceover`, `tutorial`, `testimonianza`,
   `text_overlay`, `intervista`, `altro`.
 - A failed row stays `failed`. It is never silently reset to `pending` to retry forever —
@@ -65,7 +68,7 @@ erDiagram
 ```
 
 Not drawn (no hard FKs, they are outputs / bookkeeping): `BlogDraft`, `ContentIdea`,
-`StrategyBrief`, `Job`, `ScraperConfig`.
+`StrategyBrief`, `Job`, `ScraperConfig`, `BatchRun`.
 
 ## The tables, grouped by role
 
@@ -200,6 +203,17 @@ Three assignment tables tie content to a cluster *within a run*:
 - `input_text`, `source_kind` (`input`/`theme`), `coverage` (`covered|partial|gap`),
   `brief_md`, `draft_md` (on demand), `medyca_sources`/`competitor_sources`/`metrics` (JSON),
   `status`, `brief_model`, `draft_model`.
+
+**`BatchRun`** — `batch_runs`. One delivery to the Batch API: the receipt we come back with.
+- `kind` (`enrich`), `batch_id` (the provider's id, unique), `model`, `status`
+  (`submitted|ended|collected|failed|canceled`), **`items`** (JSON
+  `[{custom_id, reel_id, evidence}]`), `counts` (JSON), `last_error`, `submitted_at`,
+  `collected_at`.
+- `items` is the mapping that makes collection safe: **results come back in any order and are
+  matched by `custom_id`** (`reel-1251`), never by position. Matching by position would file one
+  reel's analysis under another reel — silent and permanent.
+- No FK to `Reel` on purpose: the row must survive a reel being deleted mid-flight, and the
+  batch is bookkeeping about a payment, not part of the content graph.
 
 **`Job`** — `jobs`. A background job (there is no queue; the API polls these rows).
 - `kind` (`ideation|pipeline|blog|strategy|strategy_draft|editorial|blogsource_discover|upload_transcribe`),

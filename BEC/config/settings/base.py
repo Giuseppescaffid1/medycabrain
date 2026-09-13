@@ -6,6 +6,7 @@ Environment-specific overrides live in production.py.
 """
 
 import os
+import re
 from pathlib import Path
 
 import dj_database_url
@@ -194,6 +195,69 @@ USE_REMOTE_STT = os.environ.get("USE_REMOTE_STT", "1") == "1"
 # 2026-07-27, so the two providers are now configured separately.
 STT_BASE_URL = os.environ.get("FAST_LLM_BASE_URL", "https://api.groq.com/openai/v1")
 STT_API_KEY = os.environ.get("FAST_LLM_API_KEY", "")
+
+# ── The remote-provider chain ───────────────────────────────────────────────
+# Several providers in priority order, each with its OWN base url, key, dialect
+# and model names. One provider is not enough: a free tier dies (a daily cap, a
+# depleted balance) and the whole platform silently drops to the local 3B model
+# — which is what happened until 2026-09-13, when 61 of 1066 enrichments were
+# produced by qwen2.5:3b instead of the configured model, invisibly.
+#
+# Declared in .env as:
+#     LLM_ENDPOINTS=anthropic,groq
+#     LLM_ANTHROPIC_BASE_URL=... _API_KEY=... _MODEL_ANALYSIS=... _MODEL_BULK=...
+#     LLM_GROQ_...                _MODEL_CHAIN=...  (same-provider fallbacks)
+# Order IS priority. A provider that rejects the key or has no balance is
+# skipped for the rest of the process; the next one answers.
+def _llm_endpoints() -> list[dict]:
+    names = [n.strip() for n in os.environ.get("LLM_ENDPOINTS", "").split(",") if n.strip()]
+    out = []
+    for name in names:
+        p = "LLM_" + re.sub(r"[^A-Z0-9]", "_", name.upper()) + "_"
+        url = os.environ.get(p + "BASE_URL", "").strip()
+        if not url:
+            continue
+        bulk = os.environ.get(p + "MODEL_BULK", "").strip()
+        reasoning = os.environ.get(p + "MODEL_REASONING", "").strip() or bulk
+        analysis = os.environ.get(p + "MODEL_ANALYSIS", "").strip() or reasoning
+        chain = [m.strip() for m in os.environ.get(p + "MODEL_CHAIN", "").split(",") if m.strip()]
+        # Anthropic's own API is not OpenAI-compatible (different path, header
+        # and response shape), so the dialect travels with the endpoint.
+        dialect = os.environ.get(p + "DIALECT", "").strip().lower()
+        if not dialect:
+            dialect = "anthropic" if "api.anthropic.com" in url else "openai"
+        out.append({
+            "name": name,
+            "base_url": url,
+            "api_key": os.environ.get(p + "API_KEY", "").strip(),
+            "dialect": dialect,
+            "models": {"bulk": bulk, "reasoning": reasoning, "analysis": analysis},
+            # Same-provider fallbacks: free tiers cap tokens per model per day,
+            # so a sibling model on the same key still has its own budget.
+            "chain": chain or list(dict.fromkeys(m for m in (analysis, reasoning, bulk) if m)),
+        })
+    return out
+
+
+FAST_ENDPOINTS = _llm_endpoints()
+if not FAST_ENDPOINTS and FAST_LLM_API_KEY:
+    # Backwards compatibility: a .env written before the chain existed still
+    # works, as a single endpoint built from the old variable names.
+    FAST_ENDPOINTS = [{
+        "name": "fast", "base_url": FAST_LLM_BASE_URL, "api_key": FAST_LLM_API_KEY,
+        "dialect": "openai",
+        "models": {"bulk": FAST_LLM_MODEL_BULK, "reasoning": FAST_LLM_MODEL,
+                   "analysis": LLM_MODEL_REASONING_3 or LLM_MODEL_REASONING_2
+                   or LLM_MODEL_REASONING or FAST_LLM_MODEL},
+        "chain": FAST_LLM_MODEL_CHAIN,
+    }]
+
+# ── Batch: the same models at half price, answers within 24h ────────────────
+# The nightly bulk work does not need an answer in 3 seconds, and the Batch
+# API charges 50% for exactly that trade. See BEC/llm/batch.py.
+BATCH_ENABLED = os.environ.get("BATCH_ENABLED", "1") == "1"
+BATCH_MODEL = os.environ.get("BATCH_MODEL", "claude-sonnet-5")
+BATCH_MAX_REQUESTS = int(os.environ.get("BATCH_MAX_REQUESTS", "2000"))
 
 # Apify supplies reel metadata and a working CDN video url from its own
 # proxied infrastructure, which is what unblocks the download backlog: our own
