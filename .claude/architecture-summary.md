@@ -31,10 +31,19 @@ Four inputs → derived layers → themes. See `documentation/low-level/01-data-
 
 ## Pipeline
 
-`pipeline/dag.py`, entry `core/management/commands/run_pipeline.py`, one agent per stage:
+`pipeline/dag.py` (which also owns the stage list, via `build_steps()`), entry
+`core/management/commands/run_pipeline.py`, one agent per stage:
 `scrape → download → transcribe → enrich → embed → blogscrape → knowledge → cluster`.
+**Collection is split in two on purpose**: Apify *lists* an account's reels (Instagram answers
+`401 require_login` to anyone anonymous, and yt-dlp's profile extractor is `_WORKING = False`),
+and yt-dlp *downloads* each reel anonymously and free. No Instagram account of ours is involved.
+Apify is billed per result on a $5/cycle plan, so `scraper/apify_budget.py` enforces a $4.00
+ceiling, adaptive per-account depth, and a cap on the downloader's url prefetch.
 Idempotent via per-row status columns; failures stay `failed` (retry is explicit). Runs nightly
-via host cron. See `documentation/low-level/02-pipeline.md`.
+via host cron, **and on demand** — `POST /api/v1/ops/run/` queues a `Job(kind="pipeline")`
+(`core/pipeline_run.py`), one run at a time. `core/queue_eta.py` says how much is left and how
+long it should take, measured from the recent runs in `logs/pipeline.log`.
+See `documentation/low-level/02-pipeline.md`.
 
 ## Models
 

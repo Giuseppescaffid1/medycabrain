@@ -311,7 +311,7 @@
       "title": "Cosa fa la piattaforma",
       "collect": {
         "title": "Raccoglie",
-        "body": "Scarica ogni reel con le sue statistiche reali: visualizzazioni, like, commenti. L'accesso a Instagram passa da un servizio esterno che ne gestisce i limiti, così gli arretrati non restano bloccati."
+        "body": "Scarica ogni reel con le sue statistiche reali: visualizzazioni, like, commenti. L'elenco dei reel nuovi arriva da un servizio esterno (Apify) che parla con Instagram al posto nostro: nessun account Instagram tuo viene usato dalla piattaforma. I video li scarica poi uno strumento gratuito. La raccolta ha un tetto di spesa e si ferma da sola prima di superarlo — lo vedi nella pagina «Stato pipeline»."
       },
       "understand": {
         "title": "Capisce",
@@ -327,7 +327,7 @@
       }
     },
     "weighting": "Ogni contenuto viene pesato sul suo rendimento reale: un reel che va il doppio della tua media conta il doppio. Così i consigli seguono i numeri, non le impressioni.",
-    "nightly": "Tutto si aggiorna da solo ogni notte.",
+    "nightly": "Tutto si aggiorna da solo ogni notte. Se non vuoi aspettare, puoi avviarlo tu: nella pagina «Stato pipeline» il riquadro «Coda di lavorazione» dice quanti reel mancano e quanto tempo ci vuole, e il pulsante «Aggiorna ora» fa partire subito la lavorazione. Se un aggiornamento è già in corso il pulsante resta spento: due lavorazioni insieme farebbero il doppio delle richieste a Instagram, che è proprio il punto in cui la piattaforma è più lenta.",
     "outputs": {
       "title": "Cosa ottieni",
       "items": [
@@ -355,7 +355,11 @@
         "37 video trascritti il 27 luglio avevano usato il modello locale di riserva, meno preciso sui termini medici. Il collegamento al servizio di trascrizione è stato corretto e quelle trascrizioni sono state rifatte.",
         "Gli articoli non hanno metriche di engagement (view, like): compaiono in Libreria, Cluster, temi e chat, ma non nei grafici di Analytics, che restano sui reel. Un'analisi dedicata ai blog (cadenza di pubblicazione, copertura dei temi) è prevista in un giro successivo.",
         "Gli articoli in lingua diversa dall'italiano (es. International Menopause Society) vengono riassunti e classificati in italiano; la ricerca dentro il testo originale inglese è meno precisa di quella sugli articoli italiani.",
-        "Le interviste caricate si trascrivono in italiano; dei file video conserviamo solo l'audio (non il video). File molto grandi: caricali con una connessione stabile."
+        "Le interviste caricate si trascrivono in italiano; dei file video conserviamo solo l'audio (non il video). File molto grandi: caricali con una connessione stabile.",
+        "Instagram non lascia più vedere l'elenco dei post di un profilo a chi non è collegato: per questo l'elenco passa da un servizio esterno. Il tuo account non è coinvolto.",
+        "La raccolta ha un budget di 5 dollari al mese che si rinnova da solo. Al raggiungimento del tetto si ferma solo la raccolta di reel nuovi: tutto il resto della piattaforma continua a funzionare.",
+        "Vengono raccolti solo i reel: storie, caroselli e foto singole no.",
+        "Undici dei ventitré account monitorati non hanno mai restituito contenuti (uno ha il nome scritto male) o non pubblicano da oltre un anno: vanno ripuliti."
       ]
     },
     "models": {
@@ -577,5 +581,22 @@
     "seeArticle": "→ Vedi in Libreria",
     "seeDraft": "→ Vedi la bozza",
     "confirmRemove": "Rimuovere questo caricamento? L'articolo generato verrà escluso dall'analisi."
+  },
+  "queue": {
+    "title": "Coda di lavorazione",
+    "hint": "Quanti reel devono ancora essere lavorati e quanto tempo ci vuole. Il tempo è calcolato sulle ultime esecuzioni reali, non su una stima teorica.",
+    "remaining": "Reel da lavorare",
+    "ofTotal": "su {{total}} in archivio",
+    "wait": "Attesa stimata",
+    "run": "Aggiorna ora",
+    "running": "Aggiornamento in corso",
+    "empty": "Non c'è niente in coda: tutti i reel sono stati lavorati. Puoi comunque avviare un aggiornamento per cercare contenuti nuovi.",
+    "measured": "Tempo calcolato sulla velocità delle ultime esecuzioni. Il download dei video è la parte più variabile: dipende da quanti video Instagram lascia scaricare.",
+    "estimated": "Stima di partenza: non ci sono ancora esecuzioni recenti da cui misurare la velocità reale.",
+    "failedCount_one": "{{count}} fallito",
+    "failedCount_other": "{{count}} falliti",
+    "budget": "Budget della raccolta",
+    "budgetLeft": "Restano ${{left}} in questo mese. Si rinnova il {{renews}}. La raccolta si ferma da sola prima di superare il tetto.",
+    "budgetStopped": "Tetto raggiunto: la raccolta di nuovi reel è ferma fino al rinnovo. Tutto il resto continua a funzionare."
   }
 }

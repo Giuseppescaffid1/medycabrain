@@ -7,6 +7,7 @@ import { Operations, type OperationsData } from "../components/ops/Operations";
 import { RunTimeline, type Run } from "../components/ops/RunTimeline";
 import { LiveActivity, type Job, type Reanalysis } from "../components/ops/LiveActivity";
 import { EvalsPanel, type EvalRun } from "../components/ops/EvalsPanel";
+import { PipelineQueue, type Budget, type QueueData } from "../components/ops/PipelineQueue";
 
 interface Stage {
   key: string;
@@ -26,6 +27,8 @@ interface StatusPayload {
     reanalysis?: Reanalysis | null;
     evals?: EvalRun[];
   };
+  queue?: QueueData;
+  budget?: Budget | null;
   totals: Record<string, number>;
   stages: Stage[];
   jobs: { id: number; kind: string; status: string; progress: number; message: string }[];
@@ -92,6 +95,16 @@ export default function Status() {
                   jobs={data.operations?.activity ?? []}
                   reanalysis={data.operations?.reanalysis}
                   updatedAt={dataUpdatedAt}
+                />
+
+                {/* How much is left, how long it takes, and the button that
+                    starts it — above the stage bars, because "quanto manca"
+                    is asked before "a che punto è". */}
+                <PipelineQueue
+                  queue={data.queue}
+                  job={data.jobs.find((j) => j.kind === "pipeline")}
+                  budget={data.budget}
+                  onStarted={() => refetch()}
                 />
 
                 {/* Totals */}

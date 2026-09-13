@@ -56,10 +56,21 @@ class DAG:
     def __init__(self, steps: list[Step]):
         self.steps = steps
 
-    def run(self, ctx: Context, only: set[str] | None = None, skip: set[str] | None = None) -> int:
+    def run(self, ctx: Context, only: set[str] | None = None,
+            skip: set[str] | None = None,
+            on_step: Callable[[int, int, str], None] | None = None) -> int:
+        """Run the steps in order.
+
+        `on_step(index, total, stage)` is called as each stage begins, so a
+        caller that is not a terminal — a `Job` row the UI polls — can report
+        progress. It is optional and never fatal: the cron entrypoint passes
+        nothing and behaves exactly as before.
+        """
         only = only or set()
         skip = skip or set()
         failed: list[str] = []
+        planned = [s for s in self.steps
+                   if (not only or s.name in only) and s.name not in skip]
 
         _header(f"medycabrain pipeline — {'DRY RUN' if ctx.dry_run else 'LIVE'}")
         for step in self.steps:
@@ -68,6 +79,12 @@ class DAG:
             if step.name in skip:
                 print(f"[{_ts()}] ⤳ skipping {step.name}", flush=True)
                 continue
+
+            if on_step:
+                try:
+                    on_step(planned.index(step), len(planned), step.name)
+                except Exception as exc:  # noqa: BLE001 — reporting is never fatal
+                    print(f"[{_ts()}] ! progress report failed: {exc!r}", flush=True)
 
             _step(f"agent: {step.name}")
             if ctx.dry_run:
@@ -95,3 +112,49 @@ class DAG:
             return 1
         _ok("all steps completed")
         return 0
+
+
+# The pipeline itself: the ordered stages and how to build them. It lives here
+# rather than in the management command because there are now two callers — the
+# cron entrypoint (`manage.py run_pipeline`) and the run the client starts from
+# the interface (a `Job` of kind "pipeline") — and two copies of this list would
+# eventually disagree about what "the pipeline" is.
+STAGE_NAMES = ["scrape", "download", "transcribe", "enrich", "embed",
+               "blogscrape", "knowledge", "cluster"]
+
+# What each stage is called on the client's screen. Same words as core/ops.py.
+STAGE_LABELS = {
+    "scrape": "Raccolta da Instagram",
+    "download": "Download dei video",
+    "transcribe": "Trascrizione audio",
+    "enrich": "Analisi dei contenuti",
+    "embed": "Indicizzazione per la ricerca",
+    "blogscrape": "Scoperta articoli blog",
+    "knowledge": "Analisi degli articoli",
+    "cluster": "Raggruppamento per tema",
+}
+
+
+def build_steps() -> list[Step]:
+    """The eight agents, in order.
+
+    Imports are deferred to call time on purpose: the agent modules pull in
+    whisper, sentence-transformers and hdbscan, and importing those at module
+    load would make every `manage.py` command — and every web request that
+    touches this file — pay for them.
+    """
+    from pipeline.agents import (
+        blogscrape_agent, cluster_agent, downloader_agent, embed_agent,
+        enrich_agent, knowledge_agent, scraper_agent, transcriber_agent,
+    )
+
+    return [
+        Step("scrape", scraper_agent.run),
+        Step("download", downloader_agent.run),
+        Step("transcribe", transcriber_agent.run),
+        Step("enrich", enrich_agent.run),
+        Step("embed", embed_agent.run),
+        Step("blogscrape", blogscrape_agent.run),
+        Step("knowledge", knowledge_agent.run),
+        Step("cluster", cluster_agent.run),
+    ]

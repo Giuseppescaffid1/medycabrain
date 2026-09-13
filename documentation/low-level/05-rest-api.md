@@ -37,7 +37,8 @@ The web app talks to the backend through this API. The MCP connector does **not*
 | `auth/login/`, `auth/logout/`, `auth/me/` | token auth | The single shared client user. |
 | `stats/overview/` | `StatsView` | Headline counts. |
 | `analytics/` | `AnalyticsView` | Engagement per scope (`core/analytics.py` + `core/weighting.py` normalized engagement — a reel doing 2× the account average counts double). |
-| `ops/status/` | `PipelineStatusView` | Per-stage done/pending/failed counts by owner scope, active jobs, per-account reel counts, embed count. Polled ~every 5 s by the app's ops panel. |
+| `ops/status/` | `PipelineStatusView` | Per-stage done/pending/failed counts by owner scope, active jobs, per-account reel counts, embed count, **plus `queue`** — what is left to process and how long it should take (`core/queue_eta.py`) — and **`budget`** — what collection has cost this Apify cycle (`scraper/apify_budget.py`, cached 5 min). Polled ~every 5 s by the app's ops panel. |
+| `ops/run/` (**POST**) | `PipelineRunView` | Start the pipeline by hand. Body (both optional): `only` (subset of the stage names), `limit` (cap rows per agent). **202** with `{job_id}`, or **409** when a run is already alive. See [the manual run](02-pipeline.md#starting-a-run-by-hand). |
 | `second-brain/coverage-map/` | `CoverageMapView` | Medyca themes (covered) vs competitor clusters whose centroid cosine is < 0.8 to any Medyca centroid (opportunities/gaps), plus custom topics. |
 | `second-brain/graph/` | `SecondBrainGraphView` | Graph nodes/edges: three hubs (Medyca / Competitor / Opportunità), theme→content edges, competitor→opportunity→Medyca flow edges. |
 | `knowledge/search/` | `KnowledgeSearchView` | Wraps `semantic_search`. |

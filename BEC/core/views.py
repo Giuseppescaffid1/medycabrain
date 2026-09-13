@@ -820,10 +820,19 @@ class PipelineStatusView(APIView):
             "cluster_run": models.ClusterRun.objects.aggregate(m=Max("created_at"))["m"],
         }
 
-        from core import ops
+        from core import ops, queue_eta
+        from scraper import apify_budget
 
         return Response({
             "operations": ops.snapshot(),
+            # What collection has cost this cycle. On a $5 plan this is not a
+            # detail: the page that starts a run must show what a run spends.
+            # Cached 5 minutes inside apify_budget — this endpoint is polled
+            # every 5 seconds per open tab.
+            "budget": apify_budget.spend(),
+            # How much is left and how long it should take — the question a
+            # percentage cannot answer. See core/queue_eta.py.
+            "queue": queue_eta.snapshot(),
             "totals": {
                 "reels": total,
                 "active": reels.filter(is_active=True).count(),
@@ -837,6 +846,77 @@ class PipelineStatusView(APIView):
             "accounts": accounts,
             "last": last,
         })
+
+
+class PipelineRunView(APIView):
+    """Start the pipeline by hand, from the interface.
+
+    Until now the pipeline only ever ran from cron, which meant that adding an
+    account or a blog source and then wanting to see the result involved
+    waiting for the night. This queues a `Job` of kind "pipeline"; `run_job`
+    executes it detached and the status page follows it.
+
+    **Only one run at a time, and the check is deliberately wider than this
+    table.** A second concurrent run is not just wasted work: the downloader
+    paces itself against Instagram's quota, and two runs double the request
+    rate against the limit that is already the bottleneck. So the guard looks
+    both at the job rows *and* at the process table — the nightly cron run
+    leaves no row in the database, and it is exactly the run most likely to be
+    in progress when someone presses the button.
+
+    POST body (both optional):
+      only:  ["download", "transcribe", …] — a subset of the stages
+      limit: cap rows processed per agent
+
+    Returns 202 with the job, or 409 when something is already running.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        from pipeline.dag import STAGE_NAMES
+
+        raw_only = request.data.get("only") or []
+        if isinstance(raw_only, str):
+            raw_only = [s.strip() for s in raw_only.split(",") if s.strip()]
+        only = [s for s in raw_only if s in STAGE_NAMES]
+        if raw_only and not only:
+            return Response(
+                {"detail": f"Passaggi non riconosciuti. Ammessi: {', '.join(STAGE_NAMES)}."},
+                status=400)
+
+        limit = request.data.get("limit")
+        try:
+            limit = int(limit) if limit not in (None, "") else None
+        except (TypeError, ValueError):
+            return Response({"detail": "Il limite deve essere un numero."}, status=400)
+        if limit is not None and limit < 1:
+            return Response({"detail": "Il limite deve essere almeno 1."}, status=400)
+
+        running = _existing_job("pipeline", {})
+        if running:
+            return Response(
+                {"detail": "L'aggiornamento è già in corso.",
+                 "job_id": running.id, "already_running": True},
+                status=status.HTTP_409_CONFLICT)
+
+        from core import ops
+        if any(a["job"] == "run_pipeline" for a in ops.activity()):
+            return Response(
+                {"detail": "L'aggiornamento automatico è già in corso in questo "
+                           "momento. Riprova quando è finito.",
+                 "already_running": True},
+                status=status.HTTP_409_CONFLICT)
+
+        job = models.Job.objects.create(
+            kind="pipeline",
+            params={"only": only, "limit": limit},
+            message="In coda: aggiornamento dei contenuti",
+        )
+        _spawn_job(job.id)
+        return Response(
+            {"job_id": job.id, "status": job.status, "only": only, "limit": limit},
+            status=status.HTTP_202_ACCEPTED)
 
 
 class CoverageMapView(APIView):

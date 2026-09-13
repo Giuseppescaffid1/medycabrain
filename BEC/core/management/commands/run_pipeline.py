@@ -14,9 +14,7 @@ inside each agent module, so --dry-run and --only scrape stay light.
 
 from django.core.management.base import BaseCommand
 
-from pipeline.dag import DAG, Context, Step
-
-STAGE_NAMES = ["scrape", "download", "transcribe", "enrich", "embed", "blogscrape", "knowledge", "cluster"]
+from pipeline.dag import DAG, STAGE_NAMES, Context, build_steps
 
 
 class Command(BaseCommand):
@@ -32,22 +30,7 @@ class Command(BaseCommand):
             parser.add_argument(f"--skip-{name}", action="store_true")
 
     def handle(self, *args, **opts):
-        # Deferred agent imports (kept out of module import time).
-        from pipeline.agents import (
-            blogscrape_agent, cluster_agent, downloader_agent, embed_agent,
-            enrich_agent, knowledge_agent, scraper_agent, transcriber_agent,
-        )
-
-        steps = [
-            Step("scrape", scraper_agent.run),
-            Step("download", downloader_agent.run),
-            Step("transcribe", transcriber_agent.run),
-            Step("enrich", enrich_agent.run),
-            Step("embed", embed_agent.run),
-            Step("blogscrape", blogscrape_agent.run),
-            Step("knowledge", knowledge_agent.run),
-            Step("cluster", cluster_agent.run),
-        ]
+        steps = build_steps()
 
         only = {s.strip() for s in opts["only"].split(",") if s.strip()}
         skip = {name for name in STAGE_NAMES if opts.get(f"skip_{name}")}

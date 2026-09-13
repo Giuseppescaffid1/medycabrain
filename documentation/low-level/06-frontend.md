@@ -38,7 +38,7 @@ screen shows either side without mixing them.
 | `/workspace` | `Workspace.tsx` | Favorites / notes. |
 | `/accounts` | `Accounts.tsx` | Add IG accounts + blog sources + upload interviews. |
 | `/documentazione` | `Documentation.tsx` | **The client-facing docs** (see note below). |
-| `/stato` | `Status.tsx` | Live service/pipeline status. |
+| `/stato` | `Status.tsx` | Live service/pipeline status. Carries `PipelineQueue` (`components/ops/`): how many reels are left, the estimated wait, and the **Aggiorna ora** button that starts a run (`POST /ops/run/`). While a run is alive the button is disabled and its `Job` progress replaces the estimate. Below it, `BudgetBar` shows what collection has cost this Apify cycle against the $4.00 ceiling (green → amber at 67% → red at the ceiling), because the button that spends the budget should sit next to the budget. |
 | `/` | `Home.tsx` | Landing inside the app. |
 | `/login` | `Login.tsx` | Token auth via `contexts/AuthContext.tsx`. |
 

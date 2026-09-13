@@ -48,7 +48,7 @@
         <mxCell id="h_note" value="Ogni contenuto viene pesato sul suo rendimento reale: un reel che va il doppio della tua media conta il doppio.&#10;Così i consigli seguono i numeri, non le impressioni." style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EEF5FD;strokeColor=#D5E3F2;fontColor=#2C4984;fontSize=11;align=left;spacingLeft=12;arcSize=14;" vertex="1" parent="1">
           <mxGeometry x="380" y="300" width="800" height="60" as="geometry" />
         </mxCell>
-        <mxCell id="h_auto" value="Tutto si aggiorna da solo ogni notte." style="text;html=1;align=left;fontSize=11;fontColor=#1E7E4A;fontStyle=1;" vertex="1" parent="1">
+        <mxCell id="h_auto" value="Tutto si aggiorna da solo ogni notte. Se non vuoi aspettare, lo avvii tu da &quot;Stato pipeline&quot;: lì vedi quanti reel mancano e quanto tempo ci vuole." style="text;html=1;align=left;fontSize=11;fontColor=#1E7E4A;fontStyle=1;" vertex="1" parent="1">
           <mxGeometry x="380" y="372" width="500" height="20" as="geometry" />
         </mxCell>
 
@@ -100,10 +100,10 @@
         <mxCell id="l_b1" value="1 · INGESTION" style="rounded=0;fillColor=none;strokeColor=#D5E3F2;dashed=1;verticalAlign=top;align=left;fontColor=#52688A;fontStyle=2;spacingLeft=10;fontSize=11;" vertex="1" parent="1">
           <mxGeometry x="40" y="90" width="380" height="330" as="geometry" />
         </mxCell>
-        <mxCell id="l_scr" value="scraper_agent.py&#10;curl_cffi (Chrome impersonation)&#10;GraphQL doc_id + topsearch&#10;media/info per i metadati" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#4A6FAC;fontColor=#2C4984;fontSize=11;align=left;spacingLeft=10;verticalAlign=top;spacingTop=8;arcSize=12;" vertex="1" parent="1">
-          <mxGeometry x="60" y="122" width="340" height="76" as="geometry" />
+        <mxCell id="l_scr" value="scraper_agent.py&#10;elenco reel via Apify (nessun account IG nostro)&#10;profondita adattiva per account&#10;tetto di spesa \$4/ciclo (apify_budget.py)&#10;IG anonimo = 401 require_login · yt-dlp non elenca" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#4A6FAC;fontColor=#2C4984;fontSize=11;align=left;spacingLeft=10;verticalAlign=top;spacingTop=8;arcSize=12;" vertex="1" parent="1">
+          <mxGeometry x="60" y="122" width="340" height="86" as="geometry" />
         </mxCell>
-        <mxCell id="l_dl" value="downloader_agent.py&#10;url video: Apify &#8594; url CDN in cache (oe=) &#8594; yt-dlp&#10;yt-dlp = permalink pubblico, senza account&#10;blocco = IGThrottled, il reel resta pending&#10;video + thumbnail su disco" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#4A6FAC;fontColor=#2C4984;fontSize=11;align=left;spacingLeft=10;verticalAlign=top;spacingTop=8;arcSize=12;" vertex="1" parent="1">
+        <mxCell id="l_dl" value="downloader_agent.py&#10;Apify elenca, YT-DLP SCARICA (gratis, anonimo)&#10;url CDN in cache (oe=) &#8594; yt-dlp sul permalink&#10;prefetch Apify limitato a 30 (era known+60 = \$0,48/account)&#10;video + thumbnail su disco" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#4A6FAC;fontColor=#2C4984;fontSize=11;align=left;spacingLeft=10;verticalAlign=top;spacingTop=8;arcSize=12;" vertex="1" parent="1">
           <mxGeometry x="60" y="214" width="340" height="84" as="geometry" />
         </mxCell>
         <mxCell id="l_blog" value="blogscrape_agent.py&#10;agente di scoperta (sitemap/feed/LLM)&#10;→ KnowledgeDocument con owner" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#4A6FAC;fontColor=#2C4984;fontSize=11;align=left;spacingLeft=10;verticalAlign=top;spacingTop=8;arcSize=12;" vertex="1" parent="1">
@@ -179,19 +179,19 @@
         <mxCell id="l_db" value="tracked_accounts · blog_sources&#10;reels · transcripts&#10;enrichments · reel_arguments · document_arguments&#10;reel_embeddings&#10;knowledge_documents (con owner)&#10;cluster_runs · topic_clusters&#10;reel_cluster_assignments&#10;doc_cluster_assignments&#10;custom_topics · custom_topic_matches&#10;strategy_briefs · blog_drafts · jobs" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#4A6FAC;fontColor=#2C4984;fontSize=11;align=left;spacingLeft=10;verticalAlign=top;spacingTop=8;arcSize=12;" vertex="1" parent="1">
           <mxGeometry x="60" y="486" width="340" height="180" as="geometry" />
         </mxCell>
-        <mxCell id="l_cron" value="cron (nice 19)&#10;03:30 pipeline completa · 14:15 top-up&#10;lun 04:00 crawl blog" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EEF5FD;strokeColor=#D5E3F2;fontColor=#2C4984;fontSize=10;align=left;spacingLeft=10;verticalAlign=top;spacingTop=8;arcSize=12;" vertex="1" parent="1">
-          <mxGeometry x="60" y="686" width="340" height="66" as="geometry" />
+        <mxCell id="l_cron" value="cron (nice 19)&#10;03:30 pipeline completa · 14:15 top-up&#10;lun 04:00 crawl blog&#10;+ avvio manuale: POST /ops/run &#8594; Job(kind=pipeline)&#10;una sola esecuzione per volta (job + tabella processi)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EEF5FD;strokeColor=#D5E3F2;fontColor=#2C4984;fontSize=10;align=left;spacingLeft=10;verticalAlign=top;spacingTop=8;arcSize=12;" vertex="1" parent="1">
+          <mxGeometry x="60" y="686" width="340" height="88" as="geometry" />
         </mxCell>
 
         <!-- DELIVERY -->
         <mxCell id="l_b7" value="ESPOSIZIONE" style="rounded=0;fillColor=none;strokeColor=#D5E3F2;dashed=1;verticalAlign=top;align=left;fontColor=#52688A;fontStyle=2;spacingLeft=10;fontSize=11;" vertex="1" parent="1">
           <mxGeometry x="1270" y="450" width="380" height="330" as="geometry" />
         </mxCell>
-        <mxCell id="l_api" value="Django REST /api/v1/&#10;reels · clusters · analytics&#10;custom-topics (+ /matches)&#10;second-brain: coverage-map · graph · briefs&#10;knowledge: search · ask · jobs" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#4A6FAC;fontColor=#2C4984;fontSize=11;align=left;spacingLeft=10;verticalAlign=top;spacingTop=8;arcSize=12;" vertex="1" parent="1">
-          <mxGeometry x="1290" y="486" width="340" height="96" as="geometry" />
+        <mxCell id="l_api" value="Django REST /api/v1/&#10;reels · clusters · analytics&#10;custom-topics (+ /matches)&#10;second-brain: coverage-map · graph · briefs&#10;knowledge: search · ask · jobs&#10;ops/status: stadi + coda e attesa (queue_eta.py)&#10;ops/run: avvia la pipeline a mano" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#4A6FAC;fontColor=#2C4984;fontSize=11;align=left;spacingLeft=10;verticalAlign=top;spacingTop=8;arcSize=12;" vertex="1" parent="1">
+          <mxGeometry x="1290" y="486" width="340" height="120" as="geometry" />
         </mxCell>
         <mxCell id="l_jobs" value="Job asincroni (processi distaccati)&#10;deduplica + recupero dei bloccati&#10;barra di stato globale nella UI" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#1E7E4A;fontColor=#2C4984;fontSize=11;align=left;spacingLeft=10;verticalAlign=top;spacingTop=8;arcSize=12;" vertex="1" parent="1">
-          <mxGeometry x="1290" y="598" width="340" height="66" as="geometry" />
+          <mxGeometry x="1290" y="620" width="340" height="52" as="geometry" />
         </mxCell>
         <mxCell id="l_fe" value="React 18 + Vite (nginx :9093)&#10;Libreria · Analytics · Timeline · Cluster&#10;Second Brain · Mappa DAG · Knowledge Bank" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EEF5FD;strokeColor=#D5E3F2;fontColor=#2C4984;fontSize=11;align=left;spacingLeft=10;verticalAlign=top;spacingTop=8;arcSize=12;" vertex="1" parent="1">
           <mxGeometry x="1290" y="680" width="340" height="72" as="geometry" />
@@ -220,10 +220,10 @@
         <mxCell id="f_title" value="Il flusso passo per passo — ogni riquadro è un passaggio automatico" style="text;html=1;align=left;fontSize=16;fontStyle=1;fontColor=#346FAA;" vertex="1" parent="1">
           <mxGeometry x="40" y="20" width="900" height="26" as="geometry" />
         </mxCell>
-        <mxCell id="n_cron" value="⏰ Avvio automatico&#10;3 volte al giorno" style="rounded=1;whiteSpace=wrap;html=1;arcSize=18;fillColor=#FFFFFF;strokeColor=#C93B42;strokeWidth=2;fontColor=#2C4984;fontSize=12;align=left;spacingLeft=10;verticalAlign=middle;" vertex="1" parent="1">
+        <mxCell id="n_cron" value="⏰ Avvio automatico&#10;3 volte al giorno&#10;(oppure lo avvii tu)" style="rounded=1;whiteSpace=wrap;html=1;arcSize=18;fillColor=#FFFFFF;strokeColor=#C93B42;strokeWidth=2;fontColor=#2C4984;fontSize=12;align=left;spacingLeft=10;verticalAlign=middle;" vertex="1" parent="1">
           <mxGeometry x="40" y="200" width="200" height="66" as="geometry" />
         </mxCell>
-        <mxCell id="n_ig" value="📸 Instagram&#10;reel Medyca + competitor" style="rounded=1;whiteSpace=wrap;html=1;arcSize=18;fillColor=#EEF5FD;strokeColor=#D5E3F2;strokeWidth=2;fontColor=#2C4984;fontSize=12;align=left;spacingLeft=10;verticalAlign=middle;" vertex="1" parent="1">
+        <mxCell id="n_ig" value="📸 Instagram&#10;reel Medyca + competitor&#10;(elenco via Apify)" style="rounded=1;whiteSpace=wrap;html=1;arcSize=18;fillColor=#EEF5FD;strokeColor=#D5E3F2;strokeWidth=2;fontColor=#2C4984;fontSize=12;align=left;spacingLeft=10;verticalAlign=middle;" vertex="1" parent="1">
           <mxGeometry x="280" y="90" width="200" height="66" as="geometry" />
         </mxCell>
         <mxCell id="n_blog" value="📄 Blog medyca.it&#10;articoli pubblicati" style="rounded=1;whiteSpace=wrap;html=1;arcSize=18;fillColor=#EEF5FD;strokeColor=#D5E3F2;strokeWidth=2;fontColor=#2C4984;fontSize=12;align=left;spacingLeft=10;verticalAlign=middle;" vertex="1" parent="1">

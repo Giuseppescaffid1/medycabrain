@@ -7,7 +7,8 @@ UI can poll and the global status bar can show progress.
 
     python manage.py run_job --job <id>
 
-Dispatched by Job.kind. Currently: 'ideation'.
+Dispatched by Job.kind: ideation, pipeline, blog, strategy, strategy_draft,
+editorial, blogsource_discover, upload_transcribe.
 """
 
 from django.core.management.base import BaseCommand, CommandError
@@ -102,6 +103,10 @@ class Command(BaseCommand):
         if job.kind == "strategy_draft":
             from core.strategy import generate_draft
             return generate_draft(int(job.params["brief_id"]), job=job)
+        if job.kind == "pipeline":
+            from core.pipeline_run import run_pipeline_job
+            return run_pipeline_job(job, only=job.params.get("only") or [],
+                                    limit=job.params.get("limit"))
         if job.kind == "upload_transcribe":
             from core.upload_workflow import run_upload_transcribe
             return run_upload_transcribe(int(job.params["upload_id"]), job=job)

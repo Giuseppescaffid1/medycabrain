@@ -36,6 +36,11 @@ _UA = (
 _MAX_ATTEMPTS = 3
 _THROTTLE_STREAK = 3  # consecutive quota errors that end a run
 
+# Hard cap on how many reels the url prefetch may ask Apify for, per account.
+# Every result is billed whether or not we needed it — see _prefetch_urls.
+# 30 reels = $0.079 per account; the old uncapped depth reached $0.48.
+_PREFETCH_MAX_DEPTH = 30
+
 
 def _download(url: str, dest: Path) -> None:
     dest.parent.mkdir(parents=True, exist_ok=True)
@@ -266,8 +271,21 @@ def _prefetch_urls(batch: list[Reel]) -> dict:
     the reels in this batch. The actor returns the N most recent reels of the
     account, and our pending rows are scattered through that timeline rather
     than sitting at the top of it: a first attempt sized from the batch asked
-    for 7 and matched 0 of them. Overshooting slightly costs a fraction of a
-    cent; undershooting returns rows we cannot use at all.
+    for 7 and matched 0 of them.
+
+    **The depth is capped, and the cap is a money decision.** The original
+    `known + 60` was written when Apify was a cheap insurance policy against
+    Instagram's quota. On the $5/cycle plan it is the single most expensive
+    thing the pipeline can do: `menopausa_insieme` alone has 124 known reels,
+    so `known + 60` asks for 184 results — $0.48 for one account, one night —
+    and across twelve accounts one run would ask for roughly $3.70. The whole
+    cycle, in a night, to fetch urls that yt-dlp does not need.
+
+    It is also mostly redundant now. The scrape stage fetches through Apify
+    too, so a freshly collected reel already arrives carrying its `videoUrl`
+    from that same call, and `_process_one` prefers a cached url anyway. What
+    is left is the narrow case of a reel whose url expired before the download
+    stage reached it — and for that, yt-dlp is the free answer.
     """
     from scraper import apify_provider
 
@@ -285,10 +303,12 @@ def _prefetch_urls(batch: list[Reel]) -> dict:
         # real timeline than their own count suggests, and a run that comes
         # back short is wasted entirely rather than partially.
         known = Reel.objects.filter(account__username=username).count()
-        depth = max(known, len(reels)) + 60
+        depth = min(max(known, len(reels)) + 20, _PREFETCH_MAX_DEPTH)
         try:
             items = apify_provider.fetch_reels(username, limit=depth)
         except apify_provider.ApifyUnavailable as exc:
+            # Includes the budget ceiling refusing to spend. Not an incident:
+            # yt-dlp fetches these reels without Apify, just more slowly.
             logger.warning("[downloader] apify non disponibile per @%s: %s", username, exc)
             continue
         accounts += 1

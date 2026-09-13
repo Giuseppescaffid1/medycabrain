@@ -35,6 +35,15 @@ from scraper import ig_client, instaloader_fallback
 from scraper.session_store import load_cookies
 from scraper.types import IGBlocked, IGSchemaChanged, ProfileMeta, ReelMeta
 
+# Apify is billed per result, so depth is money. The floor is what it takes to
+# notice a new post at all; the ceiling stops one prolific account from eating
+# a run's budget. Both are editable in the admin (scraper_config).
+_APIFY_MIN_DEPTH = 3
+
+
+def _apify_max_depth() -> int:
+    return int(_cfg("apify_max_depth", 30))
+
 logger = logging.getLogger(__name__)
 
 
@@ -263,6 +272,76 @@ def _scrape_account_instaloader(account: TrackedAccount) -> tuple[int, bool]:
     return new_count, True
 
 
+def _apify_depth(account: TrackedAccount) -> int:
+    """How many reels to ask Apify for, for this account.
+
+    Every result is billed ($0.0026), whether it is new or something we
+    already have. Asking a fixed depth of everyone is therefore a way of
+    paying the prolific accounts' price for the quiet ones: measured on
+    2026-09-11, this project's accounts post anywhere between every 0.1 days
+    and every 34 days.
+
+    So the depth is the gap since their last known post, divided by how often
+    they actually post, plus a margin of three. An account that posts monthly
+    is asked for a handful of reels; one that posts daily is asked for more,
+    because it genuinely has more.
+    """
+    import math
+
+    qs = Reel.objects.filter(account=account).exclude(posted_at=None)
+    n = qs.count()
+    if n < 2:
+        # Nothing to reason from — a new account, or one that has never
+        # returned anything. Start shallow and let the next run learn.
+        return _APIFY_MIN_DEPTH
+    first = qs.order_by("posted_at").first().posted_at
+    last = qs.order_by("-posted_at").first().posted_at
+    days_per_post = max((last - first).days, 1) / n
+    gap_days = max((dj_tz.now() - last).days, 0)
+    depth = math.ceil(gap_days / days_per_post) + 3
+    return max(_APIFY_MIN_DEPTH, min(depth, _apify_max_depth()))
+
+
+def _scrape_account_apify(account: TrackedAccount) -> tuple[int, bool]:
+    """List an account's recent reels through Apify, and upsert them.
+
+    This is the collection path since 2026-09-11. Instagram closed the two
+    that came before it: listing a public profile anonymously now answers
+    `401 {"require_login": true}`, and the logged-in path was removed because
+    it ran as a personal account that Instagram had begun checkpointing.
+    yt-dlp — which does still fetch a reel anonymously — has no working way to
+    *list* an account: its own profile extractor is marked `_WORKING = False`.
+
+    Apify queries from its own infrastructure, so no Instagram account of ours
+    is involved at all. What it costs, and what stops it costing too much, is
+    in `scraper/apify_budget.py`.
+    """
+    from scraper import apify_provider
+
+    depth = _apify_depth(account)
+    items = apify_provider.fetch_reels(account.username, limit=depth)
+
+    new_count = 0
+    for it in items:
+        posted = it.get("posted_at")
+        reel = ReelMeta(
+            shortcode=it["shortcode"],
+            caption=it.get("caption") or "",
+            video_url=it.get("video_url") or "",
+            thumbnail_url=it.get("thumbnail_url") or "",
+            view_count=it.get("view_count"),
+            like_count=it.get("like_count"),
+            comment_count=it.get("comment_count"),
+            duration_s=it.get("duration_s"),
+            posted_at_ts=int(posted.timestamp()) if posted else None,
+            raw={k: v for k, v in it.items() if k != "posted_at"},
+        )
+        raw_path = _dump_raw(account.username, reel)
+        if _upsert_reel(account, reel, raw_path):
+            new_count += 1
+    return new_count, True
+
+
 def _apply_profile(account: TrackedAccount, profile: ProfileMeta):
     account.ig_user_id = profile.ig_user_id or account.ig_user_id
     account.display_name = profile.display_name or account.display_name
@@ -276,22 +355,34 @@ def _apply_profile(account: TrackedAccount, profile: ProfileMeta):
 
 
 def run(ctx) -> dict:
-    # The official Graph API is the collection path. The cookie scrapers ran
-    # as Giuseppe's personal account and were removed by explicit decision
-    # (2026-07-29): without a Graph token the stage skips cleanly — noisy
-    # per-account failures would read as an incident when this is a choice.
-    from scraper import graph_client
+    """Collect new reels for every active account.
+
+    **Apify is the collection path** (since 2026-09-11). The two that came
+    before it are closed: Instagram answers `401 require_login` to an
+    anonymous profile listing, and the logged-in path was removed on
+    2026-07-29 because it ran as a personal account Instagram had started
+    checkpointing (23 blocks on 26 July, 15 more on the 29th). Meta's official
+    Graph API remains supported and takes precedence when a token is set, but
+    it is not configured here.
+
+    Apify costs real money on a $5/cycle plan, so this stage stops on the
+    budget ceiling exactly as it stops on the request budget — and says so,
+    rather than failing each account into what would read as an incident.
+    """
+    from scraper import apify_budget, apify_provider, graph_client
 
     if graph_client.configured():
         provider_order = _cfg("provider_order", ["graph"])
         if "graph" not in provider_order:
             provider_order = ["graph"] + list(provider_order)
+    elif apify_provider.enabled():
+        provider_order = ["apify"]
     else:
-        logger.warning("[scraper] Graph API non configurata (IG_GRAPH_TOKEN): "
-                       "raccolta sospesa — vedi docs/instagram-graph-api-setup.md")
+        logger.warning("[scraper] nessuna fonte configurata (né APIFY_TOKEN né "
+                       "IG_GRAPH_TOKEN): raccolta sospesa")
         return {"accounts": 0, "new_reels": 0,
-                "note": "sospeso: Graph API non configurata "
-                        "(docs/instagram-graph-api-setup.md)"}
+                "note": "sospeso: nessuna fonte configurata "
+                        "(serve APIFY_TOKEN oppure IG_GRAPH_TOKEN)"}
     budget = [int(_cfg("global_request_budget", 40))]
     accounts = TrackedAccount.objects.filter(is_active=True)
     if not accounts:
@@ -299,11 +390,24 @@ def run(ctx) -> dict:
 
     total_new = 0
     per_account = {}
+    money_stopped = False
+    spent_before = (apify_budget.spend(force=True) or {}).get("spent_usd")
     for account in accounts:
         if budget[0] <= 0:
             per_account[account.username] = "skipped (budget)"
             continue
+        # Once the money ceiling is reached, every remaining account would be
+        # refused anyway. Say it once and stop asking — a dozen identical
+        # "budget exceeded" lines read as a dozen failures.
+        if money_stopped:
+            per_account[account.username] = "skipped (tetto di spesa)"
+            continue
         new_count, err = _scrape_one(account, provider_order, budget)
+        if err and "tetto" in err:
+            money_stopped = True
+            per_account[account.username] = "skipped (tetto di spesa)"
+            logger.warning("[scraper] fermato dal tetto di spesa Apify: %s", err)
+            continue
         per_account[account.username] = new_count if err is None else f"error: {err}"
         if err is None:
             total_new += new_count
@@ -317,7 +421,13 @@ def run(ctx) -> dict:
                                     "consecutive_failures": fails, "last_error": err}
             account.save(update_fields=["scrape_state"])
 
-    return {"accounts": len(per_account), "new_reels": total_new, "detail": per_account}
+    after = apify_budget.spend(force=True) or {}
+    cost = None
+    if spent_before is not None and after.get("spent_usd") is not None:
+        cost = round(after["spent_usd"] - spent_before, 4)
+    return {"accounts": len(per_account), "new_reels": total_new,
+            "cost_usd": cost, "budget_stopped": money_stopped,
+            "detail": per_account}
 
 
 def _scrape_one(account, provider_order, budget):
@@ -325,7 +435,9 @@ def _scrape_one(account, provider_order, budget):
     last_err = None
     for provider in provider_order:
         try:
-            if provider == "graph":
+            if provider == "apify":
+                n, _ = _scrape_account_apify(account)
+            elif provider == "graph":
                 n, complete = _scrape_account_graph(account, budget)
             elif provider == "graphql":
                 n, _ = _scrape_account_graphql(account, budget)

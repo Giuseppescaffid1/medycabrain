@@ -17,8 +17,19 @@ theirs to manage rather than ours to trip over. Measured on 2026-07-27: the
 actor returned `videoUrl` for every reel, and that url downloaded 12.7 MB in
 0.4s straight from the CDN.
 
-Cost is per result (from $2.60/1000 reels), so calls are batched per account —
-one actor run returns many reels — and never issued per reel.
+Cost, and why every call here is guarded
+----------------------------------------
+$0.0026 per reel returned plus $0.0010 per account queried, on a plan whose
+ceiling is $5.00 per cycle. Calls are batched per account — one actor run
+returns many reels — and never issued per reel. Every call passes through
+`scraper/apify_budget.py` first, which refuses to spend past the ceiling.
+
+**The actor also sells three add-ons** (shares count, video download,
+transcript — up to 18× the base price) that are one input field away. The
+payload built below is therefore closed and explicit: only `username` and
+`resultsLimit` are ever sent. Never add a field here without reading
+`apify_budget`'s price table, and never enable `video-download` or
+`transcript` — yt-dlp downloads for free and the pipeline transcribes itself.
 
 Note on expiry
 --------------
@@ -65,15 +76,29 @@ def fetch_reels(username: str, limit: int, timeout: int = 600) -> list[dict]:
     Returns [] rather than raising when the actor simply found nothing: an
     account with no reels is a fact, not a failure.
     """
+    from scraper import apify_budget
+
     if not enabled():
         raise ApifyUnavailable("APIFY_TOKEN not configured")
 
     limit = max(1, min(int(limit), _MAX_RESULTS))
+
+    # Ask permission before spending, not forgiveness after. A refusal is
+    # raised as ApifyUnavailable so every existing caller already handles it
+    # as "this source cannot help right now" rather than as a crash.
+    cost = apify_budget.estimate_usd(accounts=1, depth=limit)
+    try:
+        apify_budget.check(cost)
+    except apify_budget.ApifyBudgetExceeded as exc:
+        raise ApifyUnavailable(str(exc)) from exc
+
     url = _ENDPOINT.format(actor=settings.APIFY_REEL_ACTOR)
     try:
         resp = requests.post(
             url,
             params={"token": settings.APIFY_TOKEN},
+            # Closed payload — see the module docstring. Adding a field here
+            # can multiply the bill by 18.
             json={"username": [username], "resultsLimit": limit},
             timeout=timeout,
         )
@@ -109,8 +134,12 @@ def fetch_reels(username: str, limit: int, timeout: int = 600) -> list[dict]:
             "comment_count": _count(it.get("commentsCount")),
             "posted_at": _parse_ts(it.get("timestamp")),
         })
-    logger.info("[apify] @%s: %s reel, %s con video",
-                username, len(out), sum(1 for r in out if r["video_url"]))
+    # Bill what actually came back, not what was asked for: the actor charges
+    # per result, and an account with few reels returns fewer than the limit.
+    spent = apify_budget.PRICE_PER_START + len(out) * apify_budget.PRICE_PER_REEL
+    apify_budget.note_spent(spent)
+    logger.info("[apify] @%s: %s reel, %s con video — $%.4f",
+                username, len(out), sum(1 for r in out if r["video_url"]), spent)
     return out
 
 

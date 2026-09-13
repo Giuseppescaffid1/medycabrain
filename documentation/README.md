@@ -40,6 +40,10 @@ client; this folder is the machine that keeps it.
 - **[05-rest-api.md](low-level/05-rest-api.md)** — every REST endpoint and what it serves.
 - **[06-frontend.md](low-level/06-frontend.md)** — the React app: pages, how it talks to the
   API, and the RAG chat screen.
+- **[07-content-lineage.md](low-level/07-content-lineage.md)** — follows **one Instagram reel**
+  end to end: what is produced at each step, where it is stored (disk vs Postgres vs discarded),
+  and how the vectors become the search index. Read this for "where did this field come from?"
+  and "is it in SQL?".
 
 ## One-paragraph summary
 
