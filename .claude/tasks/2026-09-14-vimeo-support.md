@@ -1,7 +1,7 @@
 ---
 id: 2026-09-14-vimeo-support
 titolo: Supportare anche i link Vimeo, non solo YouTube
-stato: fermo
+stato: approvato
 ramo: feat/vimeo-support
 pr: ""
 ticket: ""
@@ -404,4 +404,32 @@ va toccato.
   esistono anche su YouTube: in quel caso non serve una riga di codice nuova.
 
   Il ramo `feat/vimeo-support` resta aperto con questo file e nessun codice.
+
+- **14/09/2026 — RIPARTITO. Il muro è caduto: l'audio si scarica.**
+
+  Giuseppe ha esportato i cookie della **sua** sessione Vimeo. Non sono
+  credenziali di terzi rivendute: è lo stesso schema già in uso e documentato
+  per YouTube (`YT_COOKIES_FILE`), e la regola di progetto resta rispettata.
+
+  Provato a mano, non supposto:
+
+      yt-dlp --simulate -f bestaudio --cookies <file> https://vimeo.com/1220776839
+      -> Downloading 1 format(s): hls-fastly_skyfire-audio-high-italiano
+
+  Il file sta in `/home/giuseppe/.config/medycabrain/vimeo_cookies.txt`,
+  permessi 600, **fuori dal repo**, accanto a quello di YouTube. Non va
+  committato mai.
+
+  **Quindi il disegno cambia in un punto solo, ma decisivo:** i video Vimeo
+  seguono lo stesso percorso completo di quelli YouTube - audio, trascrizione,
+  affermazioni con citazione, vettori - e non si fermano a riferimento. Tutto
+  il resto del disegno dell'architetto resta valido, tabella di fornitori
+  compresa.
+
+  **Resta vero** che senza cookie, o a cookie scaduti, il download fallisce: il
+  ripiego a riferimento salvato serve ancora, ed è la stessa rete che c'è già
+  per YouTube.
+
+  Giuseppe: "al momento va bene cosi. adesso voglio implementare questa
+  feature". Disegno approvato, si passa allo sviluppo.
 
