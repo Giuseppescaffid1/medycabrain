@@ -51,36 +51,85 @@ notes** — "Parte I: <url>", dates, names in brackets — and every video link 
 item. `POST /api/v1/uploads/from-links/` (an action on `UploadedMediaViewSet`, with its own
 `JSONParser` because that ViewSet is multipart for file uploads).
 
-1. `extract_ids(text)` reduces every YouTube spelling to the 11-character id, so `youtu.be/X`,
-   `watch?v=X` and `watch?v=X&t=365s` collapse into **one** video. Verified on the client's real
-   list: 11 unique videos out of the messy text.
-2. `probe(url)` reads the public **oEmbed** endpoint for the title, channel and thumbnail. No
-   key, no cookies — this is what keeps a link worth saving even when the audio is refused.
+**Two hosts, one table.** The client's material is on **YouTube** and on **Vimeo** (the TVRS
+"Canale Salute" episodes). They differ in four places at once — link spelling, canonical form,
+oEmbed endpoint, yt-dlp arguments and error messages — so each is **one row of `PROVIDERS`** in
+`link_ingest.py` and the three functions below read the row. There is **no provider column and
+no migration**: `source_url` already says who the host is, and `provider_for(url)` reads it back.
+Adding a third host is one more row.
+
+1. `extract_links(text)` → `[VideoRef(provider, video_id, url)]`, pure string work, **no
+   network**. Reduces every spelling onto the host's canonical address, which is what makes two
+   links to the same video **one** row (`KnowledgeDocument.source_url` is `unique=True`):
+
+   | host | recognised | canonical | dropped |
+   |---|---|---|---|
+   | YouTube | `watch?v=`, `youtu.be/`, `shorts/`, `embed/`, `live/`; id = 11 chars `[A-Za-z0-9_-]` | `https://www.youtube.com/watch?v=<id>` | `&t=365s`, `&list=…`, brackets from the notes |
+   | Vimeo | `vimeo.com/<id>`, `player.vimeo.com/video/<id>`, `vimeo.com/<id>/<hash>`, `h=<hash>` **anywhere in the query** (`?badge=0&h=…`, `?share=copy&h=…`), `channels/<x>/<id>`, `groups/<x>/videos/<id>`; id = **numeric**, `\d{6,12}`; hash = lowercase hex, `[0-9a-f]{8,12}` | `https://vimeo.com/<id>`, or `https://vimeo.com/<id>/<hash>` when unlisted | `?fl=pl&fe=cm`, `#t=3m12s`, and trailing pages like `/settings` |
+
+   The query is read **only** to find `h=` in it, and it stops where the link
+   stops: a comma, a semicolon, a bracket, a pipe — or the next `http://`,
+   when there is no separator at all. This is not cosmetic. A class that
+   excluded only whitespace read the separator as part of the first link's
+   query and swallowed the link after it: three links pasted from a
+   spreadsheet cell became one, silently (the missing two never reached
+   `rifiutati`, because they were never found), and worse, the **second**
+   video's hash was attached to the **first** video's id — an invented address
+   that opens nothing and that `source_url` (`unique=True`) would then hold
+   forever, making the real video impossible to paste. Found in review, not by
+   the tests; covered now by `LinksGluedTogether` in
+   `BEC/core/tests/test_link_ingest.py`.
+
+   Vimeo ids are numeric and their length is **not** fixed: the client's three are 10 digits
+   (`1220776839`), older videos have 7-9. The unlisted hash must survive into the canonical url
+   or the video becomes unreachable — and Vimeo's own share and embed buttons put `h=` wherever
+   they like in the query (`?badge=0&h=8272103f6e`), so the **whole query** is searched, not just
+   what follows the id. A hash read only in first position is a hash lost: the oEmbed call then
+   answers 403 and the client is told the video "is private or removed", which is false.
+   The hash is lowercase hexadecimal (`[0-9a-f]{8,12}`) on purpose: with a looser class,
+   `vimeo.com/<id>/settings` reads as the hash `settings`, invents an address that opens nothing,
+   and does not dedup with the same video pasted bare.
+
+   **The host is anchored** on both patterns (`(?:^|[^\w.])(?:www\.|player\.)?vimeo\.com/`, and
+   the matching shape on YouTube): without it, `fakevimeo.com/1234567` matches as a substring and
+   is canonicalised onto a real Vimeo video the client never pasted. The cost of anchoring is that
+   the accepted subdomains have to be spelled out — `www.`, `m.`, `music.` for YouTube, `www.`,
+   `player.` for Vimeo — so a subdomain outside that list is not recognised.
+2. `probe(url)` reads the host's public **oEmbed** endpoint for the title, channel and thumbnail.
+   No key, no cookies — this is what keeps a link worth saving even when the audio is refused.
+   YouTube: `youtube.com/oembed?url=…`. Vimeo: `vimeo.com/api/oembed.json?url=…`, which also
+   returns duration and accepts the dirty pasted address as-is (so the cleaning above is for our
+   deduplication, not for Vimeo). A non-existent Vimeo id answers 404 → `LinkRefused`, the same
+   path a private or removed video already took.
 3. `fetch_audio(url, dest)` runs **yt-dlp** (`-x --audio-format mp3`, 16 kHz mono), then the item
    rejoins `run_upload_transcribe` and is transcribed, analysed, embedded and drafted exactly
-   like an uploaded file. **One code path**: a second transcription pipeline for links would
-   drift from this one within a month.
+   like an uploaded file — **on both hosts**. **One code path**: a second transcription pipeline
+   for links would drift from this one within a month.
 
-### Two walls, both real, both cleared (2026-09-13 / 14)
+### Three walls, all real, all cleared (2026-09-13 / 14)
 
-Getting audio off YouTube from this server needed **two** separate things. Each one on its own
-still fails, and the second failure disguises itself as something else.
+Neither host gives audio to an anonymous datacentre IP. **Both need a cookies file**, exported
+from a logged-in browser, in **Netscape** format (a Cookie-Editor JSON export must be
+converted). Both live **outside the repository**, mode 0600, and neither is ever committed:
 
-**1. The datacentre-IP bot check.** Without cookies, yt-dlp **2026.7.4 and 2026.8.19** both
-return, on all five player clients (`android`, `ios`, `tv`, `web_embedded`, `mweb`):
+| host | setting | file |
+|---|---|---|
+| YouTube | `YT_COOKIES_FILE` | `~/.config/medycabrain/yt_cookies.txt` |
+| Vimeo | `VIMEO_COOKIES_FILE` | `~/.config/medycabrain/vimeo_cookies.txt` |
+
+Those cookies are access to an account, not an API key. `_cookies_args()` treats a missing file
+as no file and logs it once, because pointing yt-dlp at a path that is not there produces a
+confusing error instead of a clear one.
+
+**1. YouTube: the datacentre-IP bot check.** Without cookies, yt-dlp **2026.7.4 and 2026.8.19**
+both return, on all five player clients (`android`, `ios`, `tv`, `web_embedded`, `mweb`):
 
 ```
 ERROR: [youtube] <id>: Sign in to confirm you're not a bot.
 ```
 
-Remedy: a cookies file exported from a logged-in browser, in **Netscape** format (a
-Cookie-Editor JSON export must be converted), pointed at by **`YT_COOKIES_FILE`** — the same
-arrangement the sibling SPI project uses for Facebook. It lives **outside the repository** at
-`~/.config/medycabrain/yt_cookies.txt`, mode 0600: those cookies are access to a Google account,
-not an API key. `_cookies_args()` treats a missing file as no file and logs it once, because
-pointing yt-dlp at a path that is not there produces a confusing error instead of a clear one.
-
-**2. The JavaScript signature challenge.** With cookies accepted, the download *still* failed:
+**2. YouTube: the JavaScript signature challenge.** With cookies accepted, the download *still*
+failed:
 
 ```
 ERROR: [youtube] <id>: Requested format is not available.
@@ -93,13 +142,52 @@ already installed, but yt-dlp lists it as `node (unavailable)` and will not enab
 — Node is not sandboxed the way Deno is, so it must be named explicitly. Hence
 `--js-runtimes node` (`YT_JS_RUNTIME`) on every call, and `yt-dlp-ejs` pinned in
 `requirements.txt`. With both in place the same video resolved to `format 251, 120 kbps webm,
-1135 s`.
+1135 s`. **This wall is YouTube's alone**: Vimeo needs no JS runtime, and the error message that
+names it is on the YouTube row of the table only.
 
-`fetch_audio` maps each failure to the sentence that names its remedy, precisely because the
-second one points at the wrong thing by default.
+**3. Vimeo: login required, refused before the network call.** yt-dlp 2026.08.19 answers:
 
-**Cookies expire.** When they do, items go back to `failed` with the bot-check message and the
-client sees "vanno riesportati da un browser dove sei loggato". Nothing retries on its own.
+```
+ERROR: [vimeo] 1220776839: The web client only works when logged-in.
+```
+
+This is a rule **inside yt-dlp** — `yt_dlp/extractor/vimeo.py:391`, the `web` client carries
+`REQUIRES_AUTH: True` — raised *before* any request to Vimeo, so it is never a block on our IP
+and never the video itself. Four anonymous ways round it were tried and all failed
+(14/09/2026): `--extractor-args vimeo:client=android` ("unable to fetch new OAuth tokens, only
+for previously cached tokens"); `client=ios` / `web_fallback` (do not exist — only `android` and
+`web` are supported); `player.vimeo.com/video/<id>` through yt-dlp (401); and
+`player.vimeo.com/video/<id>/config` through curl, with and without a Referer (403). With
+`VIMEO_COOKIES_FILE` the audio downloads normally: `hls-fastly_skyfire-audio-high-italiano`,
+and the full path measured end to end on the client's Parte 3 gave **595 s of 16 kHz mono mp3,
+2.8 MB, in 91 s**.
+
+Because this rule belongs to yt-dlp rather than to Vimeo, an upgrade could reopen or re-close
+it. The message shown to the client therefore says "the cookies are expired or missing", never
+"impossible".
+
+`fetch_audio` maps each failure to the sentence that names its remedy, **per host**, precisely
+because the YouTube runtime one points at the wrong thing by default and because a YouTube
+remedy shown for a Vimeo link would send the reader hunting for a bug that is not there.
+
+**Cookies expire.** When they do, items go back to `failed` with the message naming the right
+file to re-export, and `_save_reference_only` keeps the title, channel and link as a citable
+reference. Nothing retries on its own.
+
+### Known limits of the link path
+
+- **An unlisted Vimeo video pasted twice, once with its hash and once without, stays two rows.**
+  Telling them apart would need a network call inside `extract_links`, which is deliberately
+  pure and must stay cheap enough to run on every keystroke-sized paste.
+- The `vimeo.com/channels/<x>/<id>` and `vimeo.com/groups/<x>/videos/<id>` spellings are
+  supported by the regex but were **never tried on a real link of the client's** — he has none.
+- **Only the listed subdomains are recognised**, as the price of anchoring the host: `www.`, `m.`
+  and `music.` on YouTube, `www.` and `player.` on Vimeo. Anything else (a regional or future
+  subdomain) is not read as a link at all — it fails closed, and the client sees the paste find
+  nothing rather than a wrong video.
+- Deduplication is a `filter(...).exists()` before the `create` in `views.from_links`, so two
+  simultaneous requests could still race into the `unique=True` constraint. Pre-existing, not
+  made worse by the second host, not addressed here.
 
 ### Known limit: a TV recording opens with its sponsors
 

@@ -91,12 +91,15 @@ account (deliberately *not* a shared base class).
 - Relationship: `1:N` → `KnowledgeDocument` (`related_name="documents"`).
 
 **`UploadedMedia`** — `uploaded_media`. Media the client brought in himself, **by file or by
-link** (a doctor interview; a TV episode on YouTube kept as reference).
+link** (a doctor interview; a TV episode on YouTube or Vimeo kept as reference).
 - Key fields: `file` (→ `uploads/{uuid}.{ext}`, **blank for a link**), `kind` (`audio`/`video`),
   `original_name`, `title`, `size_bytes`, `duration_s`, `audio_file` (derived mp3),
   `transcribe_status`.
-- Link fields: **`source_url`** (the public page; empty for a file upload), **`channel`** (the
-  publisher, from oEmbed — e.g. `YouTVRS`).
+- Link fields: **`source_url`** (the public page, in the canonical form `link_ingest` produces,
+  which is what makes it dedupable; empty for a file upload), **`channel`** (the publisher, from
+  oEmbed — e.g. `YouTVRS` on YouTube, `TVRS SRL` on Vimeo). The **host is read back from
+  `source_url`** (`link_ingest.provider_for`): there is deliberately no provider column, because
+  it would be a migration for information already in the string.
 - Two independent flags, deliberately not one: **`owner_type`** (`owned`/`competitor` — WHOSE it
   is, which decides whether it counts as Medyca's coverage in the gap engine) and
   **`is_inspiration`** (WHY it is here — reference material the client added on purpose). A
