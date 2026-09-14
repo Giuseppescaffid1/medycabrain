@@ -16,13 +16,21 @@ The Vimeo ids are the client's three real TVRS links, dirty query string and
 `#t=` fragment included, exactly as he pasted them (14/09/2026).
 """
 
+import tempfile
+from pathlib import Path
 from unittest import mock
 
 from django.contrib.auth.models import User
 from django.test import SimpleTestCase
 from rest_framework.test import APITestCase
 
-from core.link_ingest import LinkRefused, canonical_url, extract_links, provider_for
+from core.link_ingest import (
+    LinkRefused,
+    canonical_url,
+    extract_links,
+    fetch_audio,
+    provider_for,
+)
 from core.models import UploadedMedia
 
 # The three parts of "Canale Salute – Pressione Arteriosa", as pasted.
@@ -63,6 +71,52 @@ class ExtractVimeo(SimpleTestCase):
         refs = extract_links("https://player.vimeo.com/video/1220776839?h=abc123def4")
         self.assertEqual(refs[0].url, "https://vimeo.com/1220776839/abc123def4")
 
+    def test_the_hash_is_found_wherever_it_sits_in_the_query(self):
+        """Vimeo's own share/embed buttons rarely put `h=` first.
+
+        With the hash read only in first position, these three spellings lose
+        it, the oEmbed call answers 403, and the client is told the video "is
+        private or removed" — a reason that is simply false.
+        """
+        for pasted in (
+            "https://player.vimeo.com/video/76979871?h=8272103f6e&badge=0",
+            "https://player.vimeo.com/video/76979871?badge=0&h=8272103f6e",
+            "https://player.vimeo.com/video/76979871"
+            "?badge=0&autopause=0&h=8272103f6e&player_id=0",
+        ):
+            self.assertEqual(extract_links(pasted)[0].url,
+                             "https://vimeo.com/76979871/8272103f6e", pasted)
+
+    def test_share_copy_is_the_link_the_client_actually_copies(self):
+        refs = extract_links("https://vimeo.com/1220776839?share=copy&h=abc123def4")
+        self.assertEqual(refs[0].unlisted_hash, "abc123def4")
+        self.assertEqual(refs[0].url, "https://vimeo.com/1220776839/abc123def4")
+
+    def test_a_trailing_word_is_not_an_unlisted_hash(self):
+        """Real hashes are lowercase hexadecimal, 8-12 chars.
+
+        A looser class reads `/settings` as a hash: the address invented from
+        it opens nothing and, worse, does not dedup with the same video
+        pasted bare.
+        """
+        for tail in ("/settings", "/collections", "/likes"):
+            refs = extract_links(f"https://vimeo.com/1220776839{tail}")
+            self.assertEqual(refs[0].unlisted_hash, "", tail)
+            self.assertEqual(refs[0].url, "https://vimeo.com/1220776839", tail)
+        # And therefore the two spellings are one row, not two.
+        refs = extract_links("https://vimeo.com/1220776839/settings "
+                             "https://vimeo.com/1220776839")
+        self.assertEqual([r.url for r in refs], ["https://vimeo.com/1220776839"])
+
+    def test_a_lookalike_host_is_not_vimeo(self):
+        """`fakevimeo.com/1234567` used to canonicalise onto a real Vimeo id."""
+        for url in ("https://fakevimeo.com/1234567",
+                    "https://notvimeo.com/1220776839",
+                    "https://evilvimeo.com/1220776839?h=abc123def4"):
+            self.assertEqual(extract_links(url), [], url)
+            with self.assertRaises(LinkRefused, msg=url):
+                provider_for(url)
+
     def test_channel_and_group_spellings(self):
         for url in ("https://vimeo.com/channels/staffpicks/1220776839",
                     "https://vimeo.com/groups/salute/videos/1220776839"):
@@ -97,6 +151,20 @@ class ExtractYouTubeStillWorks(SimpleTestCase):
             self.assertEqual(extract_links(url)[0].url,
                              "https://www.youtube.com/watch?v=aCPj6fKx_Yc", url)
 
+    def test_a_lookalike_host_is_not_youtube(self):
+        """Same anchoring fix as Vimeo: a substring match is not a host."""
+        for url in ("https://notyoutube.com/watch?v=aCPj6fKx_Yc",
+                    "https://fakeyoutu.be/aCPj6fKx_Yc"):
+            self.assertEqual(extract_links(url), [], url)
+
+    def test_the_subdomains_the_client_pastes_still_match(self):
+        for url in ("https://m.youtube.com/watch?v=aCPj6fKx_Yc",
+                    "https://music.youtube.com/watch?v=aCPj6fKx_Yc",
+                    "youtube.com/watch?v=aCPj6fKx_Yc",
+                    "(https://www.youtube.com/watch?v=aCPj6fKx_Yc)"):
+            self.assertEqual(extract_links(url)[0].url,
+                             "https://www.youtube.com/watch?v=aCPj6fKx_Yc", url)
+
     def test_canonical_url_still_defaults_to_youtube(self):
         self.assertEqual(canonical_url("aCPj6fKx_Yc"),
                          "https://www.youtube.com/watch?v=aCPj6fKx_Yc")
@@ -125,6 +193,51 @@ class MixedAndRejected(SimpleTestCase):
         self.assertEqual(
             provider_for("https://www.youtube.com/watch?v=aCPj6fKx_Yc").name,
             "youtube")
+
+
+class RefusalsBecomeSentences(SimpleTestCase):
+    """What yt-dlp says on stderr, turned into something the client can act on.
+
+    yt-dlp is never run here: only the mapping stderr → sentence is under
+    test, and that mapping is the whole reason the client sees a remedy
+    instead of a stack of flags.
+    """
+
+    def _message_for(self, url, stderr):
+        proc = mock.Mock(returncode=1, stderr=stderr)
+        with tempfile.TemporaryDirectory() as out, \
+                mock.patch("core.link_ingest.subprocess.run", return_value=proc):
+            with self.assertRaises(LinkRefused) as caught:
+                fetch_audio(url, Path(out) / "a.mp3")
+        return str(caught.exception)
+
+    def test_removed_video_is_recognised_whatever_the_casing(self):
+        # yt-dlp writes this refusal with different casing per extractor;
+        # a case-sensitive list let one of them through to the raw stderr.
+        for stderr in ("ERROR: [vimeo] 1220776839: Video unavailable",
+                       "ERROR: [vimeo] 1220776839: Video UNAVAILABLE",
+                       "ERROR: [youtube] aCPj6fKx_Yc: Private video",
+                       "ERROR: [youtube] aCPj6fKx_Yc: private video"):
+            self.assertEqual(
+                self._message_for("https://vimeo.com/1220776839", stderr)
+                if "vimeo" in stderr else
+                self._message_for("https://youtu.be/aCPj6fKx_Yc", stderr),
+                "Il video non è disponibile (privato o rimosso).", stderr)
+
+    def test_the_cookies_remedy_is_shown_only_when_it_is_the_cookies(self):
+        logged_in = self._message_for(
+            "https://vimeo.com/1220776839",
+            "ERROR: [vimeo] 1220776839: The web client only works when "
+            "logged-in. Use --cookies, --cookies-from-browser ...")
+        self.assertIn("VIMEO_COOKIES_FILE", logged_in)
+        # Password-protected and group-restricted videos get the same
+        # --cookies suggestion from yt-dlp, and re-exporting cookies would
+        # not fix either: the client must not be sent to do it.
+        protected = self._message_for(
+            "https://vimeo.com/1220776839",
+            "ERROR: [vimeo] 1220776839: This video is protected by a "
+            "password. Use --video-password or --cookies-from-browser ...")
+        self.assertNotIn("VIMEO_COOKIES_FILE", protected)
 
 
 class FromLinksEndpoint(APITestCase):

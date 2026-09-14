@@ -65,11 +65,23 @@ Adding a third host is one more row.
    | host | recognised | canonical | dropped |
    |---|---|---|---|
    | YouTube | `watch?v=`, `youtu.be/`, `shorts/`, `embed/`, `live/`; id = 11 chars `[A-Za-z0-9_-]` | `https://www.youtube.com/watch?v=<id>` | `&t=365s`, `&list=…`, brackets from the notes |
-   | Vimeo | `vimeo.com/<id>`, `player.vimeo.com/video/<id>`, `vimeo.com/<id>/<hash>`, `?h=<hash>`, `channels/<x>/<id>`, `groups/<x>/videos/<id>`; id = **numeric**, `\d{6,12}` | `https://vimeo.com/<id>`, or `https://vimeo.com/<id>/<hash>` when unlisted | `?fl=pl&fe=cm`, `#t=3m12s` |
+   | Vimeo | `vimeo.com/<id>`, `player.vimeo.com/video/<id>`, `vimeo.com/<id>/<hash>`, `h=<hash>` **anywhere in the query** (`?badge=0&h=…`, `?share=copy&h=…`), `channels/<x>/<id>`, `groups/<x>/videos/<id>`; id = **numeric**, `\d{6,12}`; hash = lowercase hex, `[0-9a-f]{8,12}` | `https://vimeo.com/<id>`, or `https://vimeo.com/<id>/<hash>` when unlisted | `?fl=pl&fe=cm`, `#t=3m12s`, and trailing pages like `/settings` |
 
    Vimeo ids are numeric and their length is **not** fixed: the client's three are 10 digits
    (`1220776839`), older videos have 7-9. The unlisted hash must survive into the canonical url
-   or the video becomes unreachable.
+   or the video becomes unreachable — and Vimeo's own share and embed buttons put `h=` wherever
+   they like in the query (`?badge=0&h=8272103f6e`), so the **whole query** is searched, not just
+   what follows the id. A hash read only in first position is a hash lost: the oEmbed call then
+   answers 403 and the client is told the video "is private or removed", which is false.
+   The hash is lowercase hexadecimal (`[0-9a-f]{8,12}`) on purpose: with a looser class,
+   `vimeo.com/<id>/settings` reads as the hash `settings`, invents an address that opens nothing,
+   and does not dedup with the same video pasted bare.
+
+   **The host is anchored** on both patterns (`(?:^|[^\w.])(?:www\.|player\.)?vimeo\.com/`, and
+   the matching shape on YouTube): without it, `fakevimeo.com/1234567` matches as a substring and
+   is canonicalised onto a real Vimeo video the client never pasted. The cost of anchoring is that
+   the accepted subdomains have to be spelled out — `www.`, `m.`, `music.` for YouTube, `www.`,
+   `player.` for Vimeo — so a subdomain outside that list is not recognised.
 2. `probe(url)` reads the host's public **oEmbed** endpoint for the title, channel and thumbnail.
    No key, no cookies — this is what keeps a link worth saving even when the audio is refused.
    YouTube: `youtube.com/oembed?url=…`. Vimeo: `vimeo.com/api/oembed.json?url=…`, which also
@@ -156,6 +168,10 @@ reference. Nothing retries on its own.
   pure and must stay cheap enough to run on every keystroke-sized paste.
 - The `vimeo.com/channels/<x>/<id>` and `vimeo.com/groups/<x>/videos/<id>` spellings are
   supported by the regex but were **never tried on a real link of the client's** — he has none.
+- **Only the listed subdomains are recognised**, as the price of anchoring the host: `www.`, `m.`
+  and `music.` on YouTube, `www.` and `player.` on Vimeo. Anything else (a regional or future
+  subdomain) is not read as a link at all — it fails closed, and the client sees the paste find
+  nothing rather than a wrong video.
 - Deduplication is a `filter(...).exists()` before the `create` in `views.from_links`, so two
   simultaneous requests could still race into the `unique=True` constraint. Pre-existing, not
   made worse by the second host, not addressed here.

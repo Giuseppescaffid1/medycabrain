@@ -35,7 +35,11 @@ Three jobs, in order of how much they can go wrong:
    instead of three rows — and, on Vimeo, what makes `vimeo.com/1220776839`,
    `vimeo.com/1220776839?fl=pl&fe=cm` and `…#t=3m12s` one row instead of
    three. `KnowledgeDocument.source_url` is `unique=True`; this is what feeds
-   it.
+   it. What must NOT be dropped is Vimeo's unlisted hash, which the share and
+   embed buttons write anywhere in the query (`?badge=0&h=8272103f6e`): lose
+   it and the video is unreachable, and the client is told it "is private or
+   removed" — a false reason. Both patterns anchor the host, or
+   `fakevimeo.com/1234567` would be canonicalised onto a real video.
 2. `probe(url)` — the provider's public oEmbed endpoint. Gives the real title
    and channel without any authentication. Verified on all eleven YouTube
    links on 2026-09-13 and on the three Vimeo links on 2026-09-14 (Vimeo also
@@ -85,27 +89,42 @@ from django.conf import settings
 
 logger = logging.getLogger(__name__)
 
+# The host is anchored on both patterns: without `(?:^|[^\w.])` in front,
+# `fakevimeo.com/1234567` and `notyoutube.com/watch?v=…` match as substrings
+# and get canonicalised onto a real video the client never pasted. Anchoring
+# means the known subdomains have to be spelled out (`www.`, `m.`, `music.`,
+# `player.`), because a leading dot is no longer allowed to start a match.
+
 # Every YouTube spelling that carries an id, reduced to the id itself.
 # The id is exactly 11 chars of [A-Za-z0-9_-]; anything after it (&t=365s,
 # &list=…, a trailing bracket from the client's notes) is deliberately
 # ignored, because two links to the same video must become ONE row.
 _YT_ID = re.compile(
+    r"(?:^|[^\w.])(?:www\.|m\.|music\.)?"
     r"(?:youtube\.com/(?:watch\?(?:[^\s\"'<>]*&)?v=|shorts/|embed/|live/)"
     r"|youtu\.be/)([A-Za-z0-9_-]{11})"
 )
 
 # Vimeo ids are NUMERIC, and their length is not fixed: the client's three are
 # 10 digits (1220776839), older videos have 7-9. Hence {6,12}, not "10".
-# The second group is the *unlisted* hash — `vimeo.com/<id>/<hash>`, or `h=`
-# on a player link. It must survive into the canonical url or the video
-# becomes unreachable. `?fl=pl&fe=cm` and `#t=3m12s` match nothing here and
-# are therefore dropped, which is the whole point.
+# Group 2 is the *unlisted* hash written as a path segment
+# (`vimeo.com/<id>/<hash>`); written as a query parameter it is found by
+# `_VIMEO_QUERY_HASH` over group `query`, because Vimeo puts `h=` wherever it
+# likes in the query (`?badge=0&h=8272103f6e`, `?share=copy&h=…`) and an hash
+# read only in first position is an hash lost. The hash is lowercase
+# hexadecimal: a looser class would read `vimeo.com/<id>/settings` as an hash
+# and invent an address that opens nothing and dedups with nothing.
+# `?fl=pl&fe=cm` and `#t=3m12s` carry no `h=` and are therefore dropped,
+# which is the whole point.
 _VIMEO_ID = re.compile(
-    r"(?:player\.)?vimeo\.com/"
+    r"(?:^|[^\w.])(?:www\.|player\.)?vimeo\.com/"
     r"(?:video/|channels/[\w-]+/|groups/[\w-]+/videos/)?"
     r"(\d{6,12})"
-    r"(?:(?:/|[?&]h=)([A-Za-z0-9]{6,20}))?"
+    r"(?:/([0-9a-f]{8,12})(?![\w-]))?"
+    r"(?P<query>\?[^\s\"'<>]*)?"
 )
+
+_VIMEO_QUERY_HASH = re.compile(r"[?&]h=([0-9a-f]{8,12})(?![\w-])")
 
 _UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
        "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
@@ -120,11 +139,15 @@ class Provider:
     """Everything that differs between two video hosts, in one place."""
 
     name: str
-    # Finds ids in a blob. Group 1 is the id; group 2, when the pattern has
-    # one, is an extra piece that must survive canonicalisation.
+    # Finds ids in a blob. Group 1 is the id.
     pattern: re.Pattern
     # (video_id, extra) → the ONE address that goes into source_url.
     canonical: Callable[[str, str], str]
+    # match → the extra piece that must survive canonicalisation (Vimeo's
+    # unlisted hash). A function and not a group number because the hash can
+    # be in the path or anywhere in the query: only the provider knows where
+    # to look.
+    extra: Callable[[re.Match], str]
     # url → the public oEmbed endpoint that describes it.
     oembed: Callable[[str], str]
     # Setting name holding the path to the cookies file ("" = no cookies).
@@ -149,11 +172,27 @@ def _vimeo_canonical(video_id: str, unlisted_hash: str = "") -> str:
             else f"https://vimeo.com/{video_id}")
 
 
+def _vimeo_extra(m: re.Match) -> str:
+    """The unlisted hash, wherever Vimeo decided to put it.
+
+    Vimeo's own share and embed buttons write `?badge=0&h=8272103f6e` and
+    `?share=copy&h=abc123def4` — the hash is rarely the first parameter — so
+    the whole query is searched, not just what follows the id. Losing it here
+    is not a cosmetic bug: the oEmbed call then answers 403 and the client is
+    told his video "is private or removed", which is false.
+    """
+    if m.group(2):
+        return m.group(2)
+    in_query = _VIMEO_QUERY_HASH.search(m.group("query") or "")
+    return in_query.group(1) if in_query else ""
+
+
 PROVIDERS: tuple[Provider, ...] = (
     Provider(
         name="youtube",
         pattern=_YT_ID,
         canonical=lambda vid, extra="": f"https://www.youtube.com/watch?v={vid}",
+        extra=lambda m: "",
         oembed=lambda url: (
             f"https://www.youtube.com/oembed?url={quote(url, safe='')}&format=json"
         ),
@@ -177,6 +216,7 @@ PROVIDERS: tuple[Provider, ...] = (
         name="vimeo",
         pattern=_VIMEO_ID,
         canonical=_vimeo_canonical,
+        extra=_vimeo_extra,
         oembed=lambda url: (
             f"https://vimeo.com/api/oembed.json?url={quote(url, safe='')}"
         ),
@@ -185,8 +225,11 @@ PROVIDERS: tuple[Provider, ...] = (
             # yt-dlp raises this before contacting Vimeo (vimeo.py:391,
             # REQUIRES_AUTH on the web client), so it is always the cookies —
             # never a network problem and never the video itself.
-            (("only works when logged-in", "--cookies-from-browser",
-              "Use --cookies"),
+            # Only this needle, and deliberately: yt-dlp suggests --cookies
+            # for password-protected and group-restricted videos too, and
+            # naming the cookies file there sends the client to re-export
+            # cookies that were never the problem.
+            (("only works when logged-in",),
              "Vimeo lascia scaricare l'audio solo a chi è collegato con un "
              "account. I cookie (VIMEO_COOKIES_FILE) sono scaduti o mancanti: "
              "vanno riesportati da un browser dove sei loggato. In "
@@ -197,8 +240,11 @@ PROVIDERS: tuple[Provider, ...] = (
 
 # Refusals that read the same whatever the host is, tried after the
 # provider's own rows.
+# Needles are matched case-insensitively (see fetch_audio): yt-dlp writes the
+# same refusal with different casing depending on the extractor, and a
+# case-sensitive list lets one of them fall through to the raw stderr.
 _COMMON_ERRORS: tuple[tuple[tuple[str, ...], str], ...] = (
-    (("Private video", "private video", "unavailable", "Unavailable"),
+    (("private video", "unavailable"),
      "Il video non è disponibile (privato o rimosso)."),
 )
 
@@ -239,7 +285,7 @@ def extract_links(text: str) -> list[VideoRef]:
     found: list[tuple[int, VideoRef]] = []
     for prov in PROVIDERS:
         for m in prov.pattern.finditer(text or ""):
-            extra = (m.group(2) or "") if m.re.groups > 1 else ""
+            extra = prov.extra(m)
             found.append((m.start(), VideoRef(
                 provider=prov.name,
                 video_id=m.group(1),
@@ -342,8 +388,9 @@ def fetch_audio(url: str, dest_mp3: Path) -> None:
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
         err = (proc.stderr or "")[-800:]
         if proc.returncode != 0:
+            lowered = err.lower()
             for needles, message in (*prov.errors, *_COMMON_ERRORS):
-                if any(n in err for n in needles):
+                if any(n.lower() in lowered for n in needles):
                     raise LinkRefused(message)
             raise LinkRefused(f"Download non riuscito: {err.strip()[-200:]}")
         made = sorted(Path(tmp).glob("a.*"))
