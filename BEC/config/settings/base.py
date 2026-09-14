@@ -259,15 +259,26 @@ BATCH_ENABLED = os.environ.get("BATCH_ENABLED", "1") == "1"
 BATCH_MODEL = os.environ.get("BATCH_MODEL", "claude-sonnet-5")
 BATCH_MAX_REQUESTS = int(os.environ.get("BATCH_MAX_REQUESTS", "2000"))
 
-# ── Video presi da un link (YouTube) ───────────────────────────────────────
-# yt-dlp scarica l'audio, ma da questo server YouTube risponde "Sign in to
-# confirm you're not a bot" a ogni player client (provato il 2026-09-13 su
-# yt-dlp 2026.7.4 e 2026.8.19). Serve un file di cookie esportato da un
-# browser dove sei loggato — stesso schema dei cookie Facebook nel progetto
-# gemello. Senza, il link resta salvato come riferimento ma non viene
-# trascritto, e la riga lo dice a chiaro.
+# ── Video presi da un link (YouTube, Vimeo) ────────────────────────────────
+# yt-dlp scarica l'audio, ma **nessuno dei due fornitori lo dà in anonimo** da
+# questo server: servono i cookie di un browser dove sei loggato, uno per
+# fornitore. I file stanno fuori dal repository, in ~/.config/medycabrain/,
+# permessi 0600: sono l'accesso a un account, non una chiave API. Senza, il
+# link resta salvato come riferimento ma non viene trascritto, e la riga lo
+# dice in chiaro.
+#
+# YouTube: senza cookie risponde "Sign in to confirm you're not a bot" a ogni
+# player client (provato il 2026-09-13 su yt-dlp 2026.7.4 e 2026.8.19).
 YT_COOKIES_FILE = os.environ.get("YT_COOKIES_FILE", "")
-# YouTube firma gli indirizzi dei media con una sfida JavaScript. yt-dlp sa
+# Vimeo: yt-dlp 2026.08.19 rifiuta **prima ancora di chiamare Vimeo** — nel suo
+# sorgente `vimeo.py:391` il client `web` ha `REQUIRES_AUTH: True` — con "The
+# web client only works when logged-in". Non è un blocco sul nostro IP e non
+# esiste una via anonima (client `android`: vuole token OAuth già in cache;
+# `player.vimeo.com/<id>/config`: 401/403 con e senza Referer). Con i cookie
+# l'audio si scarica normalmente (verificato il 14/09/2026 sui tre video TVRS).
+# Qui NON serve un runtime JavaScript: quella sfida è solo di YouTube.
+VIMEO_COOKIES_FILE = os.environ.get("VIMEO_COOKIES_FILE", "")
+# Solo YouTube: firma gli indirizzi dei media con una sfida JavaScript. yt-dlp sa
 # risolverla ma NON abilita da solo un runtime non sandboxato: va nominato.
 # Senza, tornano solo le anteprime e l'errore dice "formato non disponibile",
 # che manda a cercare la cosa sbagliata. Serve anche il pacchetto yt-dlp-ejs.

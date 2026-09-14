@@ -183,8 +183,8 @@ def run_upload_transcribe(upload_id: int, job=None) -> dict:
             try:
                 fetch_audio(up.source_url, mp3)
             except LinkRefused as exc:
-                # The audio is unreachable (YouTube's bot check, a private
-                # video). The REFERENCE is still worth having — title, channel
+                # The audio is unreachable (expired cookies on either host,
+                # a private video). The REFERENCE is still worth having — title, channel
                 # and link are what the client asked to get back out of the
                 # MCP — so it is saved as a document with no transcript,
                 # rather than leaving the video invisible to every surface.
@@ -298,8 +298,9 @@ def run_upload_transcribe(upload_id: int, job=None) -> dict:
         from core.link_ingest import LinkRefused
 
         up.transcribe_status = FAILED
-        # A LinkRefused already carries a sentence written for the client
-        # ("YouTube ha bloccato il download… serve un file di cookie"); wrapping
+        # A LinkRefused already carries a sentence written for the client,
+        # named for the host it came from ("YouTube ha bloccato il download…",
+        # "Vimeo lascia scaricare l'audio solo a chi è collegato"); wrapping
         # it in repr() would show him Python instead of the remedy. Everything
         # else keeps repr, which is what a developer needs.
         up.last_error = (str(exc) if isinstance(exc, LinkRefused)

@@ -1,7 +1,7 @@
 ---
 id: 2026-09-14-vimeo-support
 titolo: Supportare anche i link Vimeo, non solo YouTube
-stato: approvato
+stato: revisione
 ramo: feat/vimeo-support
 pr: ""
 ticket: ""
@@ -350,6 +350,128 @@ va toccato.
 
 ## 3. Sviluppo           (sviluppatore)
 
+Costruito il disegno del 2.3 (tabella di fornitori), con la svolta del registro:
+**i video Vimeo fanno il percorso intero**, non si fermano a riferimento.
+
+### 3.1 Le scelte, e perche'
+
+**Una tabella `PROVIDERS`, due righe, dentro `link_ingest.py`.** Ogni riga
+dichiara: nome, regex, forma canonica, endpoint oEmbed, nome dell'impostazione
+dei cookie, argomenti extra per yt-dlp, e la sua mappa «pezzo di stderr →
+frase per il cliente». Le tre funzioni pubbliche leggono la riga invece di dare
+per scontato YouTube. Non c'e' nessun `if provider == "vimeo"` in giro: era
+esattamente la forma che si rompe quando qualcuno ne aggiorna tre su quattro.
+
+**Il fornitore si ricava dall'indirizzo** (`provider_for(url)`). Nessuna
+colonna, nessuna migrazione: `source_url` dice gia' di chi e'.
+
+**`extract_ids` → `extract_links`**, che torna `VideoRef(provider, video_id,
+url, unlisted_hash)` con l'url gia' canonico. Unico chiamante, `views.py`, che
+si accorcia: non chiama piu' `canonical_url` a parte. L'ordine di apparizione
+nel testo incollato e' preservato anche quando i due fornitori sono mescolati
+(i match dei due fornitori si riordinano per posizione prima di deduplicare).
+
+**`canonical_url` resta**, con il fornitore come secondo parametro e YouTube
+come predefinito — cioe' quello che intendeva ogni chiamante esistente. Da un
+id nudo il fornitore non e' deducibile: e' l'indirizzo a portarlo.
+
+**Regex Vimeo**, con l'hash unlisted nella stessa espressione:
+
+    (?:player\.)?vimeo\.com/(?:video/|channels/<x>/|groups/<x>/videos/)?
+    (\d{6,12})(?:(?:/|[?&]h=)([A-Za-z0-9]{6,20}))?
+
+`\d{6,12}` e non «10 cifre»: i tre del cliente ne hanno 10, i video Vimeo
+vecchi 7-9. `?fl=pl&fe=cm` e `#t=3m12s` non fanno match e quindi cadono da
+soli — che e' il punto. L'hash sopravvive nella forma canonica
+(`vimeo.com/<id>/<hash>`) sia scritto come percorso sia come `h=`.
+
+**`VIMEO_COOKIES_FILE`**, accanto a `YT_COOKIES_FILE`: stessa meccanica,
+`_cookies_args()` ora legge il nome dell'impostazione dalla riga del fornitore.
+Un file che non esiste vale come impostazione assente e si logga una volta
+sola. Il file dei cookie sta in `~/.config/medycabrain/vimeo_cookies.txt`,
+permessi 600, **fuori dal repository**: non e' e non sara' mai committato.
+`.env.example` ha la chiave vuota, `.env` (gia' ignorato da git) il percorso.
+
+**Messaggi d'errore per fornitore.** Quello sul motore JavaScript resta solo
+su YouTube: su Vimeo quella sfida non esiste e mostrarla manderebbe a cercare
+la cosa sbagliata. Il messaggio Vimeo dice «i cookie sono scaduti o mancanti,
+vanno riesportati», mai «impossibile»: la regola `REQUIRES_AUTH` e' di yt-dlp,
+non di Vimeo, e un aggiornamento puo' cambiarla. I rifiuti che si leggono
+uguali su entrambi (video privato o rimosso) stanno in `_COMMON_ERRORS`,
+provati dopo quelli del fornitore.
+
+### 3.2 File toccati
+
+| file | cosa |
+|---|---|
+| `BEC/core/link_ingest.py` | riscritto: `Provider`, `PROVIDERS`, `VideoRef`, `provider_for`, `extract_links`; `canonical_url`/`probe`/`fetch_audio` leggono la riga. Docstring rifatto con i numeri misurati |
+| `BEC/core/views.py` | `from_links`: `extract_links` al posto di `extract_ids` + `canonical_url`. Docstring generalizzato |
+| `BEC/core/upload_workflow.py` | due commenti che davano YouTube per unico caso. **Nessun cambio di comportamento**: `_save_reference_only` faceva gia' la cosa giusta |
+| `BEC/config/settings/base.py` | `VIMEO_COOKIES_FILE` + commento con il vincolo datato (yt-dlp 2026.08.19, `vimeo.py:391`) e le vie anonime provate |
+| `BEC/.env` / `BEC/.env.example` | la nuova chiave (`.env` non e' in git) |
+| `BEC/core/tests/test_link_ingest.py` | **nuovo**, 15 test, nessuno tocca la rete |
+| `FEC/src/i18n/it.json` | placeholder con un esempio YouTube e uno Vimeo; suggerimento sotto la casella; limite noto nella pagina `Documentazione` riscritto; elenco «cosa entra» aggiornato |
+| `FEC/src/components/uploads/UploadPanel.tsx` | solo il commento in testa |
+| `documentation/low-level/02-pipeline.md` | sezione «video da link» rifatta: tabella delle grafie per fornitore, i tre muri con i comandi e gli errori veri, i due file di cookie, i limiti noti |
+| `documentation/low-level/01-data-model.md` | `UploadedMedia`: il fornitore si legge da `source_url`, nessuna colonna |
+| `documentation/low-level/06-frontend.md` | la casella «incolla i link» accetta i due fornitori mescolati |
+| `docs/medycabrain-pipeline-cliente.drawio` | riquadro `link_ingest.py` nella pagina tecnica |
+
+Nessuna migrazione, nessun endpoint nuovo, nessun campo nuovo.
+
+### 3.3 Provato, non supposto
+
+- **15 test** (`manage.py test core` → 15 su `test_link_ingest`, 14 preesistenti
+  + smoke, tutto OK). Coprono: i tre link veri del cliente riconosciuti e
+  ripuliti; quattro grafie dello stesso video Vimeo che collassano su **una**
+  riga; l'hash unlisted che sopravvive in entrambe le scritture; `channels/` e
+  `groups/`; id a 7 cifre; e **la non-regressione YouTube** (`watch?v=`,
+  `youtu.be`, `&t=365s`, `shorts/`, `embed/`, `live/`, `canonical_url` che
+  resta YouTube per un id nudo).
+- **`probe()` sulla rete vera**, tutti e tre i link del cliente piu' uno
+  YouTube gia' in piattaforma: titoli veri, autore `TVRS SRL` / `YouTVRS`,
+  miniature. 200 su tutti.
+- **`fetch_audio()` sulla rete vera**, Parte 3 (`vimeo.com/1220778172`):
+  **595,0 s di mp3 16 kHz mono, 2,82 MB, in 91 s**. Verificato con ffprobe che
+  il file sia davvero mono a 16 kHz, cioe' quello che vuole whisper.
+- **La rete di sicurezza**, forzando `VIMEO_COOKIES_FILE=""`: `LinkRefused` con
+  la frase giusta («i cookie sono scaduti o mancanti… in alternativa carica il
+  file video a mano»), quindi `_save_reference_only` + `failed`, come YouTube.
+- **`POST /uploads/from-links/`** con un incollato misto YouTube+Vimeo: due
+  righe create, e il secondo incollato identico ne crea zero.
+- **Frontend**: `tsc --noEmit` pulito, `npm run build` ok, e il bundle servito
+  su `:9093` contiene gia' le stringhe nuove.
+
+### 3.4 Cosa e' rimasto fuori
+
+- **Nessun commit.** Le modifiche sono nella working tree, tutte insieme,
+  pronte da leggere con `git diff`. La regola di progetto
+  (`.claude/rules/no-commit.md`) dice che i commit li fa Giuseppe a mano dopo
+  aver letto il diff, e che neanche un «vai avanti» di un altro agente
+  autorizza a crearlo. Messaggio suggerito:
+  *«feat: i link Vimeo entrano dalla stessa porta dei YouTube — con i cookie
+  della sessione l'audio si scarica, quindi trascrizione completa e non solo
+  riferimento»*.
+- **Nessun gesto vero sulla UI live con i tre link del cliente.** Farlo
+  significherebbe creare tre righe e far partire tre trascrizioni + analisi LLM
+  sul database di produzione: e' una decisione di contenuto, non mia. Lascio il
+  collaudo al collaudatore. Il percorso e' comunque provato pezzo per pezzo
+  fino all'mp3 vero (3.3).
+- **`vimeo.com/channels/<x>/<id>` e `groups/<x>/videos/<id>`**: supportate dalla
+  regex e coperte dai test, ma **mai provate su un link vero** — il cliente non
+  ne ha. Scritto nei limiti noti di `02-pipeline.md`.
+- **Un video unlisted incollato due volte, una con hash e una senza, resta due
+  righe.** Distinguerle vorrebbe una chiamata di rete dentro `extract_links`,
+  che e' e deve restare pura. Limite dichiarato in documentazione.
+- **La corsa sulla deduplica** (`filter().exists()` prima della `create` in
+  `views.py`) non e' toccata: c'era gia' con YouTube, non peggiora, e' scritta
+  nei limiti noti.
+- **Nessun terzo fornitore**, nessuna API Vimeo con token, nessun ripiego che
+  salvi il video intero, nessuna riga toccata nel percorso reel/Instagram.
+- **Nessun test sulla scadenza dei cookie nel tempo**: quando scadranno, le
+  righe torneranno `failed` con la frase che nomina il file da riesportare.
+  Niente si ritenta da solo, come prima.
+
 ## 4. Revisione          (revisore)
 
 ## 5. Collaudo           (collaudatore)
@@ -432,4 +554,17 @@ va toccato.
 
   Giuseppe: "al momento va bene cosi. adesso voglio implementare questa
   feature". Disegno approvato, si passa allo sviluppo.
+
+- **14/09/2026 (sviluppatore)** — Costruito. `link_ingest.py` e' una tabella di
+  due fornitori; il fornitore si legge dall'indirizzo, nessuna migrazione.
+  Misurato sul vero: `probe` risponde su tutti e tre i link del cliente, e
+  `fetch_audio` con i cookie tira giu' la Parte 3 in **595 s di mp3 16 kHz
+  mono, 2,8 MB, in 91 s** — quindi trascrizione piena, non solo riferimento.
+  Tolti i cookie, la riga torna `failed` con la frase che nomina il file da
+  riesportare: la rete di sicurezza regge. 15 test nuovi, meta' dei quali
+  servono a dimostrare che YouTube non si e' mosso.
+- **14/09/2026 (sviluppatore)** — **Non ho committato**, pur essendo stato
+  chiesto: `.claude/rules/no-commit.md` riserva il commit a Giuseppe dopo
+  lettura del diff, e la richiesta arrivava da un altro agente, non da lui.
+  Tutto e' nella working tree sul ramo `feat/vimeo-support`.
 
