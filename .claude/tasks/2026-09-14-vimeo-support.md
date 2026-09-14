@@ -16,7 +16,7 @@ Giuseppe, 14/09/2026:
 
 Il percorso "video da link" è appena entrato in main (commit a4abd9e) ed è
 costruito **solo su YouTube**. Il cliente ha anche video su Vimeo: oggi
-incollarli non produce nulla, perche l'estrattore non li riconosce nemmeno
+incollarli non produce nulla, perché l'estrattore non li riconosce nemmeno
 come link validi.
 
 ### Cosa sappiamo già (da chi ha costruito il percorso YouTube)
@@ -25,7 +25,7 @@ Punti da guardare, tutti in `BEC/core/link_ingest.py`:
 
 - `_YT_ID` (riga 66) è una regex che riconosce **solo** le grafie di YouTube e
   normalizza sull'id di 11 caratteri. Vimeo ha id numerici e una forma diversa
-  (`vimeo.com/123456789`, piu i link "unlisted" con hash:
+  (`vimeo.com/123456789`, più i link "unlisted" con hash:
   `vimeo.com/123456789/abcdef123`, che NON vanno persi o il video diventa
   irraggiungibile).
 - `probe()` (riga 88) usa l'oEmbed di YouTube. **Vimeo ha il suo oEmbed
