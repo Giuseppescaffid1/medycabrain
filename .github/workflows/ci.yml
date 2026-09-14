@@ -1,0 +1,103 @@
+# Il cancello davanti a main.
+#
+# main è protetto da un ruleset che pretende una pull request e questi due job
+# verdi. Restano deliberatamente veloci: una CI che impiega dieci minuti viene
+# aggirata, e un cancello aggirato non è un cancello.
+#
+# Il job backend NON installa requirements.txt: quello tira dentro
+# sentence-transformers e faster-whisper, quindi torch, cioè gigabyte a ogni
+# PR per far girare due test. Usa requirements-ci.txt, che basta perché i
+# modelli pesanti sono importati in modo pigro dentro le funzioni che li usano.
+# Verificato il 2026-09-14: check, makemigrations --check e test core passano
+# tutti con le sole dipendenze leggere.
+
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  # Un push nuovo sulla stessa PR annulla il giro precedente: niente code.
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend (Django)
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: medyca
+          POSTGRES_PASSWORD: medyca
+          POSTGRES_DB: medyca_ci
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DJANGO_SETTINGS_MODULE: config.settings.base
+      DATABASE_URL: postgres://medyca:medyca@127.0.0.1:5432/medyca_ci
+      SECRET_KEY: chiave-finta-solo-per-la-ci
+      DEBUG: "False"
+      ALLOWED_HOSTS: "*"
+
+    defaults:
+      run:
+        working-directory: BEC
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: BEC/requirements-ci.txt
+
+      - name: Installa le dipendenze leggere
+        run: pip install -r requirements-ci.txt
+
+      # Il controllo che serviva davvero: prende la deriva fra models.py e le
+      # migrazioni, cioè il caso in cui qualcuno cambia un modello e si
+      # dimentica la migrazione. In produzione si scopre al deploy.
+      - name: Modelli e migrazioni allineati
+        run: python manage.py makemigrations --check --dry-run
+
+      - name: Controlli di Django
+        run: python manage.py check
+
+      - name: Test
+        run: python manage.py test core
+
+  frontend:
+    name: Frontend (build e tipi)
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: FEC
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: FEC/package-lock.json
+
+      - run: npm ci
+
+      # `npm run build` è `tsc -b && vite build`: è anche il controllo dei tipi,
+      # l'unico gate automatico che il frontend ha oggi.
+      - name: Build e controllo dei tipi
+        run: npm run build

@@ -1,14 +1,27 @@
 {
+  "//": "main non si scrive mai direttamente: ramo -> commit -> push -> PR, e il merge lo fa Giuseppe. Regola completa in .claude/rules/git-flow.md. Questi divieti sono una cintura, non il freno: le regole di corrispondenza non coprono ogni modo di scrivere un comando, quindi il freno vero e' il ruleset lato GitHub, che rifiuta comunque il push a main.",
   "permissions": {
     "deny": [
-      "Bash(git commit:*)",
-      "Bash(git push:*)",
+      "Bash(git push origin main:*)",
+      "Bash(git push -u origin main:*)",
+      "Bash(git push --force:*)",
+      "Bash(git push -f:*)",
       "Bash(git merge:*)",
       "Bash(git rebase:*)",
-      "Bash(git reset:*)",
+      "Bash(git reset --hard:*)",
       "Bash(git stash:*)",
-      "Bash(gh pr create:*)",
       "Bash(gh pr merge:*)"
+    ],
+    "allow": [
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git checkout -b:*)",
+      "Bash(git switch -c:*)",
+      "Bash(git push -u origin feat/:*)",
+      "Bash(gh pr create:*)",
+      "Bash(gh pr view:*)",
+      "Bash(gh pr list:*)",
+      "Bash(gh ruleset list:*)"
     ]
   }
 }

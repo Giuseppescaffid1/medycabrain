@@ -69,6 +69,21 @@ Standalone ASGI server `BEC/mcp_bridge/server.py` (systemd `medycabrain-mcp`, uv
 
 ## When you change something
 
+**`main` is never written to directly.** Every change goes: branch → commit → push → pull
+request, and Giuseppe merges after reading the diff. Rule: `.claude/rules/git-flow.md`.
+
+The work is done by a **team of agents**, hub and spoke: the main session becomes the team
+lead via the `medyca-capo` skill, and launches five spokes in `.claude/agents/` —
+`medyca-architetto` (designs, stops for approval) → `medyca-sviluppatore` (writes) →
+`medyca-revisore` + `medyca-collaudatore` (in parallel: one reads, one executes) →
+`medyca-rilasciatore` (deploys, asking before each step). They cannot talk to each other:
+the shared task file in `.claude/tasks/` is the only channel. Start one with `/feature`,
+see the board with `/bacheca`. Full description: `documentation/low-level/08-agent-team.md`.
+
+Two required CI jobs guard the PR (`.github/workflows/ci.yml`): Django checks + migration
+drift + tests on the light `BEC/requirements-ci.txt`, and the frontend build (which is also
+the type check).
+
 Read `.claude/rules/documentation.md`. Any new feature or structural change updates the
 matching doc **in the same commit** — the `documentation/` folder, the in-app Documentazione
 page, and the drawio diagram as applicable.

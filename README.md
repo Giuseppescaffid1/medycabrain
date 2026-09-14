@@ -97,7 +97,20 @@ Per rimettere a posto il percorso primario:
 
 Nessun deploy: la config sta nel DB (`scraper_config`), editabile dall'admin.
 
+## Come entra una modifica
+
+`main` non si scrive mai a mano: ramo `feat/<slug>` → commit → push → pull
+request, e il merge lo fa Giuseppe dopo aver letto il diff. Il lavoro lo porta
+avanti la squadra di agenti `medyca-*` (`/feature` per partire, `/bacheca` per
+la lavagna). Regola: `.claude/rules/git-flow.md`; dettaglio:
+`documentation/low-level/08-agent-team.md`.
+
+Il rilascio qui sotto si esegue **dopo il merge**, non da un ramo.
+
 ## Deploy sul VPS (medycabrain.messtudent.com)
+
+Prima installazione. A regime servono solo i passi 4, 6 e il riavvio dei
+servizi — è quello che fa `medyca-rilasciatore`, chiedendo conferma a ogni passo.
 
 1. DNS: record A `medycabrain.messtudent.com → 81.17.96.27`.
 2. DB già creato (`medycabrain` / `medycabrain_user`).

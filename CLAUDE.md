@@ -33,11 +33,22 @@ ORM). Dettaglio completo in `documentation/` e riassunto in
   MCP, endpoint, soglia/modello) aggiorna il file giusto in `documentation/`,
   `docs/medycabrain-pipeline-cliente.drawio` e la pagina `Documentazione` dell'app;
   i limiti noti si scrivono appena si conoscono.
-- **Non fare commit e non fare push.** Regola completa:
-  `.claude/rules/no-commit.md`. Le modifiche restano nella working tree, i
-  commit li fa Giuseppe a mano dopo aver letto il diff. Vale anche quando la
-  regola sulla documentazione dice “stesso commit”: significa *stesse
-  modifiche insieme nella working tree*, non che Claude crei il commit.
+- **`main` si apre solo con una pull request.** Regola completa:
+  `.claude/rules/git-flow.md`. Mai scrivere su `main`, da nessuno: ramo
+  `feat/<slug>` → commit → push → `gh pr create`. **Il merge lo fa Giuseppe**,
+  su GitHub, dopo aver letto il diff: nessun agente esegue `gh pr merge`.
+  Prima di ogni commit si controlla `git branch --show-current`: se stampa
+  `main`, ci si ferma.
+
+- **Il lavoro lo fa la squadra `medyca-*`.** Hub and spoke: la sessione
+  principale diventa il capo progetto con la skill `medyca-capo` e lancia i
+  cinque compagni in `.claude/agents/` — `medyca-architetto` (disegna e si
+  ferma per l'approvazione) → `medyca-sviluppatore` (scrive) →
+  `medyca-revisore` + `medyca-collaudatore` (in parallelo) →
+  `medyca-rilasciatore` (rilascia, chiedendo conferma a ogni passo). Non
+  possono parlarsi: si passano il contesto **solo** attraverso il file di
+  lavoro in `.claude/tasks/`. Si parte con `/feature`, la lavagna è `/bacheca`.
+  Dettaglio in `documentation/low-level/08-agent-team.md`.
 - **UI**: seguire `.claude/skills/ui-design/` (token del brand Medyca, mobile
   first, stati vuoti/caricamento/errore sempre previsti).
 - **Testare da utente reale prima di consegnare**: gesto vero sulla UI live,

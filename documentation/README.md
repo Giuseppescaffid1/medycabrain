@@ -44,6 +44,9 @@ client; this folder is the machine that keeps it.
   end to end: what is produced at each step, where it is stored (disk vs Postgres vs discarded),
   and how the vectors become the search index. Read this for "where did this field come from?"
   and "is it in SQL?".
+- **[08-agent-team.md](low-level/08-agent-team.md)** — how changes to this repo get built and
+  shipped: the five `medyca-*` agents, the shared task board in `.claude/tasks/`, the CI, and
+  the rule that `main` only opens through a pull request. Read this **before your first change**.
 
 ## One-paragraph summary
 

@@ -1,0 +1,27 @@
+# Dipendenze per la CI, non per la produzione.
+#
+# requirements.txt tira dentro sentence-transformers e faster-whisper, quindi
+# torch: alcuni gigabyte e diversi minuti di scaricamento a ogni pull request,
+# per far girare due test smoke e un controllo di migrazioni. Qui ci sono solo
+# i pacchetti che servono a importare Django e a far partire i test.
+#
+# Perché funziona: i modelli pesanti sono importati in modo pigro, dentro le
+# funzioni che li usano (core/knowledge.py:_get_embedder), non a livello di
+# modulo. Numpy e curl_cffi invece SONO importati a livello di modulo
+# (core/knowledge.py:25, scraper/ig_client.py:29) e quindi servono anche qui.
+#
+# Se un giorno un import pesante risale a livello di modulo, la CI fallirà con
+# ModuleNotFoundError: è il segnale che questo file va aggiornato, oppure che
+# l'import va rimesso dentro la funzione dove stava.
+
+Django==4.2.16
+djangorestframework==3.15.2
+django-filter==24.3
+django-cors-headers==4.4.0
+dj-database-url==2.2.0
+psycopg2-binary==2.9.9
+python-dotenv==1.0.1
+requests==2.32.3
+numpy==1.26.4
+curl_cffi==0.7.4
+Pillow==10.4.0
