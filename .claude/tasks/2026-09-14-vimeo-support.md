@@ -956,3 +956,17 @@ motivo per cui la classe di caratteri non e un dettaglio estetico.
 - `gaming.youtube.com` e `in.youtube.com` non sono piu riconosciuti: prezzo
   dell'ancoraggio dell'host, gia nei limiti noti.
 
+- **14/09/2026 (CI, PR #3)** — La CI ha bocciato quello che in locale era verde,
+  ed e il primo caso in cui serviva davvero. Due test che esercitano
+  `fetch_audio` fallivano sul runner con `FileNotFoundError` su
+  `BEC/data/tmp/`: quella cartella e **gitignorata**, quindi su un clone pulito
+  non esiste. Sulla macchina di Giuseppe esisteva per eredita storica, e
+  nessuno poteva accorgersene in locale.
+
+  Corretto dove va corretto - `config/settings/base.py` crea `TMP_DIR` e
+  `RAW_DUMP_DIR` all'avvio - non aggirato creando la cartella nel workflow:
+  il difetto colpirebbe anche uno sviluppatore nuovo al primo clone.
+
+  Riprodotto a mano spostando via la cartella: senza la correzione i due test
+  fallivano, con la correzione 30 su 30 verdi e la cartella ricreata da sola.
+

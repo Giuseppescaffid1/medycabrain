@@ -134,6 +134,13 @@ DATA_DIR = BASE_DIR / "data"
 IG_SESSION_FILE = os.environ.get("IG_SESSION_FILE", str(DATA_DIR / "ig_session.json"))
 RAW_DUMP_DIR = DATA_DIR / "raw"
 TMP_DIR = DATA_DIR / "tmp"
+# `data/` is gitignored, so on a fresh clone these do not exist and anything
+# that opens a temporary file under TMP_DIR dies with FileNotFoundError. On this
+# machine they exist by accident of history, which is why the CI was the first
+# to see it: the tests that exercise `fetch_audio` failed on the runner while
+# passing locally.
+RAW_DUMP_DIR.mkdir(parents=True, exist_ok=True)
+TMP_DIR.mkdir(parents=True, exist_ok=True)
 
 # ── LLM / Whisper / embeddings ─────────────────────────────────────────────────
 HF_API_TOKEN = os.environ.get("HF_API_TOKEN", "")
