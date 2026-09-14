@@ -1,7 +1,7 @@
 ---
 id: 2026-09-14-vimeo-support
 titolo: Supportare anche i link Vimeo, non solo YouTube
-stato: revisione
+stato: sviluppo
 ramo: feat/vimeo-support
 pr: ""
 ticket: ""
@@ -836,3 +836,84 @@ strumenti di sola lettura. Stesso difetto del revisore.
   preesistenti erano **2**, non 14. La regola citata per non committare,
   `.claude/rules/no-commit.md`, non esiste: vale `git-flow.md`, che vuole i
   commit sul ramo e riserva a Giuseppe solo il merge su `main`.
+
+## 4bis. Revisione (secondo giro)
+
+**Verdetto: non passa.** Cinque rilievi su sei chiusi davvero, verificati
+eseguendo modulo vecchio e nuovo fianco a fianco. Ma la correzione del rilievo 1
+ha aperto un difetto nuovo nello stesso punto.
+
+**A. `link_ingest.py:124` - il gruppo `query` e avido e si mangia i link che
+seguono.** La classe esclude solo spazi, virgolette e parentesi angolari:
+virgola, punto e virgola, parentesi tonde e barra verticale no. Verificato dal
+capo, non solo dal revisore:
+
+    i tre link veri del cliente separati da virgola -> 1 riferimento (2 persi)
+    'vimeo.com/1111111?fl=pl;vimeo.com/2222222?h=8272103f6e'
+        -> https://vimeo.com/1111111/8272103f6e
+
+Il secondo caso **inventa un indirizzo**: l'hash del SECONDO video si attacca
+all'id del PRIMO. Non apre niente, e finisce in `source_url` che e `unique=True`.
+E lo stesso danno del vecchio hash `settings`, riaperto da un'altra porta. E i
+due link persi non finiscono nemmeno fra i `rifiutati`: non vengono mai trovati,
+quindi il cliente non ha modo di accorgersene.
+
+Direzione: togliere almeno `,;()|` dalla classe del gruppo `query`, oppure
+fermare la query al primo `http`. Piu un test con i tre link veri uniti da
+virgola e uno sull'hash che non deve migrare.
+
+**B. Rilievo minore, scelta consapevole.** L'ancoraggio di `_YT_ID` fa perdere
+`gaming.youtube.com` e `in.youtube.com` (33 grafie su 37 identiche). Non sono
+quelle che produce il tasto Condividi, il fallimento e chiuso, ed e gia scritto
+nei limiti noti. Non blocca.
+
+**Chiuso davvero:** rilievi 1 (hash ovunque nella query), 2, 3, 5, 6, i due
+errori di racconto e la parte documentale. Sul rilievo 2 il revisore ha aggiunto
+la prova che mancava: yt-dlp stesso (`vimeo.py:557`) definisce l'hash unlisted
+come `[\da-f]{10}`, quindi `[0-9a-f]{8,12}` e piu largo del vero, non piu
+stretto. Nessun hash legittimo viene escluso.
+
+## 5bis. Collaudo (secondo giro)
+
+**Verdetto: PASSA** - ma non aveva provato i link separati da virgola.
+
+    makemigrations --check   No changes detected     EXIT=0
+    check                    no issues               EXIT=0
+    test core                Ran 25 tests ... OK     EXIT=0
+
+**La prova piu importante, a tre versioni** (originale pre-Vimeo, precedente,
+nuova) sulle sette grafie YouTube: id e url **identici**, stesso ordine. Sui
+sottodomini `m.`, `music.`, `www.`, nudo, `youtu.be`: tutti OK. Sugli **11
+`source_url` veri in produzione: 0 righe con comportamento cambiato**, in
+entrambi i versi.
+
+Tutti i casi rotti del primo giro verificati vecchio contro nuovo: corretti.
+Mappatura errori: `UNAVAILABLE` maiuscolo ora da la frase per il cliente; il
+video con password non manda piu a riesportare i cookie.
+
+`npm run build` non rilanciato di proposito: il commit non tocca `FEC/`.
+
+Niente scritto in produzione: `UploadedMedia=11 Job=56 KnowledgeDocument=890`
+prima e dopo.
+
+**Osservazione, non un blocco:** con il rilievo 6 applicato, i video Vimeo con
+password o riservati a un gruppo non hanno piu una frase italiana e il cliente
+legge lo stderr di yt-dlp in inglese. Voluto (meglio nessuna spiegazione che una
+sbagliata), ma da sistemare quando ci sara un caso vero da misurare.
+
+## Registro - 14/09/2026, fine del secondo giro
+
+**Due giri consumati, il lavoro non passa.** Per regola il capo si ferma e
+decide Giuseppe.
+
+Il difetto residuo e piccolo e circoscritto: una classe di caratteri troppo
+larga in una riga di `link_ingest.py`, piu due test. Ma e una **regressione**:
+su quell'input il comportamento e peggiorato rispetto alla versione gia
+revisionata, e appartiene proprio alla categoria «inventare un riferimento» che
+questo giro doveva chiudere.
+
+Da notare per il futuro della squadra: il collaudo ha dato verde su un codice
+che il revisore ha bocciato, perche nessun test copriva i link separati da
+virgola. Due pareri divergenti sullo stesso codice, ed entrambi corretti nel
+proprio perimetro. E il motivo per cui sono due.
+
