@@ -90,11 +90,22 @@ account (deliberately *not* a shared base class).
 - After N consecutive failures the source auto-deactivates; reactivation is a human action.
 - Relationship: `1:N` → `KnowledgeDocument` (`related_name="documents"`).
 
-**`UploadedMedia`** — `uploaded_media`. A client-uploaded audio/video (e.g. a doctor interview).
-- Key fields: `file` (→ `uploads/{uuid}.{ext}`), `kind` (`audio`/`video`), `original_name`,
-  `title`, `size_bytes`, `duration_s`, `audio_file` (derived mp3), `transcribe_status`.
+**`UploadedMedia`** — `uploaded_media`. Media the client brought in himself, **by file or by
+link** (a doctor interview; a TV episode on YouTube kept as reference).
+- Key fields: `file` (→ `uploads/{uuid}.{ext}`, **blank for a link**), `kind` (`audio`/`video`),
+  `original_name`, `title`, `size_bytes`, `duration_s`, `audio_file` (derived mp3),
+  `transcribe_status`.
+- Link fields: **`source_url`** (the public page; empty for a file upload), **`channel`** (the
+  publisher, from oEmbed — e.g. `YouTVRS`).
+- Two independent flags, deliberately not one: **`owner_type`** (`owned`/`competitor` — WHOSE it
+  is, which decides whether it counts as Medyca's coverage in the gap engine) and
+  **`is_inspiration`** (WHY it is here — reference material the client added on purpose). A
+  competitor's episode can be inspiration; so can one of his own TV appearances. Before this,
+  every upload was hardcoded `owned`.
 - Results: FK **`document`** → `KnowledgeDocument` (SET_NULL) and FK **`blog_draft`** →
-  `BlogDraft` (SET_NULL) — filled once the upload is transcribed and turned into material + a draft.
+  `BlogDraft` (SET_NULL) — filled once transcribed and turned into material + a draft. A link
+  whose audio could not be fetched still gets a `document` (title + channel + link, no
+  transcript), so the reference is not lost; the row stays `failed` with the reason.
 
 **`CustomTopic`** — `custom_topics`. A subject the client says they care about.
 - Key fields: `label` (unique), `keywords` (JSON), `embedding` (JSON), `is_active`.
@@ -148,6 +159,18 @@ single standalone claim made in the reel.
 - **Stage columns:** `enrich_status`, `embed_status`, `argument_status`, `last_error`.
 - M2M **`tags`** → `Tag`; `is_active`.
 - Medyca's `owned` reels + these `owned` documents together = the client's knowledge bank.
+- **`is_inspiration`** — reference material the client added on purpose. Deliberately NOT a
+  third `owner_type`: 26 call sites read that field as a binary and ten would silently file a
+  third value under Medyca, including the enrichment prompt that says "il blog di Medyca
+  stessa". It also **exempts the row from the `is_on_topic` filter** in the search index
+  (`core/knowledge.py`) and in clustering: the on-topic verdict is given against a
+  menopause-centred prompt that rejected 404 of 835 articles on 2026-09-13, so a TV episode
+  on prediabetes would vanish the moment it was added. A model's verdict must not delete a
+  human's choice.
+- `source_type` gained **`video`**; for a linked video `source_url` is the REAL page url
+  (not the synthetic `upload://…`), and its `unique=True` makes pasting the same link twice
+  a no-op instead of a duplicate.
+
 
 **`DocumentArgument`** — `document_arguments`. The article version of `ReelArgument`.
 - FK **`document`** (CASCADE, `related_name="arguments"`), `text_it`, `quote` (verbatim),

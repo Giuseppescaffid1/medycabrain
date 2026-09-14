@@ -17,7 +17,7 @@ The web app talks to the backend through this API. The MCP connector does **not*
 
 | Route (`/api/v1/…`) | Viewset | Type | Serves / notable actions |
 |---|---|---|---|
-| `accounts` | `AccountViewSet` | ModelViewSet | Tracked IG accounts (CRUD). |
+| `accounts` | `AccountViewSet` | ModelViewSet | Tracked IG accounts (CRUD). `POST` takes `username` and `owner_type` (`owned` \| `competitor`) — the management screen sends it, so a profile lands on the right side from the start. `DELETE` is a soft delete: the account is deactivated and its reels stay. |
 | `blog-sources` | `BlogSourceViewSet` | ModelViewSet | Blogs. Actions: `crawl/`, `reactivate/` (the explicit human retry for a source that auto-deactivated). |
 | `uploads` | `UploadedMediaViewSet` | ModelViewSet | Client audio/video uploads; creating one spawns an `upload_transcribe` `Job`. |
 | `reels` | `ReelViewSet` | **ReadOnly** | `ReelListSerializer`/`ReelDetailSerializer`. Postgres full-text search over caption + transcript (`SearchVector`, italian config). Actions: `exclude/`, `restore/` (toggle `is_active`), `annotation/` (PATCH favorite/inspiration/note), `tags/` (add/remove). Injects current cluster labels via `_current_cluster_labels()`. |

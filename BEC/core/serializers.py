@@ -258,10 +258,12 @@ class UploadedMediaSerializer(serializers.ModelSerializer):
         model = models.UploadedMedia
         fields = ["id", "kind", "original_name", "title", "size_bytes",
                   "duration_s", "transcribe_status", "document",
-                  "blog_draft", "last_error", "created_at"]
+                  "blog_draft", "last_error", "created_at",
+                  # Link-sourced items: the reference itself.
+                  "source_url", "channel", "owner_type", "is_inspiration"]
         read_only_fields = ["kind", "size_bytes", "duration_s",
                             "transcribe_status", "document", "blog_draft",
-                            "last_error", "created_at"]
+                            "last_error", "created_at", "source_url", "channel"]
 
 
 class JobSerializer(serializers.ModelSerializer):

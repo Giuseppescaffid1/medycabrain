@@ -48,14 +48,23 @@ server = MCPServer(
     name="Medyca Content Intelligence",
     instructions=(
         "Banca dati dei contenuti di Medyca (menopausa, terapie ormonali "
-        "bioidentiche): i reel Instagram di @medyca.menopausa, i reel dei "
-        "competitor monitorati, gli articoli del blog medyca.it e dei blog "
-        "dei competitor. Tutte le analisi sono in italiano. Inizia con "
-        "`panoramica` per sapere cosa contiene; usa `cerca` per trovare "
-        "contenuti pertinenti e `leggi` per il testo completo di uno "
-        "specifico contenuto. Cita sempre da quale contenuto (e di chi) "
-        "viene un'affermazione: confondere ciò che dice Medyca con ciò che "
-        "dicono i competitor è l'errore peggiore possibile."
+        "bioidentiche). Contiene DUE tipi di materiale, tenuti separati "
+        "perché rispondono a domande diverse:\n"
+        "• REEL Instagram (video) — di Medyca e dei competitor: "
+        "`cerca_reel`, `leggi_reel`. Hanno trascrizione, gancio iniziale, "
+        "formato del video e numeri di pubblico.\n"
+        "• ARTICOLI di blog — di Medyca e dei competitor: `cerca_articoli`, "
+        "`leggi_articolo`, `fonti_blog`. Hanno testo integrale, autore, "
+        "data e lingua; non hanno gancio né formato, che sono cose da video.\n"
+        "Usa lo strumento del tipo che ti serve. `cerca_tutto` e `leggi` "
+        "esistono per le domande che attraversano i due mondi, ma quando la "
+        "domanda riguarda solo i video o solo gli articoli lo strumento "
+        "specifico dà risposte più pulite.\n"
+        "Inizia con `panoramica` per sapere cosa c'è dentro; `temi` per la "
+        "mappa degli argomenti. Tutte le analisi sono in italiano.\n"
+        "Cita sempre da quale contenuto (e di chi) viene un'affermazione: "
+        "confondere ciò che dice Medyca con ciò che dicono i competitor è "
+        "l'errore peggiore possibile."
     ),
 )
 
@@ -64,12 +73,16 @@ def _hit(h: dict) -> dict:
     """A retrieval hit in the compact shape the client's Claude reads."""
     return {
         "id": f"{h['kind']}:{h['id']}",
-        "tipo": "articolo" if h["kind"] == "blog" else "reel",
+        # "articolo" would be a small lie for a TV episode the client keeps as
+        # reference: the type is what Claude uses to decide how to cite it.
+        "tipo": ("materiale di riferimento" if h.get("inspiration")
+                 else "articolo" if h["kind"] == "blog" else "reel"),
         "di": ("Medyca" if h.get("owner") != "competitor"
                else f"competitor: {h.get('account', '?')}"),
         "titolo": h.get("title") or "(senza titolo)",
         "estratto": h.get("snippet") or "",
         "url": h.get("url") or "",
+        "ispirazione": bool(h.get("inspiration")),
         "pertinenza": h.get("score", 0),
     }
 
@@ -93,11 +106,20 @@ def panoramica() -> dict:
     docs = dict(
         KnowledgeDocument.objects.filter(is_active=True, is_on_topic=True)
         .values_list("owner_type").annotate(n=Count("id")))
+    # Counted apart from "articoli": these are videos the client added as
+    # reference, and folding them into the article totals would quietly
+    # inflate the numbers every answer is anchored on.
+    rif = KnowledgeDocument.objects.filter(is_active=True, is_inspiration=True)
     return {
         "reel": {"medyca": reels.get("owned", 0),
                  "competitor": reels.get("competitor", 0)},
         "articoli": {"medyca": docs.get("owned", 0),
                      "competitor": docs.get("competitor", 0)},
+        "materiale_di_riferimento": {
+            "totale": rif.count(),
+            "con_trascrizione": rif.exclude(content_text="").count(),
+            "solo_link": rif.filter(content_text="").count(),
+        },
         "account_instagram": list(
             TrackedAccount.objects.filter(is_active=True)
             .values_list("username", flat=True)),
@@ -109,102 +131,286 @@ def panoramica() -> dict:
             for run in ClusterRun.objects.filter(is_current=True)
         },
         "nota": ("'medyca' = contenuti propri del cliente; 'competitor' = "
-                 "contenuti altrui raccolti come ispirazione/confronto."),
+                 "contenuti altrui raccolti come ispirazione/confronto. "
+                 "'materiale_di_riferimento' sono video e interventi che il "
+                 "cliente ha aggiunto apposta (vedi `cerca_riferimenti`): "
+                 "quelli 'solo_link' non hanno trascrizione, quindi se ne "
+                 "conosce il titolo e la fonte, non il contenuto."),
     }
 
 
-@server.tool(
-    description=(
-        "Ricerca semantica+lessicale su tutti i contenuti (trascrizioni dei "
-        "reel, testi degli articoli, analisi). `scope`: 'all' | 'medyca' | "
-        "'competitor'. `tipo`: 'tutti' | 'reel' | 'articolo'. Restituisce "
-        "estratti con id da passare a `leggi` per il testo completo."
-    )
-)
-def cerca(query: str, scope: str = "all", tipo: str = "tutti",
-          limite: int = 8) -> list[dict]:
+def _search(query: str, scope: str, limite: int, only: str | None,
+            only_inspiration: bool = False) -> list[dict]:
+    """Shared retrieval for every search tool.
+
+    One implementation on purpose: the typed tools differ only in which side
+    of the corpus they keep, so they can never drift into ranking the same
+    question differently. `only` is "reel", "blog", or None for both.
+
+    When filtering, the pool is over-fetched so the filter does not starve —
+    asking for 8 articles out of a pool of 8 mixed hits would return two.
+    rerank=True gives the client's Claude the same LLM-sharpened order the
+    in-app chat gets.
+    """
     from core.knowledge import semantic_search
 
     scope = scope if scope in ("all", "medyca", "competitor") else "all"
     limite = max(1, min(int(limite), 20))
-    # Over-fetch when filtering by kind, so the filter does not starve.
-    # rerank=True: the client's Claude gets the same LLM-sharpened order the
-    # in-app chat gets.
-    hits = semantic_search(query, top_k=limite * (2 if tipo != "tutti" else 1),
-                           scope=scope, rerank=True)
-    if tipo == "reel":
-        hits = [h for h in hits if h["kind"] == "reel"]
-    elif tipo == "articolo":
-        hits = [h for h in hits if h["kind"] == "blog"]
+    hits = semantic_search(query, top_k=limite * (3 if only else 1),
+                           scope=scope, rerank=True,
+                           only_inspiration=only_inspiration)
+    if only:
+        hits = [h for h in hits if h["kind"] == only]
     return [_hit(h) for h in hits[:limite]]
 
 
 @server.tool(
     description=(
-        "Il contenuto completo di un elemento trovato con `cerca`, dato il "
-        "suo id ('reel:123' o 'blog:45'): trascrizione o testo integrale, "
-        "analisi (tema, riassunto), affermazioni con citazione testuale."
+        "Cerca SOLO tra i reel Instagram (video), di Medyca e dei "
+        "competitor. Cerca nelle trascrizioni, nelle didascalie e "
+        "nell'analisi. `scope`: 'all' | 'medyca' | 'competitor'. "
+        "Restituisce estratti con id 'reel:123' da passare a `leggi_reel`. "
+        "Usa questo — non `cerca_articoli` — per domande su come si parla a "
+        "voce, sui ganci iniziali, sul formato dei video o sul pubblico."
     )
 )
-def leggi(id: str) -> dict:
-    from core.models import KnowledgeDocument, Reel
+def cerca_reel(query: str, scope: str = "all", limite: int = 8) -> list[dict]:
+    return _search(query, scope, limite, only="reel")
 
+
+@server.tool(
+    description=(
+        "Cerca SOLO tra gli articoli di blog, di Medyca e dei competitor. "
+        "Cerca nel testo integrale e nell'analisi. `scope`: 'all' | "
+        "'medyca' | 'competitor'. Restituisce estratti con id 'blog:45' da "
+        "passare a `leggi_articolo`. Usa questo — non `cerca_reel` — per "
+        "domande su cosa è scritto, su fonti e affermazioni documentate, o "
+        "per confrontare la copertura editoriale scritta."
+    )
+)
+def cerca_articoli(query: str, scope: str = "all", limite: int = 8) -> list[dict]:
+    return _search(query, scope, limite, only="blog")
+
+
+@server.tool(
+    description=(
+        "Cerca in TUTTO: reel e articoli insieme, ordinati per pertinenza. "
+        "Usalo solo quando la domanda attraversa i due mondi (per esempio "
+        "'di cosa parla Medyca su questo tema, ovunque'). Se ti interessa un "
+        "tipo solo, `cerca_reel` o `cerca_articoli` danno risposte più "
+        "pulite. Ogni risultato dichiara il proprio 'tipo'."
+    )
+)
+def cerca_tutto(query: str, scope: str = "all", limite: int = 8) -> list[dict]:
+    return _search(query, scope, limite, only=None)
+
+
+def _parse_id(id: str, atteso: str | None = None) -> tuple[str, int] | dict:
+    """('reel', 123) from 'reel:123', or an error dict the tool returns as is.
+
+    A bare number is accepted when the tool already knows the type: the
+    client's Claude routinely passes `leggi_reel("123")`, and refusing it
+    would be pedantry rather than safety.
+    """
+    raw = str(id).strip()
+    if atteso and raw.isdigit():
+        return atteso, int(raw)
     try:
-        kind, pk = id.split(":", 1)
+        kind, pk = raw.split(":", 1)
         pk = int(pk)
     except (ValueError, AttributeError):
         return {"errore": "id non valido: usa il formato 'reel:123' o 'blog:45'"}
+    if atteso and kind != atteso:
+        nome = "reel" if atteso == "reel" else "articolo"
+        altro = "leggi_articolo" if atteso == "reel" else "leggi_reel"
+        return {"errore": f"questo id non è un {nome}: usa {altro}"}
+    return kind, pk
 
+
+def _leggi_reel(pk: int) -> dict:
+    from core.models import Reel
+
+    r = (Reel.objects.filter(id=pk, is_active=True)
+         .select_related("account", "enrichment", "transcript").first())
+    if not r:
+        return {"errore": f"reel {pk} non trovato"}
+    enr = getattr(r, "enrichment", None)
+    tr = getattr(r, "transcript", None)
+    return {
+        "tipo": "reel",
+        "di": ("Medyca" if r.account.owner_type == "owned"
+               else f"competitor: @{r.account.username}"),
+        "url": f"https://www.instagram.com/reel/{r.shortcode}/",
+        "pubblicato": r.posted_at.isoformat() if r.posted_at else None,
+        "visualizzazioni": r.view_count, "like": r.like_count,
+        "tema": enr.primary_topic if enr else "",
+        "riassunto": enr.summary_it if enr else "",
+        "argomenti": enr.topics if enr else [],
+        # Video-only fields: an article has no spoken opening and no format.
+        "gancio": enr.hook_text if enr else "",
+        "analisi_gancio": enr.hook_analysis_it if enr else "",
+        "formato": enr.content_format if enr else "",
+        "pubblico": enr.target_audience_it if enr else "",
+        "didascalia": r.caption,
+        "trascrizione": (tr.text if tr else "")[:12000],
+        "affermazioni": [
+            {"testo": a.text_it, "citazione": a.quote}
+            for a in r.arguments.all()[:10]
+        ],
+    }
+
+
+def _leggi_articolo(pk: int) -> dict:
+    from core.models import KnowledgeDocument
+
+    d = (KnowledgeDocument.objects.filter(id=pk, is_active=True)
+         .select_related("source").first())
+    if not d:
+        return {"errore": f"articolo {pk} non trovato"}
+    testo = (d.content_text or d.content_md)[:12000]
+    return {
+        "tipo": "video di riferimento" if d.source_type == "video" else "articolo",
+        "di": ("Medyca" if d.owner_type == "owned"
+               else f"competitor: {d.source.name if d.source else (d.author or '?')}"),
+        "ispirazione": d.is_inspiration,
+        # Said plainly rather than left to be inferred from an empty string:
+        # a video whose audio could not be fetched is a reference, not a
+        # source you can quote from.
+        "trascrizione_disponibile": bool(testo.strip()),
+        "nota": ("" if testo.strip() else
+                 "Di questo video abbiamo solo titolo e link: nessuna "
+                 "trascrizione, quindi non attribuirgli affermazioni."),
+        "fonte": d.source.name if d.source else (d.author or ""),
+        "url": d.source_url,
+        "pubblicato": d.published_at.isoformat() if d.published_at else None,
+        "autore": d.author,
+        "lingua": d.language or "it",
+        "tema": d.primary_topic,
+        "riassunto": d.summary_it,
+        "argomenti": d.topics,
+        # For material the client added on purpose, "in_tema: false" is
+        # expected, not a defect: the verdict is given against a
+        # menopause-centred prompt and this shelf is deliberately wider. Said
+        # raw, it reads as "ignore this" and would make Claude discard the
+        # very sources the client chose. Ownership of the judgement stays
+        # visible, but framed for what it is.
+        **({"in_tema": d.is_on_topic, "fuori_tema_perche": d.off_topic_reason}
+           if not d.is_inspiration else
+           {"in_tema": True,
+            "perimetro": (
+                "Materiale di riferimento scelto dal cliente: tratta "
+                "argomenti vicini ma non necessariamente di menopausa "
+                f"({d.off_topic_reason[:160]})" if d.off_topic_reason else
+                "Materiale di riferimento scelto dal cliente.")}),
+        # Plain text, not markdown: the claims' quotes are verified against
+        # this exact text, and the client's Claude checking a quote must find
+        # it verbatim in what it was given.
+        "testo": testo,
+        "affermazioni": [
+            {"testo": a.text_it, "citazione": a.quote}
+            for a in d.arguments.all()[:10]
+        ],
+    }
+
+
+@server.tool(
+    description=(
+        "Il contenuto completo di UN REEL, dato il suo id ('reel:123' o "
+        "solo '123'): trascrizione integrale, didascalia, tema, riassunto, "
+        "gancio iniziale e analisi del gancio, formato del video, pubblico, "
+        "numeri, e le affermazioni con la citazione testuale che le regge."
+    )
+)
+def leggi_reel(id: str) -> dict:
+    parsed = _parse_id(id, atteso="reel")
+    if isinstance(parsed, dict):
+        return parsed
+    return _leggi_reel(parsed[1])
+
+
+@server.tool(
+    description=(
+        "Il contenuto completo di UN ARTICOLO di blog, dato il suo id "
+        "('blog:45' o solo '45'): testo integrale, fonte, autore, data, "
+        "lingua, tema, riassunto, se è in tema, e le affermazioni con la "
+        "citazione testuale che le regge."
+    )
+)
+def leggi_articolo(id: str) -> dict:
+    parsed = _parse_id(id, atteso="blog")
+    if isinstance(parsed, dict):
+        return parsed
+    return _leggi_articolo(parsed[1])
+
+
+@server.tool(
+    description=(
+        "Il contenuto completo di un elemento di QUALSIASI tipo, dato l'id "
+        "con il suo prefisso ('reel:123' o 'blog:45'). Comodo dopo "
+        "`cerca_tutto`; se sai già il tipo, `leggi_reel` e `leggi_articolo` "
+        "dicono più chiaramente cosa stai leggendo."
+    )
+)
+def leggi(id: str) -> dict:
+    parsed = _parse_id(id)
+    if isinstance(parsed, dict):
+        return parsed
+    kind, pk = parsed
     if kind == "reel":
-        r = (Reel.objects.filter(id=pk, is_active=True)
-             .select_related("account", "enrichment", "transcript").first())
-        if not r:
-            return {"errore": f"reel {pk} non trovato"}
-        enr = getattr(r, "enrichment", None)
-        tr = getattr(r, "transcript", None)
-        return {
-            "tipo": "reel",
-            "di": ("Medyca" if r.account.owner_type == "owned"
-                   else f"competitor: @{r.account.username}"),
-            "url": f"https://www.instagram.com/reel/{r.shortcode}/",
-            "pubblicato": r.posted_at.isoformat() if r.posted_at else None,
-            "visualizzazioni": r.view_count, "like": r.like_count,
-            "tema": enr.primary_topic if enr else "",
-            "riassunto": enr.summary_it if enr else "",
-            "argomenti": enr.topics if enr else [],
-            "didascalia": r.caption,
-            "trascrizione": (tr.text if tr else "")[:12000],
-            "affermazioni": [
-                {"testo": a.text_it, "citazione": a.quote}
-                for a in r.arguments.all()[:10]
-            ],
-        }
+        return _leggi_reel(pk)
     if kind == "blog":
-        d = (KnowledgeDocument.objects.filter(id=pk, is_active=True)
-             .select_related("source").first())
-        if not d:
-            return {"errore": f"articolo {pk} non trovato"}
-        return {
-            "tipo": "articolo",
-            "di": ("Medyca" if d.owner_type == "owned"
-                   else f"competitor: {d.source.name if d.source else '?'}"),
-            "url": d.source_url,
-            "pubblicato": d.published_at.isoformat() if d.published_at else None,
-            "autore": d.author,
-            "lingua": d.language or "it",
-            "tema": d.primary_topic,
-            "riassunto": d.summary_it,
-            "argomenti": d.topics,
-            # Plain text, not markdown: the claims' quotes are verified
-            # against this exact text, and the client's Claude checking a
-            # quote must find it verbatim in what it was given.
-            "testo": (d.content_text or d.content_md)[:12000],
-            "affermazioni": [
-                {"testo": a.text_it, "citazione": a.quote}
-                for a in d.arguments.all()[:10]
-            ],
+        return _leggi_articolo(pk)
+    return {"errore": "tipo sconosciuto: usa 'reel:123' o 'blog:45'"}
+
+
+@server.tool(
+    description=(
+        "Cerca SOLO nel materiale di riferimento che il cliente ha aggiunto "
+        "apposta come ispirazione: puntate TV, interventi, video esterni. "
+        "Ogni risultato porta il LINK alla fonte, che è il motivo per cui "
+        "questo materiale è in piattaforma — serve a citarlo e a riguardarlo. "
+        "Attenzione: alcuni di questi hanno solo titolo e link, senza "
+        "trascrizione (vedi `leggi_articolo`), quindi non attribuire loro "
+        "affermazioni che non puoi leggere."
+    )
+)
+def cerca_riferimenti(query: str, scope: str = "all", limite: int = 8) -> list[dict]:
+    return _search(query, scope, limite, only=None, only_inspiration=True)
+
+
+@server.tool(
+    description=(
+        "I blog monitorati, uno per riga: di chi è (Medyca o competitor), "
+        "l'indirizzo, quanti articoli ne abbiamo, quando è stato letto "
+        "l'ultima volta e se sta dando problemi. Serve a sapere su quali "
+        "fonti scritte poggia una risposta — e quali NON sono coperte, che è "
+        "l'informazione che evita di spacciare un silenzio per un'assenza."
+    )
+)
+def fonti_blog(scope: str = "all") -> list[dict]:
+    from django.db.models import Count, Q
+
+    from core.models import BlogSource
+
+    qs = BlogSource.objects.annotate(
+        n=Count("documents", filter=Q(documents__is_active=True)))
+    if scope in ("medyca", "owned"):
+        qs = qs.filter(owner_type="owned")
+    elif scope == "competitor":
+        qs = qs.filter(owner_type="competitor")
+    return [
+        {
+            "nome": b.name,
+            "di": "Medyca" if b.owner_type == "owned" else "competitor",
+            "url": b.index_url,
+            "articoli": b.n,
+            "attiva": b.is_active,
+            "ultima_lettura": (b.last_crawled_at.isoformat()
+                               if b.last_crawled_at else None),
+            "problema": b.last_error or "",
         }
-    return {"errore": "tipo sconosciuto: usa 'reel' o 'blog'"}
+        for b in qs.order_by("-n")
+    ]
 
 
 @server.tool(

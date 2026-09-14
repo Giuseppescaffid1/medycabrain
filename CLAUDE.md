@@ -7,14 +7,16 @@ Piattaforma di Content Intelligence per Medyca (nicchia menopausa).
 
 Quattro cose entrano — reel Instagram (Medyca + competitor), articoli di blog,
 upload audio/video del cliente, temi indicati dal cliente. Una pipeline notturna
-(`pipeline/dag.py`: `scrape → download → transcribe → enrich → embed → blogscrape
-→ knowledge → cluster`) le scarica, trascrive l'audio, le fa leggere a un LLM,
+(`pipeline/dag.py`: `scrape → download → transcribe → batch → enrich → embed →
+blogscrape → knowledge → cluster`; `batch` affida l'analisi di massa al Batch API
+di Anthropic, che costa la metà e risponde entro 24h, e `enrich` resta la via
+immediata di riserva) le scarica, trascrive l'audio, le fa leggere a un LLM,
 le trasforma in vettori e le raggruppa in temi. **Regola che vale su tutto: il
 contenuto di Medyca (`owner_type="owned"`) non si mescola mai con quello dei
 competitor.** Tutto finisce in un unico database PostgreSQL (le tabelle stanno
 nell'unica app Django `core`, `BEC/core/models.py`; i vettori sono colonne JSON,
 niente pgvector). Si raggiunge in due modi: la UI React e il connettore **MCP**
-(`BEC/mcp_bridge/server.py`, 4 strumenti di sola lettura che interrogano il DB via
+(`BEC/mcp_bridge/server.py`, 9 strumenti di sola lettura che interrogano il DB via
 ORM). Dettaglio completo in `documentation/` e riassunto in
 `.claude/architecture-summary.md`.
 

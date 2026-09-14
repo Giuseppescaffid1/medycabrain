@@ -37,12 +37,110 @@ flowchart LR
 | 1 | **scrape** | `scraper_agent.py` | For each active `TrackedAccount`: list recent reels **through Apify** (see [below](#where-the-list-of-reels-comes-from)) at a per-account adaptive depth, dump raw JSON to `data/raw/{account}/{shortcode}.json`, upsert `Reel` rows. Stops on the request budget **and** on the Apify spending ceiling. | `media_status=pending` |
 | 2 | **download** | `downloader_agent.py` | For `media_status=pending`: get the mp4 (three sources, cheapest first — [below](#how-a-reels-video-actually-arrives)), ffmpeg-extract audio → `media/audio/{account}/{shortcode}.mp3`, save thumbnail → `media/thumbs/…`, delete the mp4. 3 attempts then `skipped`; a block defers the reel instead of charging it an attempt. | `media_status=done`, `transcribe_status=pending` |
 | 3 | **transcribe** | `transcriber_agent.py` | faster-whisper (local CPU, int8) over each mp3 → `Transcript`. Remote STT (`llm.client.transcribe_audio`) is used instead when `USE_REMOTE_STT`. Also processes `UploadedMedia`. | `transcribe_status=done`, `enrich_status=pending` |
-| 4 | **batch** | `batch_agent.py` | Analysis at **half price**, answered within 24h. **Collects** finished deliveries first (writing each answer to the reel its `custom_id` names), then **submits** everything still `enrich_status=pending`, marking it `batched` so it can never be sent twice. Skipped entirely when `BATCH_ENABLED=0` or no Anthropic key is set. | `enrich_status=batched`, then `done` on collect |
+| 4 | **batch** | `batch_agent.py` | Analysis at **half price**, answered within 24h, for **three kinds of work**: `reel_enrich`, `doc_enrich`, `doc_arguments` (declared once in `batch_agent.KINDS`). **Collects** finished deliveries first (each answer written to the row its `custom_id` names), then **submits** everything still `pending`, marking it `batched` so it can never be sent twice. Skipped entirely when `BATCH_ENABLED=0` or no Anthropic key is set. | `batched`, then `done` on collect |
 | 5 | **enrich** | `enrich_agent.py` | The **live fallback** for whatever the batch could not take (batch disabled, delivery refused): one LLM call per `enrich_status=pending` reel → `Enrichment` (summary, topics, hook, target, format, `primary_topic`, `evidence`). Runs `ENRICH_WORKERS` (default 5) in parallel. Then extracts `ReelArgument`s for `argument_status=pending` — each with a required **verbatim quote**. | `enrich_status=done`, `argument_status` advanced |
 | 6 | **embed** | `embed_agent.py` | Give every enriched reel a `vector` (via `cluster_agent._ensure_reel_embeddings`) and compute `chunk_vectors` passage embeddings for reels **and** documents (`_embed_passages`). Split from `enrich` on purpose so "analysed" and "searchable" can never drift apart. | embeddings written |
 | 7 | **blogscrape** | `blogscrape_agent.py` | For each active `BlogSource`, self-throttling on `crawl_interval_h`: discover article URLs (`blog_discovery.py`) and ingest new ones (`blog_agent.py` — trafilatura → Markdown → `KnowledgeDocument`). Deactivates a source after N consecutive failures. | new `KnowledgeDocument` rows |
-| 8 | **knowledge** | `knowledge_agent.py` | Enrich + embed blog articles (Medyca's and competitors'), using `model_for("analysis")`: `primary_topic`, on-topic verdict, `DocumentArgument` extraction (verbatim quote required). No hook/format — those are video-craft only. | `enrich_status`/`embed_status`/`argument_status=done` |
+| 8 | **knowledge** | `knowledge_agent.py` | The **live fallback** for articles the batch could not take, plus embedding (which needs no LLM and always runs here). Enrich + embed blog articles (Medyca's and competitors'), using `model_for("analysis")`: `primary_topic`, on-topic verdict, `DocumentArgument` extraction (verbatim quote required). No hook/format — those are video-craft only. | `enrich_status`/`embed_status`/`argument_status=done` |
 | 9 | **cluster** | `cluster_agent.py` | Two-layer clustering (below). Writes a fresh `ClusterRun` **per scope**, flips `is_current` atomically, then refreshes `CustomTopic` matches (`core/custom_topics.recompute_matches`). | new current `ClusterRun` per scope |
+
+## Video taken from a link (the fourth door, widened)
+
+`BEC/core/link_ingest.py` + the existing upload flow. The client pastes a **blob of his own
+notes** — "Parte I: <url>", dates, names in brackets — and every video link in it becomes an
+item. `POST /api/v1/uploads/from-links/` (an action on `UploadedMediaViewSet`, with its own
+`JSONParser` because that ViewSet is multipart for file uploads).
+
+1. `extract_ids(text)` reduces every YouTube spelling to the 11-character id, so `youtu.be/X`,
+   `watch?v=X` and `watch?v=X&t=365s` collapse into **one** video. Verified on the client's real
+   list: 11 unique videos out of the messy text.
+2. `probe(url)` reads the public **oEmbed** endpoint for the title, channel and thumbnail. No
+   key, no cookies — this is what keeps a link worth saving even when the audio is refused.
+3. `fetch_audio(url, dest)` runs **yt-dlp** (`-x --audio-format mp3`, 16 kHz mono), then the item
+   rejoins `run_upload_transcribe` and is transcribed, analysed, embedded and drafted exactly
+   like an uploaded file. **One code path**: a second transcription pipeline for links would
+   drift from this one within a month.
+
+### Two walls, both real, both cleared (2026-09-13 / 14)
+
+Getting audio off YouTube from this server needed **two** separate things. Each one on its own
+still fails, and the second failure disguises itself as something else.
+
+**1. The datacentre-IP bot check.** Without cookies, yt-dlp **2026.7.4 and 2026.8.19** both
+return, on all five player clients (`android`, `ios`, `tv`, `web_embedded`, `mweb`):
+
+```
+ERROR: [youtube] <id>: Sign in to confirm you're not a bot.
+```
+
+Remedy: a cookies file exported from a logged-in browser, in **Netscape** format (a
+Cookie-Editor JSON export must be converted), pointed at by **`YT_COOKIES_FILE`** — the same
+arrangement the sibling SPI project uses for Facebook. It lives **outside the repository** at
+`~/.config/medycabrain/yt_cookies.txt`, mode 0600: those cookies are access to a Google account,
+not an API key. `_cookies_args()` treats a missing file as no file and logs it once, because
+pointing yt-dlp at a path that is not there produces a confusing error instead of a clear one.
+
+**2. The JavaScript signature challenge.** With cookies accepted, the download *still* failed:
+
+```
+ERROR: [youtube] <id>: Requested format is not available.
+```
+
+That message is misleading. `--list-formats` showed only storyboards, and `-v` gave the real
+cause: `Signature solving failed … JS runtimes: none`. YouTube signs its media URLs with a JS
+challenge; answering it needs a runtime **plus** the `yt-dlp-ejs` solver scripts. Node 22 was
+already installed, but yt-dlp lists it as `node (unavailable)` and will not enable it on its own
+— Node is not sandboxed the way Deno is, so it must be named explicitly. Hence
+`--js-runtimes node` (`YT_JS_RUNTIME`) on every call, and `yt-dlp-ejs` pinned in
+`requirements.txt`. With both in place the same video resolved to `format 251, 120 kbps webm,
+1135 s`.
+
+`fetch_audio` maps each failure to the sentence that names its remedy, precisely because the
+second one points at the wrong thing by default.
+
+**Cookies expire.** When they do, items go back to `failed` with the bot-check message and the
+client sees "vanno riesportati da un browser dove sei loggato". Nothing retries on its own.
+
+### Known limit: a TV recording opens with its sponsors
+
+Measured on the first episode ingested (doc 842, 1 135 s, 14 733 characters): the transcript
+begins with roughly a page of **local advertising** — a clinic, an orthopaedic shop, phone
+numbers — before the medical conversation starts. The analysis window is
+`content_text[:6000]` (`knowledge_agent.build_doc_enrich_prompt`), so a real share of what the
+model reads is sponsor copy.
+
+Two consequences, both observed on that document:
+
+- The **on-topic verdict came back `False`**, with the reason "il contenuto è principalmente una
+  sequenza di spot pubblicitari". That is a fair reading of what it was shown, and it is exactly
+  why reference material is exempt from the `is_on_topic` filter — otherwise the video would
+  have disappeared from search the moment it was added.
+- The **claims were still correct**: all six were medical ("l'aumento di peso corporeo è
+  associato a un aumento della pressione arteriosa", the 140/90 thresholds), none came from the
+  adverts. The verbatim-quote contract held.
+
+Not fixed here, because trimming a sponsor block reliably is guesswork. If it becomes a problem,
+the honest lever is the analysis window, not a heuristic that deletes text.
+
+### No draft from someone else's material
+
+`run_upload_transcribe` writes a blog draft only when `owner_type == "owned"`. A draft is Medyca
+writing in their own voice grounded in the text, and doing that from a third party's episode is
+the mixing this project forbids — `blog_workflow` already filters `owner_type="owned"` when
+picking cluster documents, and the same rule has to hold here now that an item can be marked as
+someone else's. Caught the first time a competitor's TV episode produced a Medyca draft.
+
+**What happens meanwhile is the point.** `_save_reference_only()` stores the video as a
+`KnowledgeDocument` carrying title, channel and link, `enrich_status=SKIPPED`, with a vector
+built from the **title** so it can still be found and handed back through `cerca_riferimenti`.
+No transcript means no analysis: asking a model to describe a video from its title alone is how
+invented claims get into a medical knowledge bank. The `UploadedMedia` row stays `failed` with a
+sentence the client can act on ("Serve un file di cookie… oppure carica il file video a mano"),
+shown inline in the UI rather than hidden in a tooltip.
+
+(Embedding the title is safe in a way embedding an empty string was not: the empty-string vector
+sits at a fixed point close to every question, which is how ten contentless reels once took the
+top of a search.)
 
 ## Where the list of reels comes from
 

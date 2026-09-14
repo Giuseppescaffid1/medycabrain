@@ -21,7 +21,7 @@
         <mxCell id="h_in2" value="I reel dei competitor" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EEF5FD;strokeColor=#D5E3F2;fontColor=#2C4984;fontSize=12;arcSize=18;" vertex="1" parent="1">
           <mxGeometry x="60" y="216" width="240" height="60" as="geometry" />
         </mxCell>
-        <mxCell id="h_in3" value="Gli articoli dei blog&#10;medyca.it + competitor&#10;+ interviste audio/video caricate" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EEF5FD;strokeColor=#D5E3F2;fontColor=#2C4984;fontSize=12;arcSize=18;" vertex="1" parent="1">
+        <mxCell id="h_in3" value="Gli articoli dei blog&#10;medyca.it + competitor&#10;+ interviste audio/video caricate&#10;+ video di riferimento (da link)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EEF5FD;strokeColor=#D5E3F2;fontColor=#2C4984;fontSize=12;arcSize=18;" vertex="1" parent="1">
           <mxGeometry x="60" y="296" width="240" height="60" as="geometry" />
         </mxCell>
         <mxCell id="h_in4" value="I temi che indichi tu&#10;(tiroide, osteoporosi, Bijuva…)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#C93B42;fontColor=#C93B42;fontSize=12;arcSize=18;" vertex="1" parent="1">
@@ -106,7 +106,7 @@
         <mxCell id="l_dl" value="downloader_agent.py&#10;Apify elenca, YT-DLP SCARICA (gratis, anonimo)&#10;url CDN in cache (oe=) &#8594; yt-dlp sul permalink&#10;prefetch Apify limitato a 30 (era known+60 = \$0,48/account)&#10;video + thumbnail su disco" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#4A6FAC;fontColor=#2C4984;fontSize=11;align=left;spacingLeft=10;verticalAlign=top;spacingTop=8;arcSize=12;" vertex="1" parent="1">
           <mxGeometry x="60" y="214" width="340" height="84" as="geometry" />
         </mxCell>
-        <mxCell id="l_blog" value="blogscrape_agent.py&#10;agente di scoperta (sitemap/feed/LLM)&#10;→ KnowledgeDocument con owner" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#4A6FAC;fontColor=#2C4984;fontSize=11;align=left;spacingLeft=10;verticalAlign=top;spacingTop=8;arcSize=12;" vertex="1" parent="1">
+        <mxCell id="l_blog" value="blogscrape_agent.py&#10;agente di scoperta (sitemap/feed/LLM)&#10;link_ingest.py&#10;video da link: oEmbed + yt-dlp&#10;→ KnowledgeDocument con owner e is_inspiration" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#FFFFFF;strokeColor=#4A6FAC;fontColor=#2C4984;fontSize=11;align=left;spacingLeft=10;verticalAlign=top;spacingTop=8;arcSize=12;" vertex="1" parent="1">
           <mxGeometry x="60" y="286" width="340" height="56" as="geometry" />
         </mxCell>
         <mxCell id="l_ig" value="Instagram (owned + competitor)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EEF5FD;strokeColor=#D5E3F2;fontColor=#52688A;fontSize=10;arcSize=18;" vertex="1" parent="1">

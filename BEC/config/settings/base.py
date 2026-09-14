@@ -259,6 +259,20 @@ BATCH_ENABLED = os.environ.get("BATCH_ENABLED", "1") == "1"
 BATCH_MODEL = os.environ.get("BATCH_MODEL", "claude-sonnet-5")
 BATCH_MAX_REQUESTS = int(os.environ.get("BATCH_MAX_REQUESTS", "2000"))
 
+# ── Video presi da un link (YouTube) ───────────────────────────────────────
+# yt-dlp scarica l'audio, ma da questo server YouTube risponde "Sign in to
+# confirm you're not a bot" a ogni player client (provato il 2026-09-13 su
+# yt-dlp 2026.7.4 e 2026.8.19). Serve un file di cookie esportato da un
+# browser dove sei loggato — stesso schema dei cookie Facebook nel progetto
+# gemello. Senza, il link resta salvato come riferimento ma non viene
+# trascritto, e la riga lo dice a chiaro.
+YT_COOKIES_FILE = os.environ.get("YT_COOKIES_FILE", "")
+# YouTube firma gli indirizzi dei media con una sfida JavaScript. yt-dlp sa
+# risolverla ma NON abilita da solo un runtime non sandboxato: va nominato.
+# Senza, tornano solo le anteprime e l'errore dice "formato non disponibile",
+# che manda a cercare la cosa sbagliata. Serve anche il pacchetto yt-dlp-ejs.
+YT_JS_RUNTIME = os.environ.get("YT_JS_RUNTIME", "node")
+
 # Apify supplies reel metadata and a working CDN video url from its own
 # proxied infrastructure, which is what unblocks the download backlog: our own
 # calls to Instagram's media/info throttle after ~35 and then answer HTML.

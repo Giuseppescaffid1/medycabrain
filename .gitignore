@@ -41,3 +41,4 @@ BEC/staticfiles/
 BEC/data/ig_session.json.bak*
 .env.bak*
 BEC/.env.bak*
+FEC/tsconfig.tsbuildinfo

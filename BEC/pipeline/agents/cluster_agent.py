@@ -25,6 +25,7 @@ import logging
 import numpy as np
 from django.conf import settings
 from django.db import transaction
+from django.db.models import Q
 
 from core.models import (
     DONE, ArgumentAssignment, ClusterRun, Enrichment, Reel, ReelArgument,
@@ -220,7 +221,10 @@ def _run_scope(scope: str) -> dict:
     # surface too — the owned-only gate predates competitor blog sources.
     from core.models import KnowledgeDocument
     docs = [d for d in KnowledgeDocument.objects
-            .filter(is_active=True, is_on_topic=True, owner_type=scope)
+            # Same exemption as the search index: material the client added
+            # on purpose is never dropped by the model's on-topic verdict.
+            .filter(is_active=True, owner_type=scope)
+            .filter(Q(is_on_topic=True) | Q(is_inspiration=True))
             .exclude(embedding=[])]
     if docs:
         for d in docs:

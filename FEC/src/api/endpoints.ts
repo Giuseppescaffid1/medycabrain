@@ -66,8 +66,14 @@ export async function fetchAccounts(): Promise<Account[]> {
   return Array.isArray(data) ? data : data.results;
 }
 
-export async function addAccount(username: string): Promise<Account> {
-  const { data } = await apiClient.post<Account>("/accounts/", { username });
+export async function addAccount(
+  username: string,
+  ownerType: Account["owner_type"] = "competitor"
+): Promise<Account> {
+  const { data } = await apiClient.post<Account>("/accounts/", {
+    username,
+    owner_type: ownerType,
+  });
   return data;
 }
 

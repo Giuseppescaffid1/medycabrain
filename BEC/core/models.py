@@ -447,7 +447,8 @@ class KnowledgeDocument(models.Model):
     the knowledge bank the "second brain" and downstream agents draw on.
     """
 
-    SOURCE_CHOICES = [("blog", "Blog"), ("manual", "Manual"), ("other", "Other")]
+    SOURCE_CHOICES = [("blog", "Blog"), ("manual", "Manual"),
+                      ("video", "Video"), ("other", "Other")]
 
     source_type = models.CharField(max_length=16, choices=SOURCE_CHOICES, default="blog")
     # Provenance. SET_NULL: deleting a source must never destroy the bank.
@@ -481,6 +482,13 @@ class KnowledgeDocument(models.Model):
     primary_topic = models.CharField(max_length=80, blank=True, default="")
     is_on_topic = models.BooleanField(default=True)
     off_topic_reason = models.CharField(max_length=300, blank=True, default="")
+    # Reference material the client added on purpose — a TV episode, a talk.
+    # Deliberately NOT a third owner_type: 26 call sites read that field as a
+    # binary and ten of them would silently file a third value under Medyca,
+    # including the enrichment prompt that says "il blog di Medyca stessa".
+    # It also exempts the row from the on-topic filter: a model's verdict must
+    # not delete from the client's library something a human put there.
+    is_inspiration = models.BooleanField(default=False, db_index=True)
     embedding = models.JSONField(default=list, blank=True)
     # See ReelEmbedding.chunk_vectors — same purpose, for blog articles.
     chunk_vectors = models.JSONField(default=list, blank=True)
@@ -564,6 +572,7 @@ class Job(models.Model):
         ("editorial", "editorial"),
         ("blogsource_discover", "Blog source discovery"),
         ("upload_transcribe", "Upload transcribe"),
+        ("link_transcribe", "Link transcribe"),
     ]
     STATUS_CHOICES = [
         ("queued", "Queued"),
@@ -703,21 +712,42 @@ def _upload_path(instance, filename):
 
 
 class UploadedMedia(models.Model):
-    """A media file the client uploaded — a doctor's past interview, etc.
+    """Media the client brought in himself — by FILE or by LINK.
 
     The fourth way content enters the knowledge bank, after Instagram reels
-    and crawled blogs: the client sends an audio or video file, it is
-    transcribed, and the transcript becomes a Medyca-owned KnowledgeDocument
-    (source_type='manual') that flows through the SAME enrichment/embedding/
-    clustering pipeline, plus a blog draft grounded in the interview.
+    and crawled blogs: the client sends an audio or video file (or pastes a
+    video link), it is transcribed, and the transcript becomes a
+    KnowledgeDocument (source_type='manual'/'video') that flows through the
+    SAME enrichment/embedding/clustering pipeline, plus a blog draft.
+
+    Two independent things are recorded about each item, because they answer
+    different questions and conflating them would be wrong:
+
+    * `owner_type` — WHOSE content it is. Decides whether it counts as
+      Medyca's own coverage in the gap engine. Same two values as everywhere
+      else; there is deliberately no third value (see KnowledgeDocument).
+    * `is_inspiration` — WHY it is here: reference material the client added
+      on purpose, to draw from. A competitor's episode can be inspiration; so
+      can one of his own TV appearances. Neither implies the other.
 
     Status is tracked on the row the way Reel tracks media/transcribe: the
-    file processes asynchronously (a Job), and the UI polls this.
+    item processes asynchronously (a Job), and the UI polls this.
     """
 
     KIND_CHOICES = [("audio", "Audio"), ("video", "Video")]
 
-    file = models.FileField(upload_to=_upload_path)
+    # Empty for a link-sourced item: there is no uploaded file to store.
+    file = models.FileField(upload_to=_upload_path, blank=True)
+    # The public page the video came from (YouTube, …). Empty for a file
+    # upload. This is what makes the reference clickable downstream.
+    source_url = models.URLField(max_length=500, blank=True, default="")
+    # Who published it — "YouTVRS" — straight from the provider's oEmbed.
+    channel = models.CharField(max_length=200, blank=True, default="")
+    owner_type = models.CharField(max_length=16,
+                                  choices=[("owned", "owned"),
+                                           ("competitor", "competitor")],
+                                  default="owned")
+    is_inspiration = models.BooleanField(default=False)
     kind = models.CharField(max_length=8, choices=KIND_CHOICES, default="audio")
     original_name = models.CharField(max_length=300, blank=True, default="")
     title = models.CharField(max_length=300, blank=True, default="")
@@ -758,11 +788,16 @@ class BatchRun(models.Model):
     money spent on it.
 
     Results come back in ANY order and are matched by custom_id
-    ("reel-1251"), never by position — matching by position would file one
-    reel's analysis under another reel.
+    ("reel-1251", "doc-42", "docarg-42"), never by position — matching by
+    position would file one item's analysis under a different item.
     """
 
-    KIND_CHOICES = [("enrich", "enrich")]
+    # One entry per kind of batchable work — mirrors batch_agent.KINDS.
+    KIND_CHOICES = [
+        ("reel_enrich", "analisi di un reel"),
+        ("doc_enrich", "analisi di un articolo"),
+        ("doc_arguments", "affermazioni di un articolo"),
+    ]
     STATUS_CHOICES = [
         ("submitted", "submitted"),   # handed over, still working
         ("ended", "ended"),           # provider finished, results ready
@@ -771,7 +806,8 @@ class BatchRun(models.Model):
         ("canceled", "canceled"),
     ]
 
-    kind = models.CharField(max_length=16, choices=KIND_CHOICES, default="enrich")
+    kind = models.CharField(max_length=20, choices=KIND_CHOICES,
+                            default="reel_enrich")
     batch_id = models.CharField(max_length=120, unique=True)
     model = models.CharField(max_length=64, blank=True, default="")
     status = models.CharField(max_length=16, choices=STATUS_CHOICES, default="submitted")

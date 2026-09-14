@@ -107,7 +107,9 @@ class Command(BaseCommand):
             from core.pipeline_run import run_pipeline_job
             return run_pipeline_job(job, only=job.params.get("only") or [],
                                     limit=job.params.get("limit"))
-        if job.kind == "upload_transcribe":
+        if job.kind in ("upload_transcribe", "link_transcribe"):
+            # Same worker for both: a link differs only in where the audio
+            # comes from. The two kinds exist so the queue can be read.
             from core.upload_workflow import run_upload_transcribe
             return run_upload_transcribe(int(job.params["upload_id"]), job=job)
         raise CommandError(f"unknown job kind: {job.kind}")

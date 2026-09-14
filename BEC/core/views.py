@@ -126,15 +126,20 @@ class BlogSourceViewSet(viewsets.ModelViewSet):
 class UploadedMediaViewSet(viewsets.ModelViewSet):
     """The client's own audio/video interviews entering the knowledge bank.
 
-    POST a file (multipart) → it is stored, a transcription job is queued,
-    and 202 comes back with the job id. The file is transcribed, becomes a
-    Medyca-owned document, and produces a blog draft — all off the request,
-    the UI polls the job. GET lists the uploads with their status.
+    Two ways in, one list out:
+
+    * POST a file (multipart) → stored, transcription job queued, 202 with the
+      job id.
+    * POST /from-links/ with a blob of text → every video link in it becomes a
+      row, titles fetched from the provider, one job each.
+
+    Either way the transcript becomes a KnowledgeDocument and a blog draft, off
+    the request; the UI polls. GET lists everything with its status.
     """
 
     serializer_class = serializers.UploadedMediaSerializer
     permission_classes = [IsAuthenticated]
-    from rest_framework.parsers import FormParser, MultiPartParser
+    from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
     parser_classes = [MultiPartParser, FormParser]
     http_method_names = ["get", "post", "delete", "head", "options"]
 
@@ -173,6 +178,62 @@ class UploadedMediaViewSet(viewsets.ModelViewSet):
         data = self.get_serializer(up).data
         data["job_id"] = job.id
         return Response(data, status=status.HTTP_202_ACCEPTED)
+
+    @action(detail=False, methods=["post"], url_path="from-links",
+            parser_classes=[JSONParser])
+    def from_links(self, request):
+        """Paste a blob of text; every video link in it becomes a row.
+
+        The client sends his notes, not a clean list — "Parte I: <url>", dates,
+        names in brackets. `extract_ids` pulls the videos out and collapses the
+        spellings of the same video (youtu.be, &t=365s) onto one id, so pasting
+        the same list twice adds nothing.
+
+        JSONParser is declared explicitly: this ViewSet is set to multipart for
+        the file upload, and without it a JSON body would be rejected here.
+        """
+        from core.link_ingest import LinkRefused, canonical_url, extract_ids, probe
+
+        text = request.data.get("text") or ""
+        owner = request.data.get("owner_type")
+        owner = owner if owner in ("owned", "competitor") else "owned"
+        inspiration = bool(request.data.get("is_inspiration", True))
+
+        ids = extract_ids(text)
+        if not ids:
+            return Response(
+                {"detail": "Non ho trovato nessun link a un video in quel testo."},
+                status=400)
+
+        created, skipped, refused = [], [], []
+        for vid in ids:
+            url = canonical_url(vid)
+            # Already in, as a row or as a document: adding it twice would
+            # pay for the same transcription twice.
+            if (models.UploadedMedia.objects.filter(source_url=url).exists()
+                    or models.KnowledgeDocument.objects.filter(source_url=url).exists()):
+                skipped.append(url)
+                continue
+            try:
+                meta = probe(url)
+            except LinkRefused as exc:
+                refused.append({"url": url, "motivo": str(exc)})
+                continue
+            up = models.UploadedMedia.objects.create(
+                kind="video", source_url=url, channel=meta["channel"],
+                title=meta["title"], original_name=meta["title"][:300],
+                owner_type=owner, is_inspiration=inspiration,
+            )
+            job = models.Job.objects.create(
+                kind="link_transcribe", params={"upload_id": up.id},
+                message=f"In coda: {up.title[:80]}",
+            )
+            _spawn_job(job.id)
+            created.append(self.get_serializer(up).data)
+
+        return Response(
+            {"creati": created, "gia_presenti": skipped, "rifiutati": refused},
+            status=status.HTTP_202_ACCEPTED)
 
     def perform_destroy(self, instance):
         # Remove the derived doc too: an interview the client deleted must

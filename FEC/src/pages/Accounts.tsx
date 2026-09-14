@@ -1,156 +1,72 @@
-import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import {
-  addAccount,
-  deleteAccount,
-  fetchAccounts,
-  updateAccount,
-} from "../api/endpoints";
-import { Badge, Button, Skeleton, fieldCls } from "../components/ui/primitives";
+import { useSearchParams } from "react-router-dom";
+import { fetchAccounts } from "../api/endpoints";
+import { fetchBlogSources } from "../api/blogSources";
+import { listUploads } from "../api/uploads";
 import { PageTransition } from "../components/ui/motion";
+import { Tabs } from "../components/manage/parts";
+import { AccountsPanel } from "../components/sources/AccountsPanel";
 import { BlogSourcesPanel } from "../components/sources/BlogSourcesPanel";
 import { UploadPanel } from "../components/uploads/UploadPanel";
-import { formatCount, formatDate } from "../lib/utils";
+
+/**
+ * Everything you manage, in one place: Instagram profiles, blogs, uploaded
+ * interviews.
+ *
+ * They used to be three long sections stacked on one scroll, so reaching the
+ * uploads meant scrolling past every account and every blog. They are tabs
+ * now: one list on screen at a time, the page header and the tabs stay put,
+ * only the list scrolls. The open tab lives in the URL (`?tab=blogs`) so a
+ * reload, a back button or a shared link all land on the same list.
+ *
+ * The counts on the tabs come from the same react-query keys the panels use,
+ * so they cost no extra request and cannot disagree with the tables.
+ */
+const TAB_IDS = ["instagram", "blogs", "uploads"] as const;
+type TabId = (typeof TAB_IDS)[number];
 
 export default function Accounts() {
   const { t } = useTranslation();
-  const qc = useQueryClient();
-  const [username, setUsername] = useState("");
-  const [error, setError] = useState("");
+  const [params, setParams] = useSearchParams();
 
-  const { data, isLoading } = useQuery({ queryKey: ["accounts"], queryFn: fetchAccounts });
-  const invalidate = () => qc.invalidateQueries({ queryKey: ["accounts"] });
+  const raw = params.get("tab") as TabId | null;
+  const tab: TabId = raw && TAB_IDS.includes(raw) ? raw : "instagram";
+  const setTab = (id: string) => setParams({ tab: id }, { replace: true });
 
-  const add = useMutation({
-    mutationFn: (u: string) => addAccount(u),
-    onSuccess: () => {
-      setUsername("");
-      setError("");
-      invalidate();
-    },
-    onError: () => setError(t("common.error")),
-  });
-  const toggle = useMutation({
-    mutationFn: (v: { id: number; is_active: boolean }) =>
-      updateAccount(v.id, { is_active: v.is_active }),
-    onSuccess: invalidate,
-  });
-  const remove = useMutation({
-    mutationFn: (id: number) => deleteAccount(id),
-    onSuccess: invalidate,
-  });
-
-  const clean = (u: string) => u.trim().replace(/^@/, "").replace(/\/$/, "");
+  const accounts = useQuery({ queryKey: ["accounts"], queryFn: fetchAccounts });
+  const blogs = useQuery({ queryKey: ["blog-sources"], queryFn: fetchBlogSources });
+  const uploads = useQuery({ queryKey: ["uploads"], queryFn: listUploads });
 
   return (
     <PageTransition>
-    <div className="flex h-full flex-col">
-      <div className="border-b border-border px-4 py-4 sm:px-6">
-        <h1 className="text-xl font-bold text-heading">{t("accounts.title")}</h1>
-      </div>
-
-      <div className="flex-1 space-y-10 overflow-y-auto px-4 py-4 sm:px-6 sm:py-5">
-        <section>
-        <h2 className="mb-1 text-xs font-bold uppercase tracking-wider text-muted">
-          {t("accounts.igSection")}
-        </h2>
-        <p className="mb-4 text-sm text-muted">{t("accounts.igSubtitle")}</p>
-        <form
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (clean(username)) add.mutate(clean(username));
-          }}
-          className="mb-6 flex max-w-md gap-2"
-        >
-          <input
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            placeholder={t("accounts.addPlaceholder")}
-            className={fieldCls + " min-w-0 flex-1"}
-          />
-          <Button type="submit" loading={add.isPending}>
-            {t("accounts.add")}
-          </Button>
-        </form>
-        {error && <p className="mb-4 text-sm font-semibold text-danger">⚠ {error}</p>}
-
-        {isLoading ? (
-          <Skeleton className="h-64" />
-        ) : (
-          <div className="overflow-x-auto rounded-xl border border-border bg-white shadow-card">
-            <table className="w-full min-w-[640px] text-sm">
-              <thead className="bg-surface text-left text-xs font-bold uppercase tracking-wider text-muted">
-                <tr>
-                  <th className="px-4 py-3">{t("accounts.username")}</th>
-                  <th className="px-4 py-3">{t("accounts.reels")}</th>
-                  <th className="px-4 py-3">{t("accounts.followers")}</th>
-                  <th className="px-4 py-3">{t("accounts.lastScraped")}</th>
-                  <th className="px-4 py-3">{t("accounts.status")}</th>
-                  <th className="px-4 py-3"></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {data?.map((a) => (
-                  <tr key={a.id} className="text-navy">
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        {a.profile_pic_url && (
-                          <img
-                            src={a.profile_pic_url}
-                            alt=""
-                            className="h-7 w-7 rounded-full object-cover"
-                          />
-                        )}
-                        <div>
-                          <div className="font-semibold text-navy">@{a.username}</div>
-                          {a.display_name && (
-                            <div className="text-xs text-muted">{a.display_name}</div>
-                          )}
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-right tabular-nums">{a.reel_count ?? 0}</td>
-                    <td className="px-4 py-3 text-right tabular-nums">{formatCount(a.followers_count)}</td>
-                    <td className="px-4 py-3 text-xs text-muted">
-                      {a.last_scraped_at ? formatDate(a.last_scraped_at) : t("accounts.never")}
-                    </td>
-                    <td className="px-4 py-3">
-                      <button onClick={() => toggle.mutate({ id: a.id, is_active: !a.is_active })}>
-                        <Badge
-                          className={
-                            a.is_active
-                              ? "bg-success/10 text-success"
-                              : "bg-surface text-muted"
-                          }
-                        >
-                          {a.is_active ? t("accounts.active") : t("accounts.inactive")}
-                        </Badge>
-                      </button>
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <button
-                        onClick={() => {
-                          if (confirm(t("accounts.confirmRemove"))) remove.mutate(a.id);
-                        }}
-                        className="text-xs font-semibold text-muted hover:text-danger"
-                      >
-                        {t("accounts.remove")}
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+      <div className="flex h-full flex-col">
+        <div className="border-b border-border px-4 pt-4 sm:px-6">
+          <h1 className="text-xl font-bold text-heading">{t("manage.title")}</h1>
+          <p className="mt-1 max-w-[70ch] text-sm text-muted">{t("manage.subtitle")}</p>
+          <div className="mt-4">
+            <Tabs
+              value={tab}
+              onChange={setTab}
+              items={[
+                {
+                  id: "instagram",
+                  label: t("manage.tabInstagram"),
+                  count: accounts.data?.length,
+                },
+                { id: "blogs", label: t("manage.tabBlogs"), count: blogs.data?.length },
+                { id: "uploads", label: t("manage.tabUploads"), count: uploads.data?.length },
+              ]}
+            />
           </div>
-        )}
-        </section>
+        </div>
 
-        <BlogSourcesPanel />
-
-        <UploadPanel />
+        <div className="flex-1 overflow-y-auto px-4 py-5 sm:px-6">
+          {tab === "instagram" && <AccountsPanel />}
+          {tab === "blogs" && <BlogSourcesPanel />}
+          {tab === "uploads" && <UploadPanel />}
+        </div>
       </div>
-    </div>
     </PageTransition>
   );
 }

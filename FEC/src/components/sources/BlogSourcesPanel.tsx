@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import {
@@ -10,6 +10,21 @@ import {
   updateBlogSource,
 } from "../../api/blogSources";
 import { Badge, Button, Skeleton, fieldCls } from "../ui/primitives";
+import {
+  AddForm,
+  FilterSelect,
+  FormError,
+  PanelEmpty,
+  PanelHeader,
+  ResultCount,
+  RowAction,
+  RowActions,
+  SearchField,
+  StatusToggle,
+  TableFrame,
+  Th,
+  Toolbar,
+} from "../manage/parts";
 import { formatDate } from "../../lib/utils";
 
 /**
@@ -20,14 +35,20 @@ import { formatDate } from "../../lib/utils";
  * minutes, not after the nightly run. A source that failed repeatedly shows
  * WHY and can be brought back deliberately — deactivation is automatic,
  * reactivation is a human act.
+ *
+ * Layout follows the shared shape in `manage/parts`: list first, add form
+ * only when asked for, search and status filter above the table.
  */
 export function BlogSourcesPanel() {
   const { t } = useTranslation();
   const qc = useQueryClient();
+  const [adding, setAdding] = useState(false);
   const [name, setName] = useState("");
   const [url, setUrl] = useState("");
   const [owner, setOwner] = useState<"owned" | "competitor">("competitor");
   const [error, setError] = useState("");
+  const [q, setQ] = useState("");
+  const [status, setStatus] = useState("all");
 
   const { data, isLoading } = useQuery({
     queryKey: ["blog-sources"],
@@ -44,6 +65,7 @@ export function BlogSourcesPanel() {
       setName("");
       setUrl("");
       setError("");
+      setAdding(false);
       invalidate();
     },
     onError: (e: unknown) => {
@@ -62,75 +84,147 @@ export function BlogSourcesPanel() {
   const crawl = useMutation({ mutationFn: crawlBlogSource, onSuccess: invalidate });
   const reactivate = useMutation({ mutationFn: reactivateBlogSource, onSuccess: invalidate });
 
-  return (
-    <section>
-      <h2 className="mb-1 text-xs font-bold uppercase tracking-wider text-muted">
-        {t("sources.title")}
-      </h2>
-      <p className="mb-4 text-sm text-muted">{t("sources.subtitle")}</p>
+  const rows = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    return (data ?? []).filter((s) => {
+      const failedOut = !s.is_active && s.consecutive_failures > 0;
+      if (status === "active" && !s.is_active) return false;
+      if (status === "inactive" && (s.is_active || failedOut)) return false;
+      if (status === "failed" && !failedOut) return false;
+      if (status === "owned" && s.owner_type !== "owned") return false;
+      if (status === "competitor" && s.owner_type !== "competitor") return false;
+      if (!needle) return true;
+      return (
+        s.name.toLowerCase().includes(needle) || s.index_url.toLowerCase().includes(needle)
+      );
+    });
+  }, [data, q, status]);
 
-      <form
-        onSubmit={(e) => {
-          e.preventDefault();
-          const u = url.trim();
-          if (!u) return;
-          add.mutate({
-            name: name.trim() || new URL(u.startsWith("http") ? u : `https://${u}`).hostname.replace(/^www\./, ""),
-            index_url: u.startsWith("http") ? u : `https://${u}`,
-            owner_type: owner,
-          });
-        }}
-        className="mb-2 flex max-w-3xl flex-wrap gap-2"
-      >
-        <input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder={t("sources.namePlaceholder")}
-          className={fieldCls + " w-44 min-w-0"}
-        />
-        <input
-          value={url}
-          onChange={(e) => setUrl(e.target.value)}
-          placeholder={t("sources.urlPlaceholder")}
-          className={fieldCls + " min-w-0 flex-1"}
-        />
-        <select
-          value={owner}
-          onChange={(e) => setOwner(e.target.value as "owned" | "competitor")}
-          className={fieldCls + " w-36"}
-          aria-label={t("sources.ownerLabel")}
+  const addButton = (
+    <Button
+      variant={adding ? "secondary" : "primary"}
+      onClick={() => {
+        setAdding((v) => !v);
+        setError("");
+      }}
+    >
+      {adding ? t("manage.cancel") : t("sources.add")}
+    </Button>
+  );
+
+  return (
+    <section aria-labelledby="tab-blogs" id="panel-blogs" role="tabpanel">
+      <PanelHeader description={t("sources.subtitle")} action={addButton} />
+
+      <AddForm open={adding}>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            const u = url.trim();
+            if (!u) {
+              setError(t("sources.urlRequired"));
+              return;
+            }
+            const full = u.startsWith("http") ? u : `https://${u}`;
+            let host = "";
+            try {
+              host = new URL(full).hostname.replace(/^www\./, "");
+            } catch {
+              setError(t("sources.urlInvalid"));
+              return;
+            }
+            add.mutate({
+              name: name.trim() || host,
+              index_url: full,
+              owner_type: owner,
+            });
+          }}
+          className="flex flex-col gap-3 sm:flex-row sm:items-end"
         >
-          <option value="competitor">{t("scope.competitor")}</option>
-          <option value="owned">{t("scope.medyca")}</option>
-        </select>
-        <Button type="submit" loading={add.isPending}>
-          {t("sources.add")}
-        </Button>
-      </form>
-      <p className="mb-4 text-xs text-muted/80">{t("sources.addHint")}</p>
-      {error && <p className="mb-4 text-sm font-semibold text-danger">⚠ {error}</p>}
+          <label className="flex flex-col gap-1 sm:w-44">
+            <span className="text-xs font-bold uppercase tracking-wider text-muted">
+              {t("sources.nameLabel")}
+            </span>
+            <input
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder={t("sources.namePlaceholder")}
+              className={fieldCls + " min-w-0"}
+            />
+          </label>
+          <label className="flex min-w-0 flex-1 flex-col gap-1">
+            <span className="text-xs font-bold uppercase tracking-wider text-muted">
+              {t("sources.urlLabel")}
+            </span>
+            <input
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder={t("sources.urlPlaceholder")}
+              className={fieldCls + " min-w-0"}
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-xs font-bold uppercase tracking-wider text-muted">
+              {t("sources.ownerLabel")}
+            </span>
+            <select
+              value={owner}
+              onChange={(e) => setOwner(e.target.value as "owned" | "competitor")}
+              className={fieldCls + " w-full sm:w-44"}
+            >
+              <option value="competitor">{t("scope.competitor")}</option>
+              <option value="owned">{t("scope.medyca")}</option>
+            </select>
+          </label>
+          <Button type="submit" loading={add.isPending}>
+            {t("sources.add")}
+          </Button>
+        </form>
+        <p className="mt-3 text-xs text-muted/80">{t("sources.addHint")}</p>
+        {error && <FormError message={error} />}
+      </AddForm>
 
       {isLoading ? (
         <Skeleton className="h-40" />
       ) : !data?.length ? (
-        <p className="rounded-xl border border-border bg-surface p-4 text-sm text-muted shadow-card">
-          {t("sources.empty")}
-        </p>
+        <PanelEmpty message={t("sources.empty")} />
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-border bg-white shadow-card">
-          <table className="w-full min-w-[720px] text-sm">
-            <thead className="bg-surface text-left text-xs font-bold uppercase tracking-wider text-muted">
-              <tr>
-                <th className="px-4 py-3">{t("sources.source")}</th>
-                <th className="px-4 py-3">{t("sources.owner")}</th>
-                <th className="px-4 py-3 text-right">{t("sources.articles")}</th>
-                <th className="px-4 py-3">{t("sources.lastCrawl")}</th>
-                <th className="px-4 py-3">{t("accounts.status")}</th>
-                <th className="px-4 py-3"></th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {data.map((s) => {
+        <>
+          <Toolbar>
+            <SearchField value={q} onChange={setQ} placeholder={t("manage.searchBlogs")} />
+            <FilterSelect
+              value={status}
+              onChange={setStatus}
+              label={t("manage.filterLabel")}
+              options={[
+                { value: "all", label: t("manage.filterAll") },
+                { value: "active", label: t("accounts.active") },
+                { value: "inactive", label: t("accounts.inactive") },
+                { value: "failed", label: t("sources.failed") },
+                { value: "owned", label: t("scope.medyca") },
+                { value: "competitor", label: t("scope.competitor") },
+              ]}
+            />
+            <ResultCount shown={rows.length} total={data.length} />
+          </Toolbar>
+
+          {!rows.length ? (
+            <PanelEmpty message={t("manage.noResults")} />
+          ) : (
+            <TableFrame
+              minWidth={760}
+              head={
+                <>
+                  <Th>{t("sources.source")}</Th>
+                  <Th>{t("sources.owner")}</Th>
+                  <Th align="right">{t("sources.articles")}</Th>
+                  <Th>{t("sources.lastCrawl")}</Th>
+                  <Th>{t("accounts.status")}</Th>
+                  <Th align="right" />
+                </>
+              }
+            >
+              {rows.map((s) => {
                 const comp = s.owner_type === "competitor";
                 const failedOut = !s.is_active && s.consecutive_failures > 0;
                 return (
@@ -146,14 +240,20 @@ export function BlogSourcesPanel() {
                         {s.index_url.replace(/^https?:\/\/(www\.)?/, "")}
                       </a>
                       {s.last_error && (
-                        <div className="mt-1 max-w-xs truncate text-xs text-danger"
-                             title={s.last_error}>
+                        <div
+                          className="mt-1 max-w-xs truncate text-xs text-danger"
+                          title={s.last_error}
+                        >
                           ⚠ {s.last_error}
                         </div>
                       )}
                     </td>
                     <td className="px-4 py-3">
-                      <Badge className={comp ? "bg-warning/10 text-warning" : "bg-secondary/10 text-secondary"}>
+                      <Badge
+                        className={
+                          comp ? "bg-warning/10 text-warning" : "bg-secondary/10 text-secondary"
+                        }
+                      >
                         {comp ? t("scope.competitor") : t("scope.medyca")}
                       </Badge>
                     </td>
@@ -163,45 +263,52 @@ export function BlogSourcesPanel() {
                     </td>
                     <td className="px-4 py-3">
                       {failedOut ? (
-                        <button
+                        <StatusToggle
                           onClick={() => reactivate.mutate(s.id)}
                           title={t("sources.reactivateHint")}
                         >
                           <Badge className="bg-danger/10 text-danger">{t("sources.failed")}</Badge>
-                        </button>
+                        </StatusToggle>
                       ) : (
-                        <button onClick={() => toggle.mutate({ id: s.id, is_active: !s.is_active })}>
-                          <Badge className={s.is_active ? "bg-success/10 text-success" : "bg-surface text-muted"}>
+                        <StatusToggle
+                          onClick={() => toggle.mutate({ id: s.id, is_active: !s.is_active })}
+                          title={t("manage.toggleHint")}
+                        >
+                          <Badge
+                            className={
+                              s.is_active ? "bg-success/10 text-success" : "bg-surface text-muted"
+                            }
+                          >
                             {s.is_active ? t("accounts.active") : t("accounts.inactive")}
                           </Badge>
-                        </button>
+                        </StatusToggle>
                       )}
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <div className="flex items-center justify-end gap-3">
-                        <button
+                      <RowActions>
+                        <RowAction
+                          tone="action"
                           onClick={() => crawl.mutate(s.id)}
                           disabled={crawl.isPending || !s.is_active}
-                          className="text-xs font-semibold text-secondary hover:text-heading disabled:opacity-50"
                         >
                           {t("sources.crawlNow")}
-                        </button>
-                        <button
+                        </RowAction>
+                        <RowAction
+                          tone="danger"
                           onClick={() => {
                             if (confirm(t("sources.confirmRemove"))) remove.mutate(s.id);
                           }}
-                          className="text-xs font-semibold text-muted hover:text-danger"
                         >
                           {t("accounts.remove")}
-                        </button>
-                      </div>
+                        </RowAction>
+                      </RowActions>
                     </td>
                   </tr>
                 );
               })}
-            </tbody>
-          </table>
-        </div>
+            </TableFrame>
+          )}
+        </>
       )}
     </section>
   );

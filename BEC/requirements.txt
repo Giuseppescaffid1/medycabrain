@@ -17,3 +17,14 @@ numpy==1.26.4
 Pillow==10.4.0
 requests==2.32.3
 trafilatura==2.1.0
+
+# Audio di video presi da un link (core/link_ingest.py) e permalink Instagram
+# (downloader_agent). Era installato ma non dichiarato: un ambiente ricreato
+# da questo file non lo avrebbe avuto, e il download sarebbe fallito senza
+# che nulla spiegasse perché.
+yt-dlp==2026.8.19
+# Script che risolvono la sfida JavaScript con cui YouTube firma gli
+# indirizzi dei media. Senza, yt-dlp restituisce solo le anteprime.
+yt-dlp-ejs==0.8.0
+# Batch API + client Anthropic della catena provider (llm/batch.py, llm/client.py).
+anthropic==1.5.0

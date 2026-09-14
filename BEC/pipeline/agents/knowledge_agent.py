@@ -68,20 +68,34 @@ def _embedder():
     return cluster_agent._get_embedder()
 
 
-def _enrich_one(doc: KnowledgeDocument) -> None:
-    from pipeline.agents.enrich_agent import canonical_topic, pick_primary_topic
+# Same reasoning as ENRICH_MAX_TOKENS for reels: a truncated answer is a lost
+# analysis, not a shorter one, and output is billed on what is produced.
+DOC_MAX_TOKENS = 2000
 
+
+def build_doc_enrich_prompt(doc: KnowledgeDocument) -> tuple[str, str]:
+    """(system, user) for one article. Shared by the live path and the batch,
+    so the two can never ask different questions of the same article."""
     who = doc.source.name if doc.source else "Medyca"
     ownership = (" (un CONCORRENTE di Medyca)" if doc.owner_type == "competitor"
                  else " (il blog di Medyca stessa)")
-    user = KB_ENRICH_USER.format(source_name=who, ownership=ownership,
-                                 title=doc.title,
-                                 text=(doc.content_text or "")[:6000])
-    data = client.chat_json(KB_SYSTEM, user, max_tokens=1200,
-                            # The same deep-reading tier the reels get: what
-                            # an article claims and how specific its subject
-                            # is decide the whole thematic layer above it.
-                            model=client.model_for("analysis"))
+    return KB_SYSTEM, KB_ENRICH_USER.format(
+        source_name=who, ownership=ownership, title=doc.title,
+        text=(doc.content_text or "")[:6000])
+
+
+def write_doc_enrich(doc: KnowledgeDocument, data) -> None:
+    """Store one analysis. Extracted so a batch answer, arriving hours later,
+    is written by exactly the same rules as a live one."""
+    from pipeline.agents.enrich_agent import canonical_topic, pick_primary_topic
+
+    # The model occasionally wraps the object in an array; the content is
+    # fine, only the envelope is wrong.
+    if isinstance(data, list):
+        data = next((d for d in data if isinstance(d, dict)), None)
+    if not isinstance(data, dict):
+        raise ValueError("risposta non utilizzabile: atteso un oggetto JSON")
+
     topics = data.get("topics") or []
     if isinstance(topics, str):
         topics = [t.strip() for t in topics.split(",") if t.strip()]
@@ -100,18 +114,36 @@ def _enrich_one(doc: KnowledgeDocument) -> None:
                             "enrich_status", "last_error"])
 
 
-def _extract_arguments(doc: KnowledgeDocument) -> int:
-    """Grounded claims from the article, same contract as reels: the quote
-    must appear verbatim in the text or the claim is dropped."""
+def _enrich_one(doc: KnowledgeDocument) -> None:
+    system, user = build_doc_enrich_prompt(doc)
+    data = client.chat_json(system, user, max_tokens=DOC_MAX_TOKENS,
+                            # The same deep-reading tier the reels get: what
+                            # an article claims and how specific its subject
+                            # is decide the whole thematic layer above it.
+                            model=client.model_for("analysis"))
+    write_doc_enrich(doc, data)
+
+
+def build_doc_arguments_prompt(doc: KnowledgeDocument) -> tuple[str, str] | None:
+    """(system, user) for claim extraction, or None when the article is too
+    short to carry a claim worth quoting."""
+    text = (doc.content_text or "")[:8000]
+    if len(text.strip()) < 200:
+        return None
+    return prompts.ARGUMENTS_SYSTEM, prompts.ARGUMENTS_USER_TEMPLATE.format(
+        transcript=text, caption="")
+
+
+def write_doc_arguments(doc: KnowledgeDocument, data) -> int:
+    """Store the claims. The quote must appear verbatim in the article or the
+    claim is dropped — the grounding contract, identical for reels."""
     from pipeline.agents.enrich_agent import _norm
 
     text = (doc.content_text or "")[:8000]
-    if len(text.strip()) < 200:
-        return 0
-    user = prompts.ARGUMENTS_USER_TEMPLATE.format(transcript=text, caption="")
-    data = client.chat_json(prompts.ARGUMENTS_SYSTEM, user, max_tokens=1200,
-                            model=client.model_for("analysis"))
-    rows = data.get("argomenti") or []
+    if isinstance(data, list) and data and isinstance(data[0], dict) \
+            and "argomenti" in data[0]:
+        data = data[0]
+    rows = (data.get("argomenti") if isinstance(data, dict) else data) or []
     doc.arguments.all().delete()  # idempotent re-extraction
     haystack = _norm(text)
     created = dropped = 0
@@ -131,6 +163,16 @@ def _extract_arguments(doc: KnowledgeDocument) -> int:
         logger.info("[knowledge] %s: %d affermazioni scartate (citazione non trovata)",
                     doc.source_url, dropped)
     return created
+
+
+def _extract_arguments(doc: KnowledgeDocument) -> int:
+    built = build_doc_arguments_prompt(doc)
+    if built is None:
+        return 0
+    system, user = built
+    data = client.chat_json(system, user, max_tokens=DOC_MAX_TOKENS,
+                            model=client.model_for("analysis"))
+    return write_doc_arguments(doc, data)
 
 
 def _embed_one(doc: KnowledgeDocument) -> None:

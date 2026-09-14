@@ -27,7 +27,7 @@ from pathlib import Path
 from django.conf import settings
 from django.utils import timezone
 
-from core.models import (DONE, FAILED, PENDING, BlogDraft, KnowledgeDocument,
+from core.models import (DONE, FAILED, PENDING, SKIPPED, BlogDraft, KnowledgeDocument,
                          UploadedMedia)
 
 logger = logging.getLogger(__name__)
@@ -111,8 +111,49 @@ def _transcribe_long(mp3: Path, progress=None) -> dict:
             "duration": offset, "model_name": model_name}
 
 
+def _save_reference_only(up, reason: str) -> None:
+    """Store a link whose audio we could not get, as a reference card.
+
+    No transcript means no analysis: asking a model to describe a video from
+    its title alone is how invented claims get into a medical knowledge bank.
+    So the document carries what is actually known — title, channel, link —
+    `enrich_status=SKIPPED`, and a vector built from the title so it can still
+    be FOUND and handed back as a reference.
+
+    (Embedding the title is safe in a way embedding an empty string was not:
+    the empty-string vector sits at a fixed point close to every question,
+    which is how ten contentless reels once took the top of a search.)
+    """
+    from pipeline.agents.knowledge_agent import _embed_one
+
+    doc = KnowledgeDocument.objects.filter(source_url=up.source_url).first()
+    if doc is None:
+        doc = KnowledgeDocument.objects.create(
+            source_type="video", owner_type=up.owner_type,
+            is_inspiration=up.is_inspiration, source=None,
+            source_url=up.source_url, title=(up.title or up.source_url)[:300],
+            author=up.channel, language="it",
+            content_text="", content_md="",
+            published_at=timezone.now(),
+            enrich_status=SKIPPED, argument_status=SKIPPED,
+            embed_status=PENDING,
+            last_error=reason[:500],
+        )
+    up.document = doc
+    up.save(update_fields=["document"])
+    try:
+        _embed_one(doc)
+    except Exception as exc:  # noqa: BLE001 — findability is a bonus here
+        logger.warning("[upload] riferimento %s non indicizzato: %r", doc.id, exc)
+
+
 def run_upload_transcribe(upload_id: int, job=None) -> dict:
-    """Transcribe an uploaded file, store it, enrich it, draft an article."""
+    """Transcribe one item the client brought in, store it, enrich it, draft.
+
+    Handles both shapes of `UploadedMedia`: an uploaded FILE, and a pasted
+    LINK whose audio yt-dlp fetches first. Everything after the audio exists
+    is identical, on purpose.
+    """
     from pipeline.agents.downloader_agent import _extract_audio, _has_audio
 
     def progress(p, m):
@@ -129,17 +170,33 @@ def run_upload_transcribe(upload_id: int, job=None) -> dict:
 
     scratch = Path(settings.TMP_DIR)
     scratch.mkdir(parents=True, exist_ok=True)
-    src = Path(up.file.path)
     mp3 = Path(settings.MEDIA_ROOT) / f"uploads/audio/{uuid.uuid4().hex}.mp3"
 
     try:
         progress(10, "Preparo l'audio…")
-        if up.kind == "video":
+        if up.source_url and not up.file:
+            # Came from a pasted link: yt-dlp fetches the audio, and from
+            # there this is the same flow as an uploaded file. Deliberately
+            # one code path — a second transcription pipeline for links would
+            # drift from this one within a month.
+            from core.link_ingest import LinkRefused, fetch_audio
+            try:
+                fetch_audio(up.source_url, mp3)
+            except LinkRefused as exc:
+                # The audio is unreachable (YouTube's bot check, a private
+                # video). The REFERENCE is still worth having — title, channel
+                # and link are what the client asked to get back out of the
+                # MCP — so it is saved as a document with no transcript,
+                # rather than leaving the video invisible to every surface.
+                _save_reference_only(up, str(exc))
+                raise
+        elif up.kind == "video":
+            src = Path(up.file.path)
             if not _has_audio(src):
                 raise RuntimeError("Il video non contiene una traccia audio.")
             _extract_audio(src, mp3)
         else:
-            _to_mono_mp3(src, mp3)
+            _to_mono_mp3(Path(up.file.path), mp3)
         up.audio_file = str(mp3.relative_to(settings.MEDIA_ROOT))
         up.duration_s = _probe_duration(mp3)
         up.save(update_fields=["audio_file", "duration_s"])
@@ -152,22 +209,44 @@ def run_upload_transcribe(upload_id: int, job=None) -> dict:
 
         # A video keeps only its audio: the file was the transport, the
         # transcript is the asset. Drop the (large) original to save disk.
-        if up.kind == "video":
-            src.unlink(missing_ok=True)
+        # A link-sourced row never had a file to drop.
+        if up.kind == "video" and up.file:
+            Path(up.file.path).unlink(missing_ok=True)
 
         progress(78, "Salvo e analizzo il contenuto…")
         title = up.title or up.original_name or "Intervista"
-        doc = KnowledgeDocument.objects.create(
-            source_type="manual", owner_type="owned", source=None,
-            # Synthetic unique URL: an upload has no web address, and
-            # source_url is unique+required. .create() skips URLField
-            # validation, so a non-http scheme is fine in the DB.
-            source_url=f"upload://interview/{uuid.uuid4().hex}",
-            title=title[:300], content_text=text,
-            content_md=text, language="it",
-            content_hash=hashlib.sha256(text.encode()).hexdigest(),
-            published_at=timezone.now(),
-            enrich_status=PENDING, embed_status=PENDING, argument_status=PENDING,
+        # A link may already have a reference-only document from an earlier
+        # attempt whose audio was refused (see _save_reference_only). This run
+        # UPGRADES that card into a full document — creating a second one
+        # would collide on source_url's unique constraint, which is exactly
+        # what happened the first time a blocked link was retried.
+        doc, _created = KnowledgeDocument.objects.update_or_create(
+            # Keyed on the url, with everything else in `defaults`: ownership
+            # and the inspiration flag are read from the row, never hardcoded,
+            # because the client decides per item whether a video is his own
+            # material — and that decides whether it counts as his coverage.
+            #
+            # For a link, the REAL page url — that is the reference the client
+            # gets back out of the MCP, and `unique=True` makes pasting the
+            # same link twice a no-op instead of a duplicate. An uploaded file
+            # has no web address, so it keeps a synthetic one; .create() skips
+            # URLField validation, so a non-http scheme is fine in the DB.
+            source_url=up.source_url or f"upload://interview/{uuid.uuid4().hex}",
+            defaults={
+                "source_type": "video" if up.source_url else "manual",
+                "owner_type": up.owner_type,
+                "is_inspiration": up.is_inspiration,
+                "source": None,
+                "title": title[:300],
+                "content_text": text, "content_md": text, "language": "it",
+                "author": up.channel,
+                "content_hash": hashlib.sha256(text.encode()).hexdigest(),
+                "published_at": timezone.now(),
+                # Back to pending on purpose: the card was SKIPPED because
+                # there was nothing to analyse, and now there is.
+                "enrich_status": PENDING, "embed_status": PENDING,
+                "argument_status": PENDING, "last_error": "",
+            },
         )
         up.document = doc
         up.transcribe_status = DONE
@@ -184,8 +263,21 @@ def run_upload_transcribe(upload_id: int, job=None) -> dict:
         # An LLM hiccup here (rate limit, empty reply) must not fail the whole
         # upload and lose the transcript that already made it in. Isolated,
         # logged, and the draft stays regenerable from the document.
-        progress(88, "Preparo una bozza di articolo…")
+        # A draft is Medyca writing in their own voice, grounded in this text.
+        # Doing that from someone ELSE's material is the mixing this project
+        # forbids — blog_workflow already filters `owner_type="owned"` when it
+        # picks documents for a cluster draft, and the same rule has to hold
+        # here now that an item can be marked as another party's. (Caught the
+        # first time a competitor's TV episode produced a Medyca draft.)
         draft_id = None
+        if doc.owner_type != "owned":
+            logger.info("[upload] doc %s è di terzi (%s): nessuna bozza",
+                        doc.id, doc.owner_type)
+            progress(100, "Fatto.")
+            return {"document_id": doc.id, "blog_draft_id": None,
+                    "chars": len(text)}
+
+        progress(88, "Preparo una bozza di articolo…")
         try:
             from core.blog_workflow import run_document_blog
             draft_id = run_document_blog(doc.id, job=job).get("blog_draft_id")
@@ -203,8 +295,15 @@ def run_upload_transcribe(upload_id: int, job=None) -> dict:
                 "chars": len(text)}
 
     except Exception as exc:  # noqa: BLE001
+        from core.link_ingest import LinkRefused
+
         up.transcribe_status = FAILED
-        up.last_error = repr(exc)[:500]
+        # A LinkRefused already carries a sentence written for the client
+        # ("YouTube ha bloccato il download… serve un file di cookie"); wrapping
+        # it in repr() would show him Python instead of the remedy. Everything
+        # else keeps repr, which is what a developer needs.
+        up.last_error = (str(exc) if isinstance(exc, LinkRefused)
+                         else repr(exc))[:500]
         up.save(update_fields=["transcribe_status", "last_error"])
         logger.warning("[upload] %s fallito: %r", up.original_name, exc)
         raise

@@ -120,9 +120,20 @@ notte 2   collect()  → those answers land
 - If the delivery is refused, the rows stay `pending` and the ordinary `enrich` stage does them
   live the same night — degraded, never lost.
 
-Commands: `manage.py sonnet_batch --status | --submit [--limit N] | --collect | --live |
---retry-failed | --cancel <id>`. Settings: `BATCH_ENABLED`, `BATCH_MODEL`,
+**Re-embed after a re-analysis.** A document's vector is built from its title, summary and
+topics as well as its body, so rewriting an analysis leaves the old vector in place and the
+document keeps being found by the wrong questions. `embed_status` says `done`, so nothing
+revisits it on its own — set it back to `pending` for the rows you re-analysed. This bit the 323
+articles recovered on 2026-09-13: their summaries had been empty when they were first embedded.
+
+Commands: `manage.py sonnet_batch --status | --submit | --collect | --live | --retry-failed |
+--redo-model <prefisso> | --cancel <id>`, each accepting `--kind reel_enrich | doc_enrich |
+doc_arguments | all` and `--limit N`. Settings: `BATCH_ENABLED`, `BATCH_MODEL`,
 `BATCH_MAX_REQUESTS`.
+
+**Three kinds of work** go through it, declared once in `batch_agent.KINDS` — `reel_enrich`,
+`doc_enrich`, `doc_arguments` — each saying which rows are owed, how to build the prompt and how
+to write the answer. A fourth is one entry in that table.
 
 **Token ceilings are a correctness issue, not a cost knob.** A truncated answer is unparseable
 JSON — a *lost* analysis, not a shorter one — and output is billed on what is produced, so a

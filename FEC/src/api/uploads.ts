@@ -1,6 +1,7 @@
 import { apiClient } from "./client";
 
-/** An interview the client uploaded, and where it got to. */
+/** Something the client brought in himself — a FILE or a LINK — and where it
+ *  got to. `source_url` empty means it was an uploaded file. */
 export interface Upload {
   id: number;
   kind: "audio" | "video";
@@ -8,11 +9,25 @@ export interface Upload {
   title: string;
   size_bytes: number;
   duration_s: number | null;
-  transcribe_status: "pending" | "done" | "failed" | "skipped";
+  transcribe_status: "pending" | "done" | "failed" | "skipped" | "batched";
   document: number | null;
   blog_draft: number | null;
   last_error: string;
   created_at: string;
+  /** The public page a linked video came from. "" for an uploaded file. */
+  source_url: string;
+  /** Who published it, e.g. "YouTVRS". */
+  channel: string;
+  /** Whose content it is — decides whether it counts as Medyca's coverage. */
+  owner_type: "owned" | "competitor";
+  /** Why it is here: reference material the client added on purpose. */
+  is_inspiration: boolean;
+}
+
+export interface LinkImport {
+  creati: Upload[];
+  gia_presenti: string[];
+  rifiutati: { url: string; motivo: string }[];
 }
 
 export async function listUploads(): Promise<Upload[]> {
@@ -37,6 +52,22 @@ export async function uploadInterview(
     onUploadProgress: (e) => {
       if (onProgress && e.total) onProgress(Math.round((e.loaded / e.total) * 100));
     },
+  });
+  return data;
+}
+
+/** Paste a blob of text; every video link in it becomes an item.
+ *  The client pastes his notes, not a clean list — the backend pulls the
+ *  videos out and collapses duplicate spellings of the same one. */
+export async function importLinks(
+  text: string,
+  ownerType: Upload["owner_type"],
+  isInspiration: boolean
+): Promise<LinkImport> {
+  const { data } = await apiClient.post("/uploads/from-links/", {
+    text,
+    owner_type: ownerType,
+    is_inspiration: isInspiration,
   });
   return data;
 }

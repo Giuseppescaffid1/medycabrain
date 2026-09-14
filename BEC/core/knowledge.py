@@ -20,12 +20,13 @@ from __future__ import annotations
 
 import logging
 import re
+import threading
 
 import numpy as np
 
 from django.conf import settings
 
-from django.db.models import Count
+from django.db.models import Count, Q
 
 from core.models import DONE, KnowledgeDocument, Reel
 from llm import client
@@ -35,11 +36,21 @@ logger = logging.getLogger(__name__)
 _embedder = None
 
 
+# Loading the model is not thread-safe: two threads entering SentenceTransformer
+# at the same time leave it half-built and every call then dies with
+# "Cannot copy out of meta tensor; no data!". The MCP bridge warms the model in
+# a background thread while already serving requests, so that race is not
+# hypothetical — it is the normal startup. One lock, held only for the load.
+_embedder_lock = threading.Lock()
+
+
 def _get_embedder():
     global _embedder
     if _embedder is None:
-        from sentence_transformers import SentenceTransformer
-        _embedder = SentenceTransformer(settings.EMBEDDINGS_MODEL)
+        with _embedder_lock:
+            if _embedder is None:   # another thread may have finished while we waited
+                from sentence_transformers import SentenceTransformer
+                _embedder = SentenceTransformer(settings.EMBEDDINGS_MODEL)
     return _embedder
 
 
@@ -92,7 +103,13 @@ def _load_index(scope: str = "all") -> list[dict]:
             # is_on_topic=False is the model's own verdict that this page is
             # not editorial content (cookie walls, event pages, recipes):
             # letting it into the index means the chat can cite a banner.
-            .filter(is_active=True, is_on_topic=True, owner_type__in=owners)
+            # Material the client added on purpose is exempt: the verdict is
+            # made against a menopause-centred prompt, which rejected 404 of
+            # 835 articles on 2026-09-13 — a TV episode on prediabetes would
+            # be judged off-topic and vanish from the library the moment he
+            # added it. A model's opinion must not delete a human's choice.
+            .filter(is_active=True, owner_type__in=owners)
+            .filter(Q(is_on_topic=True) | Q(is_inspiration=True))
             .exclude(embedding=[])
             .select_related("source"))
     for d in docs:
@@ -101,7 +118,10 @@ def _load_index(scope: str = "all") -> list[dict]:
             "url": d.source_url, "summary": d.summary_it,
             # The source name plays the role a reel's account plays: for a
             # competitor article, "whose blog said this" is half the answer.
-            "account": d.source.name if d.source else "",
+            "account": d.source.name if d.source else (d.author or ""),
+            # Travels into the search hit so the MCP can say "this is
+            # reference material" and hand back the link.
+            "inspiration": d.is_inspiration,
             "text": d.content_text, "topics": d.topics,
             "vec": np.asarray(d.embedding, dtype=np.float32),
             "chunks": d.chunk_vectors or None,
@@ -232,7 +252,7 @@ RERANK_POOL = 15  # candidates the LLM reranker reorders before the top_k cut
 
 
 def semantic_search(query: str, top_k: int = 6, scope: str = "all",
-                    rerank: bool = False) -> list[dict]:
+                    rerank: bool = False, only_inspiration: bool = False) -> list[dict]:
     """Hybrid retrieval over the knowledge bank.
 
     Documents are ranked by embedding similarity blended with verbatim
@@ -251,6 +271,12 @@ def semantic_search(query: str, top_k: int = 6, scope: str = "all",
     to an error.
     """
     index = _load_index(scope)
+    if only_inspiration:
+        # Rank INSIDE the reference material, never filter after the fact: a
+        # handful of short reference cards would never reach the top of a
+        # corpus of 1.483 items, so a post-filter returns an empty list and
+        # looks like "we have nothing on that" when we do.
+        index = [i for i in index if i.get("inspiration")]
     if not index:
         return []
     q = _embed_query(query)
@@ -316,6 +342,10 @@ def semantic_search(query: str, top_k: int = 6, scope: str = "all",
                    or _snippet(it["text"]))
         out.append({
             "kind": it["kind"], "owner": it.get("owner", "owned"),
+            # Carried through to the hit, not just held on the index item:
+            # the MCP builds its answer from these dicts, and a flag that
+            # stops here is a flag the client never sees.
+            "inspiration": it.get("inspiration", False),
             "account": it.get("account", ""),
             "id": it["id"], "title": it["title"],
             "url": it["url"], "summary": it["summary"], "topics": it["topics"],
@@ -344,9 +374,13 @@ def _rerank(query: str, hits: list[dict]) -> list[dict]:
                 + "\n".join(lines)
                 + '\n\nRestituisci SOLO JSON: {"ordine": [indici dal più '
                   'pertinente]}. Includi ogni indice una volta sola.')
+        # 200 tokens was not enough: Sonnet 5 hit the ceiling on every call
+        # (2026-09-13), so the reranker silently never ran and retrieval was
+        # always served in blend order. The answer is a list of indices plus
+        # whatever preamble the model adds — cheap, but not 200-tokens cheap.
         data = client.chat_json(
             "Sei un valutatore di pertinenza per una ricerca. Solo JSON valido.",
-            user, max_tokens=200, temperature=0.0, model=client.model_for("bulk"))
+            user, max_tokens=1000, temperature=0.0, model=client.model_for("bulk"))
         order = data.get("ordine") if isinstance(data, dict) else None
         if not order:
             return hits

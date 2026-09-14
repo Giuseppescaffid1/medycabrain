@@ -15,7 +15,7 @@
     "brainMap": "Mappa (DAG)",
     "knowledgeBank": "Chat sui contenuti",
     "workspace": "Workspace",
-    "accounts": "Account",
+    "accounts": "Fonti",
     "logout": "Esci",
     "menu": "Apri menu",
     "closeMenu": "Chiudi menu",
@@ -287,7 +287,10 @@
     "remove": "Rimuovi",
     "confirmRemove": "Rimuovere questo account dal monitoraggio? I reel già raccolti restano.",
     "igSection": "Account Instagram",
-    "igSubtitle": "I profili di cui raccogliamo i reel."
+    "igSubtitle": "I profili di cui raccogliamo i reel, ogni notte.",
+    "ownerLabel": "Di chi è",
+    "usernameRequired": "Scrivi lo username Instagram, per esempio medyca.menopausa.",
+    "empty": "Nessun account monitorato. Usa «Aggiungi account» qui sopra per seguire il primo profilo Instagram."
   },
   "common": {
     "loading": "Caricamento…",
@@ -304,7 +307,8 @@
         "I reel dei competitor",
         "Gli articoli dei blog (medyca.it + i blog dei competitor monitorati)",
         "I temi che indichi tu (tiroide, osteoporosi, Bijuva…)",
-        "Le interviste audio/video che carichi tu (del medico): trascritte e trasformate in materiale + bozza articolo"
+        "Le interviste audio/video che carichi tu (del medico): trascritte e trasformate in materiale + bozza articolo",
+        "I video che tieni come riferimento: incolli i link (anche tutti insieme) e diventano materiale consultabile, con il link sempre a portata di mano. Per ognuno dici se è roba tua o di altri."
       ]
     },
     "flow": {
@@ -337,7 +341,8 @@
         "Second Brain — cosa hai già coperto e dove c'è un buco",
         "Brief e bozze — pronti da usare, con le fonti citate",
         "Knowledge Bank — tutto il materiale, ricercabile",
-        "Connettore per Claude (MCP): la banca dati interrogabile direttamente dal tuo Claude, in sola lettura"
+        "Connettore per Claude (MCP): la banca dati interrogabile direttamente dal tuo Claude, in sola lettura",
+        "Fonti — la pagina da cui aggiungi e metti in pausa i profili Instagram, i blog e le interviste caricate, una scheda per tipo"
       ]
     },
     "download": {
@@ -351,7 +356,7 @@
       "items": [
         "La raccolta da Instagram è in migrazione alle API ufficiali di Meta: al momento è sospesa e riparte appena il collegamento è attivo. Con le API ufficiali i profili personali (non Business/Creator) non sono leggibili, e per i video dei competitor Meta non fornisce il conteggio delle visualizzazioni.",
         "Vengono letti i contenuti dalla scheda Reel; i post video normali e i caroselli non sono inclusi.",
-        "I blog vengono monitorati come i profili Instagram: quello di Medyca e i blog dei competitor aggiunti dalla pagina Account. L'importazione parte dai ~40 articoli più recenti per fonte e completa l'archivio nelle notti successive — importiamo il recente, non tutto lo storico.",
+        "I blog vengono monitorati come i profili Instagram: quello di Medyca e i blog dei competitor aggiunti dalla pagina «Fonti». L'importazione parte dai ~40 articoli più recenti per fonte e completa l'archivio nelle notti successive — importiamo il recente, non tutto lo storico.",
         "37 video trascritti il 27 luglio avevano usato il modello locale di riserva, meno preciso sui termini medici. Il collegamento al servizio di trascrizione è stato corretto e quelle trascrizioni sono state rifatte.",
         "Gli articoli non hanno metriche di engagement (view, like): compaiono in Libreria, Cluster, temi e chat, ma non nei grafici di Analytics, che restano sui reel. Un'analisi dedicata ai blog (cadenza di pubblicazione, copertura dei temi) è prevista in un giro successivo.",
         "Gli articoli in lingua diversa dall'italiano (es. International Menopause Society) vengono riassunti e classificati in italiano; la ricerca dentro il testo originale inglese è meno precisa di quella sugli articoli italiani.",
@@ -359,7 +364,8 @@
         "Instagram non lascia più vedere l'elenco dei post di un profilo a chi non è collegato: per questo l'elenco passa da un servizio esterno. Il tuo account non è coinvolto.",
         "La raccolta ha un budget di 5 dollari al mese che si rinnova da solo. Al raggiungimento del tetto si ferma solo la raccolta di reel nuovi: tutto il resto della piattaforma continua a funzionare.",
         "Vengono raccolti solo i reel: storie, caroselli e foto singole no.",
-        "Undici dei ventitré account monitorati non hanno mai restituito contenuti (uno ha il nome scritto male) o non pubblicano da oltre un anno: vanno ripuliti."
+        "Undici dei ventitré account monitorati non hanno mai restituito contenuti (uno ha il nome scritto male) o non pubblicano da oltre un anno: vanno ripuliti.",
+        "Dei video presi da un link non sempre riusciamo a ottenere l'audio: YouTube a volte blocca il nostro server. In quel caso il video resta comunque in piattaforma con titolo, canale e link — cercabile e citabile come riferimento — ma senza trascrizione, e la riga te lo dice in chiaro."
       ]
     },
     "models": {
@@ -399,7 +405,7 @@
         {
           "step": "Analisi in blocco, di notte",
           "model": "Claude Sonnet 5 (a lotti)",
-          "why": "I contenuti nuovi non hanno bisogno di una risposta in tre secondi: di notte vengono consegnati tutti insieme e le analisi tornano entro poche ore. Stesso modello, stessa qualità, metà del costo. Rifare l'analisi di tutto l'archivio costa così intorno ai 4 dollari invece di 8."
+          "why": "I contenuti nuovi non hanno bisogno di una risposta in tre secondi: di notte reel e articoli vengono consegnati tutti insieme e le analisi tornano entro poche ore. Stesso modello, stessa qualità, metà del costo. Rifare l'analisi di tutto l'archivio costa così intorno ai 4 dollari invece di 8."
         },
         {
           "step": "Se un modello non risponde",
@@ -546,7 +552,7 @@
     "ownerLabel": "Di chi è questo blog",
     "add": "Aggiungi blog",
     "addHint": "L'importazione parte subito e procede a scaglioni: i primi articoli compaiono in pochi minuti, l'archivio si completa nelle notti successive.",
-    "empty": "Nessun blog monitorato. Aggiungi il primo qui sopra.",
+    "empty": "Nessun blog monitorato. Usa «Aggiungi blog» qui sopra per seguire il primo.",
     "source": "Fonte",
     "owner": "Proprietà",
     "articles": "Articoli",
@@ -554,11 +560,15 @@
     "crawlNow": "Scansiona ora",
     "failed": "in errore",
     "reactivateHint": "Disattivata dopo errori ripetuti: clicca per riattivarla e riprovare",
-    "confirmRemove": "Rimuovere questo blog? Gli articoli già importati verranno esclusi dall'analisi."
+    "confirmRemove": "Rimuovere questo blog? Gli articoli già importati verranno esclusi dall'analisi.",
+    "nameLabel": "Nome",
+    "urlLabel": "Indirizzo della pagina articoli",
+    "urlRequired": "Incolla l'indirizzo della pagina articoli, per esempio https://esempio.it/blog.",
+    "urlInvalid": "Questo indirizzo non è valido. Copialo dalla barra del browser, per esempio https://esempio.it/blog."
   },
   "articles": {
     "tab": "Articoli",
-    "empty": "Nessun articolo per questa vista. Aggiungi un blog dalla pagina Account.",
+    "empty": "Nessun articolo per questa vista. Aggiungi un blog dalla pagina «Fonti».",
     "notEnriched": "Analisi in corso…",
     "body": "Articolo",
     "openOriginal": "Apri l'articolo originale"
@@ -578,7 +588,7 @@
   },
   "uploads": {
     "title": "Carica un'intervista",
-    "subtitle": "Hai un'intervista audio o video del medico? Caricala qui: viene trascritta, entra nella banca dati come contenuto di Medyca e genera subito una bozza di articolo.",
+    "subtitle": "Hai un'intervista audio o video del medico? Caricala qui. Oppure incolla i link di video che ti servono come riferimento: vengono trascritti ed entrano nella banca dati, e puoi dire per ognuno se sono roba di Medyca o materiale altrui.",
     "titlePlaceholder": "Titolo (opzionale, es. 'Intervista Dr. Rossi sulla menopausa')",
     "drop": "Trascina qui il file, o clicca per sceglierlo",
     "formats": "Audio (mp3, m4a, wav…) o video (mp4, mov…). Del video conserviamo solo l'audio.",
@@ -590,7 +600,24 @@
     "result": "Risultato",
     "seeArticle": "→ Vedi in Libreria",
     "seeDraft": "→ Vedi la bozza",
-    "confirmRemove": "Rimuovere questo caricamento? L'articolo generato verrà escluso dall'analisi."
+    "confirmRemove": "Rimuovere questo caricamento? L'articolo generato verrà escluso dall'analisi.",
+    "titleLabel": "Titolo",
+    "empty": "Ancora niente. Trascina un file audio o video nel riquadro qui sopra, oppure incolla i link dei video che vuoi tenere come riferimento.",
+    "linksLabel": "Oppure incolla dei link a video",
+    "linksHint": "Puoi incollare l'elenco così com'è, con titoli e date: i link li trovo io. Lo stesso video incollato due volte viene aggiunto una volta sola.",
+    "linksPlaceholder": "Parte I: https://www.youtube.com/watch?v=…\nParte II: https://www.youtube.com/watch?v=…",
+    "linksAdd": "Aggiungi i video",
+    "linksAdded": "Aggiunti: {{count}}",
+    "linksDuplicate": "già presenti: {{count}}",
+    "linksRefused": "non leggibili: {{count}}",
+    "inspirationLabel": "Video di riferimento (ispirazione)",
+    "inspirationBadge": "riferimento",
+    "ownerLabel": "Di chi è",
+    "ownerExternal": "Di altri",
+    "ownerMedyca": "Di Medyca",
+    "ownerWarning": "Segnandolo come contenuto di Medyca, questo video conta nella tua copertura: il piano editoriale smetterà di segnalare quel tema come scoperto.",
+    "openSource": "Apri il video",
+    "seeReference": "Vedi il riferimento"
   },
   "queue": {
     "title": "Coda di lavorazione",
@@ -608,5 +635,21 @@
     "budget": "Budget della raccolta",
     "budgetLeft": "Restano ${{left}} in questo mese. Si rinnova il {{renews}}. La raccolta si ferma da sola prima di superare il tetto.",
     "budgetStopped": "Tetto raggiunto: la raccolta di nuovi reel è ferma fino al rinnovo. Tutto il resto continua a funzionare."
+  },
+  "manage": {
+    "title": "Gestione fonti",
+    "subtitle": "Da qui decidi cosa la piattaforma osserva: i profili Instagram, i blog e le interviste che carichi tu.",
+    "tabInstagram": "Account Instagram",
+    "tabBlogs": "Blog",
+    "tabUploads": "Interviste",
+    "cancel": "Annulla",
+    "searchAccounts": "Cerca un account…",
+    "searchBlogs": "Cerca un blog…",
+    "searchUploads": "Cerca un'intervista…",
+    "filterLabel": "Filtra la lista",
+    "filterAll": "Tutti",
+    "showing": "{{shown}} di {{total}}",
+    "noResults": "Nessun risultato. Prova a cambiare la ricerca o il filtro.",
+    "toggleHint": "Clicca per attivare o mettere in pausa"
   }
 }

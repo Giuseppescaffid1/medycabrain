@@ -1,8 +1,21 @@
 # Low-level: the MCP connector (how Claude queries the data)
 
 The `Medyca` MCP connector lets Claude on claude.ai query the knowledge bank directly. It
-exposes **four read-only tools** in Italian: `panoramica`, `cerca`, `leggi`, `temi`. This page
-traces exactly what each one does down to the database.
+exposes **ten read-only tools** in Italian. This page traces exactly what each one does down
+to the database.
+
+**Reels and blog articles have their own tools.** They answer different questions — a reel has a
+spoken hook, a video format and an audience; an article has a source, an author, a language and
+a body — and one mixed tool made Claude pick the wrong side of the corpus for questions that
+were plainly about one of them. The cross-type tools remain for questions that genuinely span
+both:
+
+| | reels (video) | articles (blog) | both |
+|---|---|---|---|
+| search | `cerca_reel` | `cerca_articoli` | `cerca_tutto` |
+| read one | `leggi_reel` | `leggi_articolo` | `leggi` |
+| context | — | `fonti_blog` | `panoramica`, `temi` |
+| reference material | `cerca_riferimenti` (videos, talks — carries the link) | | |
 
 ## Where it lives
 
@@ -30,24 +43,25 @@ flowchart TD
     DJ --> ORM["Django ORM"]
     ORM --> PG[("PostgreSQL")]
     subgraph tools["the 4 tools"]
-        t1["panoramica → ORM counts"]
-        t2["temi → ORM (cluster tables)"]
-        t3["leggi → ORM lookup by id"]
-        t4["cerca → core.knowledge.semantic_search"]
+        t1["panoramica · fonti_blog · temi → ORM"]
+        t2["leggi_reel → ORM (Reel + enrichment + transcript)"]
+        t3["leggi_articolo → ORM (KnowledgeDocument)"]
+        t4["cerca_reel · cerca_articoli · cerca_tutto → core.knowledge.semantic_search"]
     end
     DJ --> tools
     t4 --> KN["semantic_search(rerank=True)<br/>same engine as the in-app chat"]
 ```
 
 Both paths run **in one process**. There is **no internal HTTP call** to the REST API —
-`panoramica`, `leggi`, and `temi` are plain ORM queries; `cerca` goes through the
+`panoramica`, `fonti_blog`, the `leggi*` tools and `temi` are plain ORM queries; the
+`cerca*` tools go through the
 `semantic_search()` + reranker path in `core.knowledge` (the same retrieval the web chat uses,
 so Claude gets the same ranked results the app would show).
 
-All four tools are registered with `@server.tool(...)` on an `MCPServer` named
+All ten tools are registered with `@server.tool(...)` on an `MCPServer` named
 **"Medyca Content Intelligence"**. All four are read-only.
 
-## The four tools
+## The tools
 
 ### `panoramica()` — corpus overview
 No parameters. Returns a dict of counts, all via ORM aggregation:
@@ -58,36 +72,83 @@ No parameters. Returns a dict of counts, all via ORM aggregation:
 - Monitored blogs: `BlogSource.objects.filter(is_active=True).values_list("name", flat=True)`.
 - Theme counts: for each `ClusterRun.objects.filter(is_current=True)`, count
   `TopicCluster.objects.filter(run=run)`.
+- **`materiale_di_riferimento`**: `{totale, con_trascrizione, solo_link}` over
+  `is_inspiration=True`. Counted apart from `articoli` on purpose — folding videos into the
+  article totals would quietly inflate the numbers every answer is anchored on, and
+  `solo_link` is the honest count of items whose content we do NOT know.
 
-### `cerca(query, scope="all", tipo="tutti", limite=8)` — semantic search
-The only tool that runs the hybrid retrieval. It calls:
+### `cerca_reel` / `cerca_articoli` / `cerca_tutto` `(query, scope="all", limite=8)`
+The three search tools share one implementation, `_search(query, scope, limite, only)` — they
+differ only in which side of the corpus they keep, so they can never drift into ranking the same
+question differently:
 
 ```python
-from core.knowledge import semantic_search
-hits = semantic_search(query, top_k=limite * (2 if tipo != "tutti" else 1),
-                       scope=scope, rerank=True)
+hits = semantic_search(query, top_k=limite * (3 if only else 1), scope=scope, rerank=True)
+if only:                       # "reel" | "blog" | None
+    hits = [h for h in hits if h["kind"] == only]
 ```
 
 - `scope` is clamped to `all` / `medyca` / `competitor`; `limite` clamped to 1–20.
-- When filtering by `tipo` it over-fetches 2× then post-filters hits by `kind` (`reel`/`blog`).
+- **The pool is over-fetched 3× when filtering**, or the filter starves: asking for 8 articles
+  out of a pool of 8 mixed hits returns two.
 - `rerank=True` — Claude gets the same LLM-sharpened order the in-app chat uses.
-- Each hit is shaped by the local `_hit(h)` helper into
-  `{id, tipo, di, titolo, estratto, url, pertinenza}`, where `id` is `"reel:123"` / `"blog:45"`
-  and `di` labels ownership (`"Medyca"` vs `"competitor: @account"`).
+- Each hit is shaped by `_hit(h)` into `{id, tipo, di, titolo, estratto, url, pertinenza}`,
+  where `id` is `"reel:123"` / `"blog:45"` and `di` labels ownership.
 
 For how `semantic_search` ranks, see
 [03-llm-and-embeddings.md](03-llm-and-embeddings.md#retrieval--rag--coreknowledgepy).
 
-### `leggi(id)` — full text of one item
-Parses `id` as `"reel:123"` or `"blog:45"`. Direct ORM lookups, no search:
-- **Reel:** `Reel.objects.filter(id=pk, is_active=True).select_related("account","enrichment","transcript").first()`
-  → transcript text (`transcript.text`, truncated to 12000 chars), enrichment
-  (`primary_topic`, `summary_it`, `topics`), caption, view/like counts, and claims via
+### `leggi_reel(id)` / `leggi_articolo(id)` / `leggi(id)` — full text of one item
+`_parse_id(id, atteso)` accepts `"reel:123"` or, for a typed tool that already knows the kind, a
+bare `"123"` — Claude routinely passes the bare number, and refusing it is pedantry, not safety.
+A typed tool given the other kind's id returns a readable redirect
+(`"questo id non è un reel: usa leggi_articolo"`) rather than an empty result.
+
+- **`leggi_reel`** — `Reel.objects.filter(id=pk, is_active=True).select_related("account","enrichment","transcript")`
+  → transcript (truncated to 12 000 chars), caption, `primary_topic`, `summary_it`, `topics`,
+  **plus the video-only fields**: `gancio` (`hook_text`), `analisi_gancio`, `formato`
+  (`content_format`), `pubblico` (`target_audience_it`), views/likes, and claims via
   `r.arguments.all()[:10]` (each `text_it` + verbatim `quote`).
-- **Blog:** `KnowledgeDocument.objects.filter(id=pk, is_active=True).select_related("source").first()`
-  → `content_text` (falls back to `content_md`, truncated to 12000), `summary_it`,
-  `primary_topic`, `topics`, `author`, and `d.arguments.all()[:10]`. Plain text is returned on
-  purpose so a quote can be verified verbatim.
+- **`leggi_articolo`** — `KnowledgeDocument.objects.filter(id=pk, is_active=True).select_related("source")`
+  → `content_text` (falls back to `content_md`, truncated to 12 000), plus `ispirazione`,
+  `trascrizione_disponibile` and a `nota` when there is no transcript; `tipo` reads
+  "video di riferimento" for `source_type="video"`. Then `fonte`, `autore`,
+  `lingua`, `pubblicato`, `primary_topic`, `summary_it`, `topics`, `in_tema` +
+  `fuori_tema_perche`, and `d.arguments.all()[:10]`. Plain text on purpose, so a quote can be
+  verified verbatim against exactly what Claude was given.
+- **`leggi`** routes on the id prefix; it exists for `cerca_tutto` results.
+
+### `cerca_riferimenti(query, scope="all", limite=8)` — the client's own reference shelf
+Searches **only** the material flagged `is_inspiration` — TV episodes, talks, external videos the
+client added on purpose — and every hit carries the source **link**, which is the whole point of
+keeping them.
+
+It ranks **inside** that subset (`semantic_search(..., only_inspiration=True)`), never by
+filtering a general search afterwards: a handful of short reference cards never reaches the top
+of a 1.483-item corpus, so a post-filter returns an empty list and reads as "we have nothing on
+that" when we do. That was the first implementation and it returned 0 results every time.
+
+**The on-topic verdict is reframed for this shelf.** `leggi_articolo` normally returns
+`in_tema` / `fuori_tema_perche`. For reference material it returns `in_tema: true` plus a
+`perimetro` line instead, because all 11 videos the client added came back `is_on_topic=False`
+("tratta di alimentazione generale, senza riferimento a menopausa") — which is the correct
+reading of a menopause-centred prompt and a useless thing to tell Claude about a source the
+client deliberately chose. Said raw it reads as "ignore this". The judgement is still shown,
+framed as what it is: material next door to the core subject.
+
+Some of these have **only a title and a link, no transcript** (their audio could not be fetched —
+see below). The tool description says so, and `leggi_articolo` returns
+`trascrizione_disponibile: false` plus an explicit `nota` telling Claude not to attribute claims
+it cannot read.
+
+### `fonti_blog(scope="all")` — which written sources back an answer
+`BlogSource` annotated with its active document count, ordered by size. Returns `{nome, di, url,
+articoli, attiva, ultima_lettura, problema}` per source.
+
+Its real job is telling Claude **what is not covered**: a question about a clinic whose blog is
+not monitored must be answered "we do not track that source", not with silence that reads like
+absence. `problema` carries `last_error`, so a source that has stopped producing is visible
+rather than quietly empty.
 
 ### `temi(scope="competitor")` — the current theme map
 Pure ORM over the cluster tables (`owner = "owned"` for `medyca`, else `"competitor"`):
@@ -116,7 +177,9 @@ Pure ORM over the cluster tables (`owner = "owned"` for `medyca`, else `"competi
   > Known doc discrepancy: the `server.py` docstring says port **8020**, but the systemd unit
   > and the maintainer doc use **8025** (8020 was already taken). Trust 8025.
 - **Warm start:** a daemon thread `_warm()` preloads the embedder and index on boot (cold first
-  `cerca` was ~14 s; warm ~0.5 s).
+  a search was ~14 s; warm ~0.5 s). The embedder load is behind a lock: warming runs in a
+  background thread while requests are already being served, and two concurrent loads of
+  SentenceTransformer leave it half-built (`Cannot copy out of meta tensor`).
 - **HTTPS:** no dedicated DNS/cert for medycabrain — it rides `messtudent.com`'s existing 443
   cert via an nginx `location /medyca-mcp/` block that proxies to `127.0.0.1:8025`. **That
   nginx block is not in this repo** — `deploy/nginx-medycabrain.conf` is only the port-9093 app
