@@ -560,6 +560,107 @@ trovato facendola girare.
 
 ## 5. Collaudo           (collaudatore)
 
+**Verdetto: PASSA.** (La revisione no: vedi sezione 4. Il lavoro torna allo
+sviluppatore per i rilievi, non per il collaudo.)
+
+### I quattro comandi obbligatori, tutti verdi
+
+    makemigrations --check --dry-run   No changes detected            EXIT=0
+    check                              no issues (0 silenced)         EXIT=0
+    test core                          Ran 17 tests ... OK            EXIT=0
+    npm run build                      1680 modules, built in 19.13s  EXIT=0
+
+17 su 17 e vero: 15 in `test_link_ingest.py` + 2 in `test_endpoints_smoke.py`.
+Il racconto in 3.3 dice «14 preesistenti»: erano **2**. Errore nel conteggio,
+non nel codice.
+
+### Non-regressione YouTube - la prova che conta
+
+Confronto diretto fra il modulo vecchio (`git show 602b7c4^:...`) e quello
+nuovo, sullo stesso testo, su sette grafie YouTube:
+
+    VECCHIO extract_ids  -> ['dQw4w9WgXcQ','9bZkp7q19f0','abcdefghijk', ...]
+    NUOVO   extract_links-> ['dQw4w9WgXcQ','9bZkp7q19f0','abcdefghijk', ...]
+    identico agli id di prima?  True
+    identico agli url di prima? True
+
+E poi sui **veri 11 `source_url` gia in produzione**, in sola lettura:
+
+    source_url veri in produzione: 11
+    righe con comportamento cambiato: 0
+
+Ordine di apparizione con i due fornitori mescolati: preservato.
+
+### I tre link veri del cliente
+
+    3 riferimenti, url canonici puliti (?fl=pl&fe=cm e #t= caduti)
+    stesso video in 4 grafie diverse -> 1 solo riferimento
+    probe(): "Canale Salute - 03 Giugno 2026 - Pressione Arteriosa - Parte 1/2/3"
+             canale "TVRS SRL" su tutti e tre
+
+### Il ripiego senza cookie
+
+Con `VIMEO_COOKIES_FILE` su un file inesistente: `LinkRefused` con «Vimeo
+lascia scaricare l'audio solo a chi e collegato... i cookie sono scaduti o
+mancanti», nessun file audio creato, **e nessun accenno al motore JavaScript**
+(quello resta solo sulla riga YouTube). Corretto.
+
+### L'endpoint vero, senza creare niente
+
+`POST /api/v1/uploads/from-links/` in produzione, solo sui percorsi che non
+creano righe:
+
+    prima: UploadedMedia=11 Job=56
+    testo senza link            -> 400, messaggio giusto
+    YouTube gia presente + id Vimeo inesistente -> 202
+        gia_presenti: [il YouTube]   rifiutati: [il Vimeo, "privato o rimosso"]
+    dopo:  UploadedMedia=11 Job=56     righe create: 0, job creati: 0
+
+L'url Vimeo arriva al rifiuto **gia pulito**.
+
+### Cosa NON e stato provato, e perche
+
+- **Il gesto vero sulla UI da utente collegato**: `:9093` porta a `/login` e il
+  collaudatore non ha la password del cliente; leggere un token dal database
+  sarebbe materializzare credenziali e non l'ha fatto. Ha verificato che il
+  bundle servito sia quello appena costruito e contenga le stringhe nuove.
+- `channels/<x>/<id>` e `groups/<x>/videos/<id>`: provate come stringhe, mai su
+  un video vero.
+- Le trascrizioni vere dei tre video: non lanciate. Tre trascrizioni + tre
+  analisi LLM sui dati di produzione sono una decisione di Giuseppe.
+- Scadenza dei cookie nel tempo: non provabile oggi.
+
+### L'avvertenza d'obbligo
+
+La rete di test resta sottile. Il verde dice che estrazione, forma canonica,
+deduplica e messaggi fanno quello che promettono, e che **YouTube non si e
+mosso di un carattere**. Non dice che la trascrizione di un video Vimeo,
+dall'incollaggio al vettore, funzioni da cima a fondo: quel pezzo e provato a
+spezzoni, non in un giro solo.
+
+### La prova che manca, e che deve fare Giuseppe
+
+Cinque minuti, **quando sei disposto a creare tre righe vere** e far partire
+tre trascrizioni sui dati di produzione:
+
+1. Entra nell'app, pagina caricamenti, casella «incolla i link». Il segnaposto
+   deve mostrare **un esempio YouTube e uno Vimeo**.
+2. Incolla i tre link sporchi cosi come sono. Attese: tre righe con i titoli
+   veri e canale «TVRS SRL».
+3. **Reincolla lo stesso testo**: non deve aggiungere niente.
+4. Stringi la finestra a ~380 px e rifai: casella, suggerimento e righe
+   leggibili.
+5. Lo stato d'errore lo vedi senza sporcare niente incollando
+   `https://vimeo.com/999999999999`: «privato o rimosso», nessuna riga nuova.
+6. Nella pagina `Documentazione`, il limite riscritto deve dire che ne YouTube
+   ne Vimeo danno l'audio a chi non e collegato, che il collegamento scade, e
+   che in quel caso resta il riferimento.
+
+### Nota di processo
+
+Anche questa sezione l'ha incollata il capo: `medyca-collaudatore` ha solo
+strumenti di sola lettura. Stesso difetto del revisore.
+
 ## 6. Rilascio           (rilasciatore)
 
 ## Registro delle decisioni
