@@ -170,6 +170,59 @@ class ExtractYouTubeStillWorks(SimpleTestCase):
                          "https://www.youtube.com/watch?v=aCPj6fKx_Yc")
 
 
+class LinksGluedTogether(SimpleTestCase):
+    """A greedy query group eats the link that follows it.
+
+    Regression found in review, not by the tests: the query was read with a
+    class that excluded only whitespace, so a comma, a semicolon or a bracket
+    between two links was read as part of the FIRST link's query. The client
+    pastes exactly like that — a spreadsheet cell, a chat message — so this is
+    not a theoretical input.
+    """
+
+    def test_three_real_links_joined_by_commas_stay_three(self):
+        # The client's own three, with their dirty query, as a spreadsheet
+        # cell would hand them over.
+        paste = (
+            "https://vimeo.com/1220776839?fl=pl&fe=cm,"
+            "https://vimeo.com/1220777690?fl=pl&fe=cm,"
+            "https://vimeo.com/1220778172?fl=pl&fe=cm"
+        )
+        self.assertEqual(
+            [r.url for r in extract_links(paste)],
+            ["https://vimeo.com/1220776839",
+             "https://vimeo.com/1220777690",
+             "https://vimeo.com/1220778172"])
+
+    def test_the_second_videos_hash_never_lands_on_the_first(self):
+        # The worst case: not a lost link, an INVENTED one. The address below
+        # opens nothing, and source_url is unique=True, so the wrong row would
+        # stay forever and make the real video impossible to paste.
+        paste = ("https://vimeo.com/1111111?fl=pl;"
+                 "https://vimeo.com/2222222?h=8272103f6e")
+        self.assertEqual(
+            [r.url for r in extract_links(paste)],
+            ["https://vimeo.com/1111111",
+             "https://vimeo.com/2222222/8272103f6e"])
+
+    def test_brackets_do_not_glue_two_links(self):
+        paste = "(https://vimeo.com/1111111?a=1)(https://vimeo.com/2222222)"
+        self.assertEqual(len(extract_links(paste)), 2)
+
+    def test_a_missing_separator_still_splits(self):
+        # No separator at all: the `http` guard is what stops the query here.
+        paste = "https://vimeo.com/1111111?fl=plhttps://vimeo.com/2222222"
+        self.assertEqual(len(extract_links(paste)), 2)
+
+    def test_a_clean_single_link_keeps_its_hash(self):
+        # The guard must not undo the fix it sits next to.
+        self.assertEqual(
+            extract_links(
+                "https://player.vimeo.com/video/76979871?badge=0&h=8272103f6e"
+            )[0].url,
+            "https://vimeo.com/76979871/8272103f6e")
+
+
 class MixedAndRejected(SimpleTestCase):
     def test_a_blob_with_both_hosts_keeps_the_order_it_was_pasted_in(self):
         refs = extract_links(

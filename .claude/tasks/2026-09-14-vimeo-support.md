@@ -1,7 +1,7 @@
 ---
 id: 2026-09-14-vimeo-support
 titolo: Supportare anche i link Vimeo, non solo YouTube
-stato: sviluppo
+stato: pronto
 ramo: feat/vimeo-support
 pr: ""
 ticket: ""
@@ -916,4 +916,43 @@ Da notare per il futuro della squadra: il collaudo ha dato verde su un codice
 che il revisore ha bocciato, perche nessun test copriva i link separati da
 virgola. Due pareri divergenti sullo stesso codice, ed entrambi corretti nel
 proprio perimetro. E il motivo per cui sono due.
+
+## Registro - 14/09/2026, terzo giro: corretto dal capo
+
+Giuseppe ha scelto «lo correggo io direttamente»: dopo due giri consumati, la
+correzione l'ha fatta il capo senza rimandare la palla allo sviluppatore.
+
+**La correzione**, una riga in `link_ingest.py`: il gruppo `query` ora si ferma
+dove si ferma il link. Esclude i separatori veri (`,;()[]|`) e, quando non c'e
+separatore, si ferma al prossimo `http://`.
+
+**Provato contro il codice bocciato**, non supposto:
+
+    tre link veri separati da virgola
+       BOCCIATO: ['vimeo.com/1220776839']                        <- due persi
+       NUOVO   : tutti e tre
+    'vimeo.com/1111111?fl=pl;vimeo.com/2222222?h=8272103f6e'
+       BOCCIATO: ['vimeo.com/1111111/8272103f6e']                <- inventato
+       NUOVO   : ['vimeo.com/1111111', 'vimeo.com/2222222/8272103f6e']
+
+**5 test nuovi** nella classe `LinksGluedTogether`, ognuno verificato contro il
+modulo bocciato preso da git: li fallirebbero. Suite: **30 test, tutti verdi**.
+Sugli 11 `source_url` veri in produzione: 11 su 11 identici, **0 cambiati**.
+
+Documentazione aggiornata nella stessa modifica (`02-pipeline.md`), con il
+motivo per cui la classe di caratteri non e un dettaglio estetico.
+
+### Cosa resta aperto, dichiarato
+
+- **La prova visiva sulla UI da utente collegato non e mai stata fatta**: crea
+  tre righe vere e tre trascrizioni sui dati di produzione. Decisione di
+  Giuseppe, lista dei gesti nella sezione 5.
+- **Nessun test percorre il giro intero** incollaggio -> audio -> trascrizione
+  -> vettore. Provato a spezzoni.
+- I video Vimeo con password o riservati a un gruppo mostrano lo stderr di
+  yt-dlp in inglese: voluto, ma da sistemare quando ci sara un caso vero.
+- `channels/<x>/<id>` e `groups/<x>/videos/<id>`: coperte da test, mai provate
+  su un video vero.
+- `gaming.youtube.com` e `in.youtube.com` non sono piu riconosciuti: prezzo
+  dell'ancoraggio dell'host, gia nei limiti noti.
 

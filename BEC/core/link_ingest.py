@@ -121,7 +121,15 @@ _VIMEO_ID = re.compile(
     r"(?:video/|channels/[\w-]+/|groups/[\w-]+/videos/)?"
     r"(\d{6,12})"
     r"(?:/([0-9a-f]{8,12})(?![\w-]))?"
-    r"(?P<query>\?[^\s\"'<>]*)?"
+    # The query is read only to find `h=` in it, so it must stop where the
+    # link stops. Excluding whitespace is not enough: the client pastes links
+    # joined by a comma or a semicolon (a spreadsheet cell, a chat message),
+    # and a class that swallows those swallows the NEXT link with them — three
+    # links became one, and the second video's hash was attached to the first
+    # video's id, inventing an address that opens nothing and that `source_url`
+    # (unique=True) would then hold forever. The `http` guard covers the case
+    # where the separator is missing altogether.
+    r"(?P<query>\?(?:(?!https?://)[^\s\"'<>,;()\[\]|])*)?"
 )
 
 _VIMEO_QUERY_HASH = re.compile(r"[?&]h=([0-9a-f]{8,12})(?![\w-])")

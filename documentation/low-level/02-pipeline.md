@@ -67,6 +67,19 @@ Adding a third host is one more row.
    | YouTube | `watch?v=`, `youtu.be/`, `shorts/`, `embed/`, `live/`; id = 11 chars `[A-Za-z0-9_-]` | `https://www.youtube.com/watch?v=<id>` | `&t=365s`, `&list=…`, brackets from the notes |
    | Vimeo | `vimeo.com/<id>`, `player.vimeo.com/video/<id>`, `vimeo.com/<id>/<hash>`, `h=<hash>` **anywhere in the query** (`?badge=0&h=…`, `?share=copy&h=…`), `channels/<x>/<id>`, `groups/<x>/videos/<id>`; id = **numeric**, `\d{6,12}`; hash = lowercase hex, `[0-9a-f]{8,12}` | `https://vimeo.com/<id>`, or `https://vimeo.com/<id>/<hash>` when unlisted | `?fl=pl&fe=cm`, `#t=3m12s`, and trailing pages like `/settings` |
 
+   The query is read **only** to find `h=` in it, and it stops where the link
+   stops: a comma, a semicolon, a bracket, a pipe — or the next `http://`,
+   when there is no separator at all. This is not cosmetic. A class that
+   excluded only whitespace read the separator as part of the first link's
+   query and swallowed the link after it: three links pasted from a
+   spreadsheet cell became one, silently (the missing two never reached
+   `rifiutati`, because they were never found), and worse, the **second**
+   video's hash was attached to the **first** video's id — an invented address
+   that opens nothing and that `source_url` (`unique=True`) would then hold
+   forever, making the real video impossible to paste. Found in review, not by
+   the tests; covered now by `LinksGluedTogether` in
+   `BEC/core/tests/test_link_ingest.py`.
+
    Vimeo ids are numeric and their length is **not** fixed: the client's three are 10 digits
    (`1220776839`), older videos have 7-9. The unlisted hash must survive into the canonical url
    or the video becomes unreachable — and Vimeo's own share and embed buttons put `h=` wherever
