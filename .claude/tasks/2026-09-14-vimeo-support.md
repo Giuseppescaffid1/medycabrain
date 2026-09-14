@@ -1,7 +1,7 @@
 ---
 id: 2026-09-14-vimeo-support
 titolo: Supportare anche i link Vimeo, non solo YouTube
-stato: revisione
+stato: sviluppo
 ramo: feat/vimeo-support
 pr: ""
 ticket: ""
@@ -473,6 +473,90 @@ Nessuna migrazione, nessun endpoint nuovo, nessun campo nuovo.
   Niente si ritenta da solo, come prima.
 
 ## 4. Revisione          (revisore)
+
+**Verdetto: non passa.** `stato:` torna a `sviluppo`.
+
+Il disegno e rispettato (tabella di due fornitori, nessuna colonna, nessuna
+migrazione), la non-regressione YouTube regge, gli invarianti reggono, nessun
+segreto nel diff. Quello che non regge e **la promessa sull'hash unlisted**:
+c'e una grafia, dichiarata supportata in documentazione, in cui l'hash si
+perde - esattamente il caso indicato come inaccettabile. Correzione da pochi
+caratteri piu un test, non una riscrittura.
+
+### Rilievi, dal piu grave
+
+**1. `link_ingest.py:103-108` - l'hash unlisted si perde quando `h=` non e il
+primo parametro.** La regex accetta l'hash solo attaccato all'id:
+
+| incollato | hash estratto | `source_url` |
+|---|---|---|
+| `player.vimeo.com/video/76979871?h=8272103f6e&badge=0` | `8272103f6e` | corretto |
+| `player.vimeo.com/video/76979871?badge=0&h=8272103f6e` | **nessuno** | senza hash |
+| `vimeo.com/1220776839?share=copy&h=abc123def4` | **nessuno** | senza hash |
+
+Le ultime due sono la forma che Vimeo genera davvero quando l'embed porta
+altri parametri. Su un video unlisted l'oEmbed viene chiamato senza hash,
+risponde 403/404, e il link finisce in `rifiutati` con «potrebbe essere
+privato o rimosso» - motivo falso, l'hash era nel testo incollato. Fallisce
+chiuso, non corrompe, ma il video resta fuori senza che il cliente capisca.
+Aggravante: `02-pipeline.md:68` elenca `?h=<hash>` fra le grafie riconosciute
+**senza il vincolo della posizione**. La documentazione descrive un
+comportamento che il codice non ha.
+
+**2. `link_ingest.py:106-107` - qualunque segmento di 6-20 alfanumerici dopo
+l'id viene preso per un hash.** `vimeo.com/1220776839/settings` produce hash
+`settings` e un indirizzo canonico inventato che non apre nulla, e che **non
+deduplica** con lo stesso video incollato senza coda. Gli hash Vimeo veri sono
+esadecimali minuscoli: `[0-9a-f]{8,12}` invece di `[A-Za-z0-9]{6,20}`.
+
+**3. `link_ingest.py:103` - host non ancorato.** `fakevimeo.com/1234567` viene
+canonicalizzato su un video Vimeo **diverso da quello incollato**. Stessa forma
+esiste gia su `_YT_ID`, quindi non e una regressione - ma e una riga nuova che
+la ripete.
+
+**4. Il registro dichiara il contrario di quello che c'e nel repo.** La sezione
+3.4 apre con «Nessun commit, le modifiche sono nella working tree» citando
+`.claude/rules/no-commit.md`. **Quel file non esiste**; `git-flow.md` dice
+l'opposto, e il ramo ha 6 commit con working tree pulita. Chi legge fra un
+mese trova un resoconto falso che rimanda a un file cancellato.
+
+**5. `link_ingest.py:200-203` - `_COMMON_ERRORS` ha perso l'insensibilita alle
+maiuscole.** Prima `"unavailable" in err.lower()`, adesso due casature su tre.
+Un `UNAVAILABLE` cade nel ramo generico e mostra al cliente lo stderr di
+yt-dlp invece della frase scritta per lui.
+
+**6. `link_ingest.py:301-303` - gli aghi Vimeo sono troppo generici.**
+yt-dlp suggerisce i cookie anche per video con password o riservati a un
+gruppo: il cliente andrebbe a riesportare cookie validi. Tenere solo
+`"only works when logged-in"`, l'unica stringa misurata davvero.
+
+**7. Il conteggio dei test non torna.** «14 preesistenti» sono 2; i nuovi 15
+sono giusti, totale 17. Numero sbagliato in una sezione intitolata «Provato,
+non supposto».
+
+### Cosa e stato verificato e passa
+
+- **Non-regressione YouTube: pulita.** `_YT_ID` non toccata, canonica e ordine
+  invariati, ordine dei messaggi d'errore identico, `views.py` usa `ref.url`.
+- **Deduplica sulla forma canonica: corretta** per tutte le grafie pulite. I
+  tre link veri del cliente collassano; `player.`, `channels/`, `groups/`
+  collassano sulla stessa riga.
+- **Ripiego a riferimento:** vale per entrambi i fornitori, `failed` con
+  messaggio leggibile, nessun ritentativo automatico.
+- **Messaggi per fornitore separati:** il consiglio sul motore JavaScript sta
+  solo sulla riga YouTube.
+- **Invarianti:** `owner_type` resta binario, nessuna migrazione.
+- **Segreti: nessuno.** `.env.example` ha solo `VIMEO_COOKIES_FILE=` vuota, i
+  due file di cookie stanno fuori dal repo.
+- **Documentazione presente e veritiera**, salvo il punto 1.
+- **Nessun commit su `main`**: i 6 commit sono tutti sul ramo.
+
+### Nota di processo
+
+Questa sezione l'ha incollata il capo, non il revisore: `medyca-revisore` ha
+solo strumenti di sola lettura e non puo scrivere il file di lavoro. Stesso
+problema per `medyca-collaudatore`. Difetto nella definizione della squadra,
+trovato facendola girare.
 
 ## 5. Collaudo           (collaudatore)
 
