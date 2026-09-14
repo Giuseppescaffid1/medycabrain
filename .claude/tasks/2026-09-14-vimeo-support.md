@@ -57,6 +57,24 @@ in `it.json`, la documentazione).
 - `is_inspiration` e `owner_type` restano due campi indipendenti.
 - I falliti restano `failed`.
 
+### I link veri del cliente (Giuseppe, 14/09/2026)
+
+    https://vimeo.com/1220776839?fl=pl&fe=cm#t=3m12s   (parte 1)
+    https://vimeo.com/1220777690?fl=pl&fe=cm#t=41s     (parte 2)
+    https://vimeo.com/1220778172?fl=pl&fe=cm#t=41s     (parte 3)
+
+Da notare subito, perché cambia il disegno:
+
+- **Id numerici a 10 cifre**, non i 11 caratteri di YouTube.
+- **Query string `?fl=pl&fe=cm`** e **frammento `#t=3m12s`**: vanno buttati via,
+  esattamente come `&t=365s` su YouTube, o tre grafie dello stesso video
+  creerebbero tre righe. `source_url` è `unique=True` e deve ricevere la forma
+  canonica, non quella incollata.
+- Sono **tre parti della stessa registrazione**, come le puntate TVRS: lo stesso
+  schema già visto, quindi niente di nuovo lato modello dati.
+- Nessuno di questi porta un hash di "unlisted", ma la regex deve comunque
+  reggerlo (`vimeo.com/<id>/<hash>`) o quei video diventerebbero irraggiungibili.
+
 ## 2. Disegno            (architetto)
 
 _Da fare._ Primo passo prima di qualsiasi codice: farsi dare da Giuseppe **un
