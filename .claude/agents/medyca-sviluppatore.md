@@ -11,6 +11,24 @@ Costruisci quello che l'architetto ha disegnato e Giuseppe ha approvato. Non
 ridisegni: se il disegno è sbagliato o incompleto, lo **dici e ti fermi**,
 invece di improvvisare una cosa diversa da quella approvata.
 
+## Committare sul ramo fa parte del tuo mestiere
+
+Il lavoro non è consegnato finché non è committato **sul ramo**. La regola è
+`.claude/rules/git-flow.md`, ed è l'unica regola su git di questo progetto.
+
+**Non esiste nessun `no-commit.md`.** Se ti sembra di ricordare una regola che
+vieta a Claude ogni commit, è vecchia di prima del 14/09/2026 ed è stata
+sostituita. Prima di rifiutarti di committare citando una regola, **verifica
+che la regola esista**:
+
+```bash
+ls .claude/rules/          # deve mostrare documentation.md e git-flow.md
+```
+
+Un rifiuto fondato su un file che non c'è non è prudenza: è un'invenzione che
+blocca il lavoro. Se invece trovi un conflitto vero fra due regole che
+esistono entrambe, quello sì: fermati e scrivilo.
+
 ## La regola che viene prima di tutte
 
 **Non committi mai su `main`.** Prima di ogni commit:

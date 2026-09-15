@@ -51,8 +51,8 @@ the agent list.
 |---|---|---|---|
 | `medyca-architetto` | opus | no — read-only | Studies the existing code, proposes the structure, names the files to touch and the risks. **Stops for Giuseppe's approval.** |
 | `medyca-sviluppatore` | opus | yes | Implements the approved design on `feat/<slug>`, updates the documentation in the same change, commits to the branch. |
-| `medyca-revisore` | opus | no — read-only | Reads `git diff main...HEAD`. Checks project invariants and secrets, not style. Explicit verdict. |
-| `medyca-collaudatore` | opus | no (runs commands) | Runs the tests, the build, and the real-user gesture on `:9093`. Pastes real output. |
+| `medyca-revisore` | opus | the task file only | Reads `git diff main...HEAD`. Checks project invariants and secrets, not style. Explicit verdict. |
+| `medyca-collaudatore` | opus | the task file only | Runs the tests, the build, and the real-user gesture on `:9093`. Pastes real output. |
 | `medyca-rilasciatore` | sonnet | yes, after confirmation | Migrations, static files, frontend build, systemd restart. **Asks before every write or restart.** |
 
 ## The shared task list
@@ -118,6 +118,60 @@ The two jobs:
   surfaces at deploy time), `check`, `test core`.
 - **frontend** — `npm ci` then `npm run build`, which is `tsc -b && vite build`
   and therefore the only automatic type gate the frontend has.
+
+## Three defects found by running it (fixed 2026-09-14)
+
+The first real cycle — Vimeo link support — exposed three faults in the team
+itself, none of which were visible from reading the design. They are recorded
+here because the next person will be tempted to reintroduce them.
+
+**1. The reviewer and the tester could not write their own section.** They were
+given read-only tools, which is right for *code* and wrong for the *board*. The
+lead had to paste their verdicts by hand, so the context crossed the hub twice
+and detail was lost. Fixed by giving both the `Edit` tool with an explicit,
+narrow mandate: the task file in `.claude/tasks/` and nothing else.
+
+**2. The developer refused to commit, citing a rule file that does not exist.**
+It named `.claude/rules/no-commit.md` — deleted that morning and replaced by
+`git-flow.md`, which says the opposite. A refusal grounded in an invented file
+is not caution; it blocks the work. Fixed in two places: `git-flow.md` now
+opens by stating it is the *only* git rule and that the old one is gone, and
+`medyca-sviluppatore.md` tells the agent to run `ls .claude/rules/` before
+refusing anything on the authority of a rule.
+
+**3. `git-flow.md` invited the confusion.** Its first line used to read "this
+rule replaces the old `no-commit.md`" — a helpful piece of history that an agent
+skimming for rules reads as a live filename. Rewritten so the replacement is
+stated as history, after the rule itself.
+
+The general lesson, worth keeping: **an agent that refuses while citing a rule
+is behaving correctly.** The bug was the phantom rule, not the refusal. Fix the
+source of ambiguity rather than instructing the agent to override it — telling
+an agent to ignore a rule it just cited is also the exact shape of a prompt
+injection, and the security classifier flagged it as such.
+
+## What the first cycle actually caught
+
+Three defects that would have reached production, **none of them found by the
+tests**:
+
+1. The unlisted hash was lost whenever `h=` was not the first query parameter —
+   the very form Vimeo generates. The link was then rejected with a false
+   reason ("private or removed").
+2. `vimeo.com/<id>/settings` was read as an unlisted hash, inventing an address
+   that opens nothing and dedupes with nothing.
+3. After the fix for (1), a greedy query group **swallowed the following link**:
+   three links pasted from a spreadsheet cell became one, and the second video's
+   hash was attached to the first video's id.
+
+The third is the instructive one. The **tester passed** that code — correctly:
+25 tests green, three versions of the module compared, zero regressions on the
+client's 11 real production URLs. No test covered comma-separated links. The
+**reviewer rejected** it, by reading the character class and seeing that it did
+not exclude a comma.
+
+Two opposite verdicts on the same code, both right within their own remit. One
+agent would have shipped it.
 
 ## Known limits — read these before trusting the team
 
