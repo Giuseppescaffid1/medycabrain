@@ -52,8 +52,8 @@ the agent list.
 | `medyca-architetto` | opus | no — read-only | Studies the existing code, proposes the structure, names the files to touch and the risks. **Stops for Giuseppe's approval.** |
 | `medyca-sviluppatore` | opus | yes | Implements the approved design on `feat/<slug>`, updates the documentation in the same change, commits to the branch. |
 | `medyca-revisore` | opus | the task file only | Reads `git diff main...HEAD`. Checks project invariants and secrets, not style. Explicit verdict. |
-| `medyca-collaudatore` | opus | the task file only | Runs the tests, the build, and the real-user gesture on `:9093`. Pastes real output. |
-| `medyca-rilasciatore` | sonnet | yes, after confirmation | Migrations, static files, frontend build, systemd restart. **Asks before every write or restart.** |
+| `medyca-collaudatore` | sonnet | the task file only | Runs the tests, the build, and the real-user gesture on `:9093`. Pastes real output. |
+| `medyca-rilasciatore` | sonnet | the task file only | **Inspects only.** Reports what the machine actually needs and hands the lead a list of commands. Does not migrate, build or restart. |
 
 ## The shared task list
 
@@ -172,6 +172,52 @@ not exclude a comma.
 
 Two opposite verdicts on the same code, both right within their own remit. One
 agent would have shipped it.
+
+## What the first cycle cost, and what was done about it (2026-09-15)
+
+One small feature — Vimeo link support — cost roughly **567,000 tokens** across
+five agent sessions, produced a **972-line** task file, and took about 45
+minutes. Most of that was not thinking: it was four agents re-deriving what the
+first one had already found, then each re-reading a file that kept growing.
+
+Three changes, all aimed at the same root cause.
+
+**1. The board is now two files.** `<slug>.md` is the board — Sintesi, Mappa,
+verdicts, each section capped at roughly 40 lines — and everyone reads it in
+full. `<slug>.log.md` is the log: full verdicts, command output, evidence. It
+grows without limit precisely because nobody reads it end to end. A verdict
+longer than its cap moves to the log with a pointer.
+
+**2. `## 0. Mappa` — the architect's second deliverable.** The architect is the
+only agent that explores the repo. What it finds goes into the Mappa as exact
+paths and line numbers, and every later agent starts from there instead of
+repeating the search. Any teammate that finds a missing file adds it, so the map
+improves instead of ageing. The lead's prompts now say what *not* to re-derive.
+
+**3. The tester dropped to Sonnet.** It runs commands and reports output
+faithfully; that is not work that needs the most expensive model. The architect,
+developer and reviewer stay on Opus, because finding what the tests do not cover
+is exactly where the reasoning is worth paying for.
+
+## The deployer was designed wrong, and never ran
+
+Its original mandate said "ask for confirmation before every write or restart".
+**A subagent cannot ask** — it talks to the lead, not to the human. A mandate
+that requires an impossible permission ends one of two ways, and both are bad:
+the agent stalls, or it decides on its own on a live machine.
+
+So the boundary moved. `medyca-rilasciatore` now **inspects only** — migration
+plan, changed dependencies, which services are affected, what is actually live —
+and hands the lead an ordered list of commands with a note on which need `sudo`.
+**The lead executes**, because the lead is the session the human is typing into
+and therefore the only one that can genuinely ask. Commands needing `sudo` are
+run by Giuseppe himself; the password never passes through an agent.
+
+The first real deploy (Vimeo, 2026-09-15) was done this way and showed why the
+inspection matters: no migrations, no dependency changes, and `mcp_bridge/`
+untouched — so three of the six classic deploy steps were simply not needed. An
+honest deploy is usually shorter than expected, and proposing steps that are not
+needed on a live machine is risk given away for free.
 
 ## Known limits — read these before trusting the team
 
