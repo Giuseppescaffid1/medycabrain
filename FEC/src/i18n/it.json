@@ -308,7 +308,7 @@
         "Gli articoli dei blog (medyca.it + i blog dei competitor monitorati)",
         "I temi che indichi tu (tiroide, osteoporosi, Bijuva…)",
         "Le interviste audio/video che carichi tu (del medico): trascritte e trasformate in materiale + bozza articolo",
-        "I video che tieni come riferimento: incolli i link (anche tutti insieme) e diventano materiale consultabile, con il link sempre a portata di mano. Per ognuno dici se è roba tua o di altri."
+        "I video che tieni come riferimento, da YouTube o da Vimeo: incolli i link (anche tutti insieme) e diventano materiale consultabile — trascritti come le interviste, con il link sempre a portata di mano. Per ognuno dici se è roba tua o di altri."
       ]
     },
     "flow": {
@@ -365,7 +365,7 @@
         "La raccolta ha un budget di 5 dollari al mese che si rinnova da solo. Al raggiungimento del tetto si ferma solo la raccolta di reel nuovi: tutto il resto della piattaforma continua a funzionare.",
         "Vengono raccolti solo i reel: storie, caroselli e foto singole no.",
         "Undici dei ventitré account monitorati non hanno mai restituito contenuti (uno ha il nome scritto male) o non pubblicano da oltre un anno: vanno ripuliti.",
-        "Dei video presi da un link non sempre riusciamo a ottenere l'audio: YouTube a volte blocca il nostro server. In quel caso il video resta comunque in piattaforma con titolo, canale e link — cercabile e citabile come riferimento — ma senza trascrizione, e la riga te lo dice in chiaro."
+        "Dei video presi da un link non sempre riusciamo a ottenere l'audio: né YouTube né Vimeo lo danno a chi non è collegato con un account, e il collegamento che usiamo ogni tanto scade. In quel caso il video resta comunque in piattaforma con titolo, canale e link — cercabile e citabile come riferimento — ma senza trascrizione, e la riga te lo dice in chiaro. Se ti serve la trascrizione subito, carica il file video a mano."
       ]
     },
     "models": {
@@ -604,8 +604,8 @@
     "titleLabel": "Titolo",
     "empty": "Ancora niente. Trascina un file audio o video nel riquadro qui sopra, oppure incolla i link dei video che vuoi tenere come riferimento.",
     "linksLabel": "Oppure incolla dei link a video",
-    "linksHint": "Puoi incollare l'elenco così com'è, con titoli e date: i link li trovo io. Lo stesso video incollato due volte viene aggiunto una volta sola.",
-    "linksPlaceholder": "Parte I: https://www.youtube.com/watch?v=…\nParte II: https://www.youtube.com/watch?v=…",
+    "linksHint": "Puoi incollare l'elenco così com'è, con titoli e date: i link li trovo io, sia di YouTube sia di Vimeo. Lo stesso video incollato due volte viene aggiunto una volta sola.",
+    "linksPlaceholder": "Parte I: https://www.youtube.com/watch?v=…\nParte II: https://vimeo.com/…",
     "linksAdd": "Aggiungi i video",
     "linksAdded": "Aggiunti: {{count}}",
     "linksDuplicate": "già presenti: {{count}}",

@@ -378,9 +378,18 @@ def _rerank(query: str, hits: list[dict]) -> list[dict]:
         # (2026-09-13), so the reranker silently never ran and retrieval was
         # always served in blend order. The answer is a list of indices plus
         # whatever preamble the model adds — cheap, but not 200-tokens cheap.
+        # 1000 was still not enough: with a full RERANK_POOL of long snippets
+        # Sonnet 5 sometimes prefaces the JSON with a line of reasoning and
+        # tips over 1000, so the MCP search hung (2026-09-15). Two guards:
+        # 2000 tokens gives comfortable headroom (measured: the same real
+        # pool reranks in ~2-3s and never truncates), and `retries=0` makes a
+        # truncation fail *fast* — it is deterministic, so retrying it 3× only
+        # multiplies the latency the client feels as "search not working"
+        # before this same except-block falls back to the blend order anyway.
         data = client.chat_json(
             "Sei un valutatore di pertinenza per una ricerca. Solo JSON valido.",
-            user, max_tokens=1000, temperature=0.0, model=client.model_for("bulk"))
+            user, max_tokens=2000, temperature=0.0,
+            model=client.model_for("bulk"), retries=0)
         order = data.get("ordine") if isinstance(data, dict) else None
         if not order:
             return hits

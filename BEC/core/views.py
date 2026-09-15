@@ -185,29 +185,30 @@ class UploadedMediaViewSet(viewsets.ModelViewSet):
         """Paste a blob of text; every video link in it becomes a row.
 
         The client sends his notes, not a clean list — "Parte I: <url>", dates,
-        names in brackets. `extract_ids` pulls the videos out and collapses the
-        spellings of the same video (youtu.be, &t=365s) onto one id, so pasting
-        the same list twice adds nothing.
+        names in brackets. `extract_links` pulls the videos out, whatever the
+        host (YouTube, Vimeo), and collapses the spellings of the same video
+        (youtu.be, &t=365s, Vimeo's ?fl=pl and #t=) onto one canonical
+        address, so pasting the same list twice adds nothing.
 
         JSONParser is declared explicitly: this ViewSet is set to multipart for
         the file upload, and without it a JSON body would be rejected here.
         """
-        from core.link_ingest import LinkRefused, canonical_url, extract_ids, probe
+        from core.link_ingest import LinkRefused, extract_links, probe
 
         text = request.data.get("text") or ""
         owner = request.data.get("owner_type")
         owner = owner if owner in ("owned", "competitor") else "owned"
         inspiration = bool(request.data.get("is_inspiration", True))
 
-        ids = extract_ids(text)
-        if not ids:
+        refs = extract_links(text)
+        if not refs:
             return Response(
                 {"detail": "Non ho trovato nessun link a un video in quel testo."},
                 status=400)
 
         created, skipped, refused = [], [], []
-        for vid in ids:
-            url = canonical_url(vid)
+        for ref in refs:
+            url = ref.url
             # Already in, as a row or as a document: adding it twice would
             # pay for the same transcription twice.
             if (models.UploadedMedia.objects.filter(source_url=url).exists()
