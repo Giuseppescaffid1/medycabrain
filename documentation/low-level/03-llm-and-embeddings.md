@@ -208,10 +208,17 @@ flowchart TD
 5. **Pick the passage** — `_best_passage()` selects the chunk (from cached `chunk_vectors`)
    closest to the query, so a hit shows the *relevant* passage, not the article's first lines.
 6. **Optional rerank** — `_rerank(query, out)` makes **one** structured LLM call
-   (`model_for("bulk")`) over a `RERANK_POOL=15` candidate pool, asking for a JSON
-   `{"ordine": [...]}` ordering, then returns the top `top_k`. On *any* failure it falls back to
-   the blend order — it never errors out. Both the chat and MCP `cerca` call it with
-   `rerank=True`.
+   (`model_for("bulk")`, `max_tokens=2000`, `retries=0`) over a `RERANK_POOL=15` candidate
+   pool, asking for a JSON `{"ordine": [...]}` ordering, then returns the top `top_k`. On *any*
+   failure it falls back to the blend order — it never errors out. Both the chat and MCP `cerca`
+   call it with `rerank=True`.
+   - **Known limit / why `retries=0`:** with a full pool of long snippets Sonnet 5 sometimes
+     prefaces the JSON with a line of reasoning and tips over the ceiling (`stop_reason=max_tokens`).
+     At the old `max_tokens=1000` this surfaced as an intermittent **~30–40s hang** on MCP search —
+     the client saw "search not working" — because a truncation is deterministic yet the default
+     `retries=2` retried it 3× with backoff before the fallback ran (2026-09-15). `2000` gives
+     headroom (the same real pool reranks in ~2–3s) and `retries=0` makes the rare truncation fall
+     back to the blend order in one shot instead of multiplying the latency.
 
 ### `answer()` — the grounded chat
 
