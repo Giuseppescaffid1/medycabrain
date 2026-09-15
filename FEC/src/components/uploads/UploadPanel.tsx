@@ -34,9 +34,10 @@ import { formatDate } from "../../lib/utils";
  * list polls for status while it works.
  *
  * Two doors, one list: a FILE the client drags in, or a LINK he pastes. The
- * second exists because his reference material lives on YouTube and he sends
- * it as a messy block of notes — so the paste box takes the block whole and
- * the backend pulls the videos out of it.
+ * second exists because his reference material lives on YouTube and on Vimeo
+ * (the TVRS episodes) and he sends it as a messy block of notes — so the
+ * paste box takes the block whole and the backend pulls the videos out of it,
+ * whichever of the two hosts they are on.
  *
  * Two controls travel with a pasted batch, and they are deliberately separate
  * questions: "is this reference material" (why it is here) and "is it Medyca's

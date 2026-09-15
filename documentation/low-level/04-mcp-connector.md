@@ -91,7 +91,10 @@ if only:                       # "reel" | "blog" | None
 - `scope` is clamped to `all` / `medyca` / `competitor`; `limite` clamped to 1–20.
 - **The pool is over-fetched 3× when filtering**, or the filter starves: asking for 8 articles
   out of a pool of 8 mixed hits returns two.
-- `rerank=True` — Claude gets the same LLM-sharpened order the in-app chat uses.
+- `rerank=True` — Claude gets the same LLM-sharpened order the in-app chat uses. The rerank step
+  is best-effort and **fails fast to the blend order** (`retries=0`, `max_tokens=2000`); before
+  2026-09-15 a truncated rerank was retried 3× and made search hang ~30–40s, which the client
+  reported as "search not working" — see [03-llm-and-embeddings](03-llm-and-embeddings.md#6-optional-rerank).
 - Each hit is shaped by `_hit(h)` into `{id, tipo, di, titolo, estratto, url, pertinenza}`,
   where `id` is `"reel:123"` / `"blog:45"` and `di` labels ownership.
 
