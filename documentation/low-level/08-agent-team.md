@@ -119,6 +119,29 @@ The two jobs:
 - **frontend** — `npm ci` then `npm run build`, which is `tsc -b && vite build`
   and therefore the only automatic type gate the frontend has.
 
+## Watching the team work (tmux)
+
+Subagents print nothing to the terminal — you see a result, not the work. Each
+one does keep a JSONL diary in
+`~/.claude/projects/<project>/<session>/subagents/agent-<id>.jsonl`, so three
+small tools turn that into something you can watch:
+
+| Tool | What it does |
+|---|---|
+| `tools/guarda_agenti.py` | Follows every teammate's diary at once, one readable line per action (`> Bash  curl -s …`). Colour-coded per role. `--tutto` replays what already happened. |
+| `tools/bacheca.py` | Prints the board from the `stato:` frontmatter of `.claude/tasks/*.md`, sorted by how much it needs you. Same content as `/bacheca`, but printable under `watch`. |
+| `tools/squadra_tmux.sh` | Opens the whole layout: Claude Code on the left, the live agent feed top-right, the board bottom-right refreshing every 2s. |
+
+```
+./tools/squadra_tmux.sh      # ctrl-b o to jump between panes
+```
+
+**How the teammate's name is found.** The diary carries no field naming the
+agent — `slug` is the *session* slug, identical for all of them. The name is
+recovered by scanning the diary for `medyca-<role>`, which appears in the prompt
+the agent was given, and cached per file. When no name is found the short agent
+id is shown instead: an ugly true label beats an invented one.
+
 ## Known limits — read these before trusting the team
 
 - **The teammates cannot talk to each other.** The task file is the only channel.
