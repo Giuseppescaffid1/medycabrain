@@ -297,6 +297,14 @@
     "error": "Si è verificato un errore.",
     "close": "Chiudi"
   },
+  "content": {
+    "gotoLabel": "Vai a un contenuto",
+    "gotoPlaceholder": "Es. blog:843 oppure reel:199",
+    "gotoButton": "Apri",
+    "gotoError": "Non riconosco questo riferimento. Scrivi il tipo e il numero, per esempio blog:843 oppure reel:199.",
+    "notFound": "Questo contenuto non esiste più o l'indirizzo non è valido. Potrebbe essere stato rimosso.",
+    "backToLibrary": "Torna alla chat sui contenuti"
+  },
   "docs": {
     "title": "Documentazione — come funziona la piattaforma",
     "subtitle": "Il percorso che porta dai contenuti pubblicati ai consigli editoriali. Scarica lo schema per la presentazione.",
@@ -344,6 +352,10 @@
         "Connettore per Claude (MCP): la banca dati interrogabile direttamente dal tuo Claude, in sola lettura",
         "Fonti — la pagina da cui aggiungi e metti in pausa i profili Instagram, i blog e le interviste caricate, una scheda per tipo"
       ]
+    },
+    "goto": {
+      "title": "Aprire un contenuto da un riferimento",
+      "body": "Quando fai domande a Claude tramite il connettore, ogni contenuto viene citato con un codice tipo blog:843 o reel:199. Per vedere di quale contenuto si tratta, apri la pagina «Chiedi alla Knowledge Bank»: in alto trovi il campo «Vai a un contenuto». Incolla lì il codice — va bene anche se davanti c'è un numero di citazione, per esempio «blog 2:843» — e premi Apri. Si apre la scheda del contenuto con titolo, fonte, testo o trascrizione e il link all'originale. Se il codice non è chiaro, o il contenuto è stato rimosso, te lo diciamo con un messaggio semplice."
     },
     "download": {
       "title": "Schema della pipeline",

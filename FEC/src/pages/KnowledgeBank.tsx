@@ -6,6 +6,7 @@ import { askKnowledge, type AskResult, type KnowledgeHit } from "../api/knowledg
 import { Badge, Button, fieldCls } from "../components/ui/primitives";
 import { PageTransition, EASE } from "../components/ui/motion";
 import { AnswerBody } from "../components/knowledge/AnswerBody";
+import { GoToContent } from "../components/knowledge/GoToContent";
 
 type Scope = "all" | "medyca" | "competitor";
 
@@ -110,7 +111,8 @@ export default function KnowledgeBank() {
   return (
     <PageTransition>
       <div className="flex h-full flex-col">
-        <div className="flex flex-col gap-3 border-b border-border px-4 pb-4 pt-5 sm:flex-row sm:items-end sm:justify-between sm:px-6">
+        <div className="border-b border-border px-4 pb-4 pt-5 sm:px-6">
+         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div className="min-w-0">
             <h1 className="text-xl font-bold text-heading">{t("kb.chatTitle")}</h1>
             <p className="text-sm text-muted">{t("kb.chatSubtitle")}</p>
@@ -160,6 +162,12 @@ export default function KnowledgeBank() {
               </Button>
             )}
           </div>
+         </div>
+         {/* Jump straight to a content the MCP cited (blog:843 / reel:199).
+             This is the page "about the content", so the shortcut lives here. */}
+         <div className="mt-3">
+           <GoToContent />
+         </div>
         </div>
 
         <div className="flex-1 overflow-y-auto px-4 py-5 sm:px-6">
