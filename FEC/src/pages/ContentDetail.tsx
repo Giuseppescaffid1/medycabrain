@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
-import { useNavigate, useParams } from "react-router-dom";
+import { isAxiosError } from "axios";
+import { useLocation, useNavigate, useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { ReelDetailDrawer } from "../components/reels/ReelDetailDrawer";
 import { ArticleDetailDrawer } from "../components/articles/ArticleDetailDrawer";
@@ -20,19 +21,28 @@ import { PageTransition } from "../components/ui/motion";
  * since removed, and the drawer alone would spin forever on that 404. So we
  * resolve the content first and only mount the drawer once it is in cache; a
  * failure shows a plain "not found" instead of an endless spinner.
+ *
+ * "Gone" is only ever a 404. Any other failure — a 502 while gunicorn restarts,
+ * the network dropping — gets its own state: telling the client the content was
+ * removed when it is still there is exactly the misinformation this work exists
+ * to remove. 401 is not handled here: `api/client.ts` logs the client out.
  */
 export default function ContentDetail() {
   const { t } = useTranslation();
   const { kind, id } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const numId = Number(id);
   const valid = (kind === "reel" || kind === "blog") && Number.isInteger(numId) && numId > 0;
 
-  // Return to where the reference was clicked; on a cold deep-link there is no
-  // history to go back to, so land on the chat where the field lives.
+  // Only step back when the navigation that brought us here says it came from
+  // inside the brain (`GoToContent` sets it). `window.history.length` counts the
+  // whole browser tab, so on an MCP link opened in an already-used tab it would
+  // send the client out of the app entirely.
+  const fromApp = (location.state as { fromApp?: boolean } | null)?.fromApp === true;
   const goBack = () => {
-    if (window.history.length > 1) navigate(-1);
+    if (fromApp) navigate(-1);
     else navigate("/knowledge-bank");
   };
 
@@ -49,12 +59,35 @@ export default function ContentDetail() {
     retry: false,
   });
 
-  if (!valid || query.isError) {
+  // A bad address, or a 404 from the detail endpoint (which filters
+  // `is_active=True`), means the content really is not there.
+  const status = isAxiosError(query.error) ? query.error.response?.status : undefined;
+  if (!valid || status === 404) {
     return (
       <PageTransition>
         <div className="flex h-full flex-col items-center justify-center px-4">
           <EmptyState message={t("content.notFound")} />
           <Button onClick={goBack}>{t("content.backToLibrary")}</Button>
+        </div>
+      </PageTransition>
+    );
+  }
+
+  // Anything else that failed — server down, network gone — is our problem, not
+  // a missing content: say so and offer to try again.
+  if (query.isError) {
+    return (
+      <PageTransition>
+        <div className="flex h-full flex-col items-center justify-center px-4">
+          <EmptyState message={t("content.loadError")} />
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            <Button onClick={() => void query.refetch()} loading={query.isFetching}>
+              {t("content.retry")}
+            </Button>
+            <Button variant="secondary" onClick={goBack}>
+              {t("content.backToLibrary")}
+            </Button>
+          </div>
         </div>
       </PageTransition>
     );

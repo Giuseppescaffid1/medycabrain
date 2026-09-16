@@ -36,7 +36,10 @@ export function GoToContent() {
       return;
     }
     setError(false);
-    navigate(`/content/${ref.kind}/${ref.id}`);
+    // `fromApp` tells ContentDetail that its close button has a page of ours to
+    // go back to. Without it that page cannot know, and stepping back blindly
+    // would leave the brain when the link was opened in an already-used tab.
+    navigate(`/content/${ref.kind}/${ref.id}`, { state: { fromApp: true } });
   };
 
   return (

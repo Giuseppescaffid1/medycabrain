@@ -303,6 +303,8 @@
     "gotoButton": "Apri",
     "gotoError": "Non riconosco questo riferimento. Scrivi il tipo e il numero, per esempio blog:843 oppure reel:199.",
     "notFound": "Questo contenuto non esiste più o l'indirizzo non è valido. Potrebbe essere stato rimosso.",
+    "loadError": "Non riesco a caricare questo contenuto adesso. Il contenuto c'è: è la piattaforma che non risponde. Riprova tra poco.",
+    "retry": "Riprova",
     "backToLibrary": "Torna alla chat sui contenuti"
   },
   "docs": {
@@ -355,7 +357,7 @@
     },
     "goto": {
       "title": "Aprire un contenuto da un riferimento",
-      "body": "Quando fai domande a Claude tramite il connettore, ogni contenuto citato arriva con il suo titolo, di chi è (Medyca, un competitor o un riferimento) e un link che si apre qui dentro — per esempio «Metodo Marion Gluck — Medyca». Clicca il link e vedi subito la scheda del contenuto: titolo, fonte, testo o trascrizione e il link all'originale. Se hai in mano solo un codice tipo blog:843 o reel:199 (magari da una risposta vecchia), apri la pagina «Chiedi alla Knowledge Bank»: in alto trovi il campo «Vai a un contenuto». Incolla lì il codice — va bene anche se davanti c'è un numero di citazione, per esempio «blog 2:843» — e premi Apri. Se il codice non è chiaro, o il contenuto è stato rimosso, te lo diciamo con un messaggio semplice. Per aprire un link devi essere già dentro la piattaforma: se non lo sei, ti chiede prima di entrare."
+      "body": "Quando fai domande a Claude tramite il connettore, ogni contenuto citato arriva con il suo titolo, di chi è (Medyca, un competitor o un riferimento) e un link che si apre qui dentro — per esempio «Metodo Marion Gluck — Medyca». Clicca il link e vedi subito la scheda del contenuto: titolo, fonte, testo o trascrizione e il link all'originale. Se hai in mano solo un codice tipo blog:843 o reel:199 (magari da una risposta vecchia), apri la pagina «Chiedi alla Knowledge Bank»: in alto trovi il campo «Vai a un contenuto». Incolla lì il codice — va bene anche se davanti c'è un numero di citazione, per esempio «blog 2:843» — e premi Apri. Se il codice non è chiaro, o il contenuto è stato rimosso, te lo diciamo con un messaggio semplice. Se invece è la piattaforma a non rispondere sul momento, te lo diciamo in modo diverso — il contenuto c'è ancora — e ti diamo un bottone per riprovare. Per aprire un link devi essere già dentro la piattaforma: se non lo sei, ti chiede prima di entrare."
     },
     "download": {
       "title": "Schema della pipeline",

@@ -411,6 +411,62 @@ leggi_reel(reel:883): titolo='vampate di calore' di='competitor: @menopausa_insi
 - `eval_mcp` **non è stato eseguito**: parla con l'MCP live via HTTPS, che è
   ancora il vecchio codice — lo misurerà il collaudatore dopo il rilascio.
 
+---
+
+### Giro di correzioni (2026-09-16, dopo revisione+collaudo verdi)
+
+Due rilievi del revisore, entrambi in `FEC/src/pages/ContentDetail.tsx`. Chiusi
+senza toccare MCP, `eval_mcp` o i test del cancello.
+
+1. **Un guasto del server veniva raccontato come «contenuto rimosso».** La
+   condizione era `if (!valid || query.isError)`: un 502 (riavvio di gunicorn) o
+   la rete giù facevano leggere al cliente che il contenuto era stato rimosso
+   mentre era lì. Ora gli stati prima della scheda sono **tre**: *caricamento*;
+   *non trovato* solo per indirizzo non valido o **404** (letto da
+   `isAxiosError(query.error).response.status`, cioè il filtro `is_active=True`
+   del dettaglio); *errore* per tutto il resto, con messaggio «non riesco a
+   caricare questo contenuto adesso… il contenuto c'è» e bottone **Riprova**
+   (`query.refetch()`, con stato di caricamento sul bottone). Il 401 resta dove
+   era: `api/client.ts` slogga, qui non si duplica. Nuove stringhe in
+   `FEC/src/i18n/it.json`: `content.loadError`, `content.retry`.
+2. **La chiusura poteva buttare il cliente fuori dal brain.** `window.history.length`
+   conta tutta la storia della scheda del browser: un link dell'MCP aperto in una
+   scheda già usata (il caso normale) faceva uscire dall'app con `navigate(-1)`.
+   Ora `GoToContent` naviga con `{ state: { fromApp: true } }` e `ContentDetail`
+   fa `navigate(-1)` **solo** se quello stato c'è; altrimenti va a
+   `/knowledge-bank`. Nessuna dipendenza da `window.history.length`.
+
+Documentazione nella stessa commit: `documentation/low-level/06-frontend.md` (i
+tre stati, il perché del 404, il divieto di `window.history.length`) e
+`FEC/src/i18n/it.json` → `docs.goto.body` (la pagina in-app ora distingue, in
+parole semplici, «rimosso» da «la piattaforma non risponde, riprova»).
+
+**Verifica (output vero)**
+
+```
+$ cd FEC && npm run build
+✓ built in 32.44s
+$ cd ../BEC && venv/bin/python manage.py test core
+Ran 49 tests in 9.908s
+OK
+```
+
+Prova da utente vero su `:9093` (dist ricostruita, Playwright, loggato via token):
+
+```
+A) /content/blog/99999 → "Questo contenuto non esiste più o l'indirizzo non è
+   valido. Potrebbe essere stato rimosso." + "Torna alla chat sui contenuti"
+B) deep-link a freddo /content/reel/879 dopo una pagina esterna al flusso →
+   chiusura porta a /knowledge-bank (non fuori dal brain)
+C) 502 finto su /api/v1/knowledge/documents/896/ → "Non riesco a caricare questo
+   contenuto adesso. Il contenuto c'è: è la piattaforma che non risponde.
+   Riprova tra poco." + "Riprova" + "Torna alla chat sui contenuti"
+D) mobile 380px, dal campo in KnowledgeBank "reel 2:879" → /content/reel/879,
+   chiusura torna a /knowledge-bank
+```
+
+Niente altro toccato: nessun cambio a MCP, `eval_mcp`, test del cancello o stile.
+
 ## 4. Revisione          (revisore)
 
 ## 5. Collaudo           (collaudatore)

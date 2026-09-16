@@ -79,13 +79,24 @@ pieces close the gap, with **no backend or MCP change**:
 - `pages/ContentDetail.tsx` — the route. It reuses the Library's own
   `ReelDetailDrawer` (`reelId`) / `ArticleDetailDrawer` (`docId`); no new card was
   designed. It resolves the content first (same react-query keys as the drawers, so
-  no extra request) and only mounts the drawer once the data is cached. This is what
-  lets it tell **loading** from **gone**: the detail endpoints filter `is_active=True`,
-  so a removed id 404s, and the drawer alone would spin forever — instead a plain
-  "contenuto non trovato" is shown. The endpoints answer by id blind to scope, so a
-  Medyca or a competitor item both resolve. Closing returns via history, falling back
-  to `/knowledge-bank` on a cold deep-link. From logged-out, `App.tsx` sends to
-  `/login` as for any route (no return-to-content after login, by decision).
+  no extra request) and only mounts the drawer once the data is cached. The endpoints
+  answer by id blind to scope, so a Medyca or a competitor item both resolve.
+
+  It has **three states before the card**, and keeping them apart is the point:
+  **caricamento** (spinner), **non trovato** (a bad address, or a 404 — the detail
+  endpoints filter `is_active=True`, so a removed id 404s and the drawer alone would
+  spin forever), and **errore** (any other failure: a 502 while gunicorn restarts, the
+  network dropping) which says "non riesco a caricare questo contenuto adesso" and
+  offers a retry. Folding the second and third together told the client the content had
+  been removed while it was still there — the exact misinformation this feature exists
+  to remove. 401 is not handled here: `api/client.ts` logs the client out.
+
+  Closing goes back only when the navigation carried `state.fromApp` (set by
+  `GoToContent`), otherwise it goes to `/knowledge-bank`. It must **not** use
+  `window.history.length`, which counts the whole browser tab: on an MCP link opened in
+  an already-used tab, stepping back sends the client out of the brain. From logged-out,
+  `App.tsx` sends to `/login` as for any route (no return-to-content after login, by
+  decision).
 
 Known limit: covers only `reel:`/`blog:`. Theme/cluster references (`temi` returns a
 cluster id in a different id space) are out of scope.
