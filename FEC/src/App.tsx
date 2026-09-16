@@ -19,6 +19,7 @@ const Workspace = lazyPage(() => import("./pages/Workspace"));
 const Accounts = lazyPage(() => import("./pages/Accounts"));
 const SecondBrain = lazyPage(() => import("./pages/SecondBrain"));
 const KnowledgeBank = lazyPage(() => import("./pages/KnowledgeBank"));
+const ContentDetail = lazyPage(() => import("./pages/ContentDetail"));
 const BrainMap = lazyPage(() => import("./pages/BrainMap"));
 const Documentation = lazyPage(() => import("./pages/Documentation"));
 const Status = lazyPage(() => import("./pages/Status"));
@@ -49,6 +50,7 @@ function AppRoutes() {
           <Route path="/:scope/clusters/:id" element={<ClusterDetail />} />
           <Route path="/second-brain" element={<SecondBrain />} />
           <Route path="/knowledge-bank" element={<KnowledgeBank />} />
+          <Route path="/content/:kind/:id" element={<ContentDetail />} />
           <Route path="/brain-map" element={<BrainMap />} />
           <Route path="/documentazione" element={<Documentation />} />
           <Route path="/stato" element={<Status />} />

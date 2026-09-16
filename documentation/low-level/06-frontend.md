@@ -33,7 +33,8 @@ screen shows either side without mixing them.
 | `/:scope/timeline` | `Timeline.tsx` | Content over time. |
 | `/:scope/clusters` + `/:scope/clusters/:id` | `Clusters.tsx`, `ClusterDetail.tsx` | The themes for that side. |
 | `/second-brain` | `SecondBrain.tsx` | Editorial planner: ideas, gaps, plan. |
-| `/knowledge-bank` | `KnowledgeBank.tsx` | The grounded RAG chat (below). |
+| `/knowledge-bank` | `KnowledgeBank.tsx` | The grounded RAG chat (below), with the "vai al contenuto" field in its header. |
+| `/content/:kind/:id` | `ContentDetail.tsx` | Resolves a reference the MCP cited (`blog:843` / `reel:199`) to the content's detail card (below). |
 | `/brain-map` | `BrainMap.tsx` | Cytoscape graph of themes/content (`components/graph/BrainGraph.tsx`). |
 | `/workspace` | `Workspace.tsx` | Favorites / notes. |
 | `/accounts` | `Accounts.tsx` | **Management screen** (nav label «Fonti», page title «Gestione fonti»). Three tabs — Instagram profiles, blogs, uploaded interviews — instead of the three stacked sections it used to be: one list at a time, header and tabs fixed, only the list scrolls. The open tab is in the URL (`?tab=blogs|uploads`), so reload, back and shared links land on the same list; tab counts reuse the panels' own react-query keys, so they cost no extra request. Panels: `components/sources/AccountsPanel.tsx`, `components/sources/BlogSourcesPanel.tsx`, `components/uploads/UploadPanel.tsx`, all built from the shared pieces in `components/manage/parts.tsx` (tabs, panel header, folded add form, search + status filter, table frame, empty state, row actions). Each list has search and a status filter (Instagram/blogs also filter by Medyca vs competitor) and the add form is folded away behind the primary button, so the list — not the form — is what you land on. Adding an Instagram profile now asks who it belongs to (`owner_type`, writable on `POST /accounts/`); before, every new profile was created as competitor by default. The **Caricamenti** tab has two doors into one list: drag a file, or paste a block of video links into the textarea below the drop zone (`importLinks` → `POST /uploads/from-links/`) — **YouTube and Vimeo**, mixed in the same paste, which is why the placeholder shows one example of each. Two controls travel with a pasted batch — a «Video di riferimento» checkbox and a «Di chi è» select — kept separate because they answer different questions; choosing «Di Medyca» shows an inline warning that the video will then count as Medyca's coverage and the editorial plan will stop flagging that subject as uncovered. Rows from a link show the channel, a clickable «Apri il video», a «riferimento» badge, and — for a failed download — **the error text inline**, not in a `title` tooltip: a blocked download has a remedy and the client can only act on it if he can read it. |
@@ -61,6 +62,44 @@ The "Chiedi alla Knowledge Bank" screen. Chat over everything the platform knows
   competitor's is the worst failure this screen can make.
 - `FEC/src/api/knowledge.ts` also exposes `POST /knowledge/search/`,
   `GET /knowledge/documents/`, `GET /knowledge/documents/:id/`.
+
+## From a reference to the content — `GoToContent` + `ContentDetail.tsx`
+
+The MCP cites content as `kind:id` — `blog:843`, `reel:199` (`server.py`). The
+client had no way, from the brain, to see *which* content that was. Two small
+pieces close the gap, with **no backend or MCP change**:
+
+- `components/knowledge/GoToContent.tsx` — a field in the KnowledgeBank header.
+  `parseRef()` reads the reference **forgivingly**: it keeps the kind word and the
+  id after the colon and throws away anything in between, because the client's own
+  Claude prepends a citation number (`[2] blog:843`, `blog 2:843`) that is not ours.
+  `blog`/`articolo`/`article` → the blog card, `reel` → the reel card. An
+  unrecognisable input shows an inline error and does **not** navigate. A valid one
+  goes to `/content/{kind}/{id}`.
+- `pages/ContentDetail.tsx` — the route. It reuses the Library's own
+  `ReelDetailDrawer` (`reelId`) / `ArticleDetailDrawer` (`docId`); no new card was
+  designed. It resolves the content first (same react-query keys as the drawers, so
+  no extra request) and only mounts the drawer once the data is cached. The endpoints
+  answer by id blind to scope, so a Medyca or a competitor item both resolve.
+
+  It has **three states before the card**, and keeping them apart is the point:
+  **caricamento** (spinner), **non trovato** (a bad address, or a 404 — the detail
+  endpoints filter `is_active=True`, so a removed id 404s and the drawer alone would
+  spin forever), and **errore** (any other failure: a 502 while gunicorn restarts, the
+  network dropping) which says "non riesco a caricare questo contenuto adesso" and
+  offers a retry. Folding the second and third together told the client the content had
+  been removed while it was still there — the exact misinformation this feature exists
+  to remove. 401 is not handled here: `api/client.ts` logs the client out.
+
+  Closing goes back only when the navigation carried `state.fromApp` (set by
+  `GoToContent`), otherwise it goes to `/knowledge-bank`. It must **not** use
+  `window.history.length`, which counts the whole browser tab: on an MCP link opened in
+  an already-used tab, stepping back sends the client out of the brain. From logged-out,
+  `App.tsx` sends to `/login` as for any route (no return-to-content after login, by
+  decision).
+
+Known limit: covers only `reel:`/`blog:`. Theme/cluster references (`temi` returns a
+cluster id in a different id space) are out of scope.
 
 ## The in-app Documentazione page (client-facing docs)
 
