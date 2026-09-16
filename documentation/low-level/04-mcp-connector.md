@@ -209,6 +209,18 @@ The `mcp` package itself is a CI dependency now (`mcp==2.0.0` in `requirements-c
 pydantic) — no torch. The live, real-model suite (`manage.py eval_mcp`, over HTTPS through nginx)
 stays on the VPS and out of the gate.
 
+Its golden cases call the **typed** search tools (`cerca_reel` / `cerca_articoli` / `cerca_tutto`
+/ `cerca_riferimenti`), not a single `cerca` tool — that name was removed when search was split,
+and the golden cases had gone stale calling it, so the suite crashed on the first case with
+`Unknown tool: cerca` (found the day the type-filter branch was deployed, 2026-09-16). `_call`
+now surfaces an `isError` result as a readable `CommandError` naming the tool, instead of an
+opaque `json.loads` crash. There is a golden case for the reference material
+(`interviste_riferimento`) that asserts the `riferimento:` label. The LLM **judge** is advisory
+(wrapped in try/except → `None` on failure, never a suite failure) and its mean relevance sits
+around 1.0–1.2 on this corpus; its own call was truncating at 900 tokens (~48 vote objects +
+Sonnet's preamble), so it now asks for 4000 — the hard signals are hit-rate, ownership and
+groundedness, all of which the suite checks at 100%.
+
 ## Transport, deployment, and security
 
 - **Transport:** Streamable HTTP, JSON responses, stateless. Built in `build_app()`:
