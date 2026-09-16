@@ -1,7 +1,7 @@
 ---
 id: 2026-09-16-riferimenti-contenuti-nel-brain
 titolo: Dai riferimenti dell'MCP (blog:843, reel:199) si deve poter arrivare al contenuto nel brain
-stato: revisione
+stato: pronto
 ramo: feat/riferimenti-contenuti
 pr: ""
 ticket: ""
@@ -469,7 +469,106 @@ Niente altro toccato: nessun cambio a MCP, `eval_mcp`, test del cancello o stile
 
 ## 4. Revisione          (revisore)
 
+**Verdetto: PASSA.** Nessun rilievo bloccante.
+
+**Controllato eseguendo, non solo leggendo**: solo i due commit del ramo su
+`origin/main`, albero pulito, `test core.tests.test_mcp_tools` → 19 OK,
+`npx tsc -b` → 0 errori, scansione segreti sul diff → niente (l'unica variabile
+nuova è `BRAIN_BASE_URL`, un indirizzo pubblico).
+
+**Invarianti tutti in piedi**: `owner_type` non viene mai scritto (solo letto);
+`di` resta la regola a tre etichette (`Medyca` / `competitor: X` /
+`riferimento: X`) e `apri_nel_brain` è un campo **in più**, non al posto di
+qualcosa; i `failed` non si toccano; niente credenziali di terzi.
+
+**Correttezza**: `_brain_link` è chiamato col **proprio** id in tutti e tre i
+punti (`_hit` con `h["kind"]/h["id"]`, `_leggi_reel` con `r.id`, `_leggi_articolo`
+con `d.id`) — nessun incrocio possibile, e `_hit` è l'unica fabbrica di hit quindi
+copre anche `cerca_riferimenti`. Il titolo del reel non esplode sui campi vuoti
+(`caption` è stringa, mai `None`) e usa la stessa regola dell'indice di ricerca.
+I test nuovi provano il contratto, non la forma (il caso con `mock.patch.object`
+dimostra che la base URL non è un letterale).
+
+**Documentazione** mossa nello stesso commit e coerente col codice
+(`04-mcp-connector.md`, `06-frontend.md`, pagina in-app).
+
+**Rilievi (nessuno bloccante) e come sono stati chiusi**
+1. *Un guasto del server raccontato come «contenuto rimosso»* — `if (!valid ||
+   query.isError)` mostrava «rimosso» anche su 502/rete. → **CORRETTO** nel giro
+   di correzioni (commit `9d4981e`): tre stati distinti, «non trovato» solo su 404.
+2. *`window.history.length > 1` poteva buttare il cliente fuori dal brain* →
+   **CORRETTO** in `9d4981e`: navigazione con `state.fromApp`, altrimenti
+   `/knowledge-bank`.
+3. *Titolo del reel può essere un paragrafo* (`summary_it` non tagliato quando
+   manca `primary_topic`) — **lasciato**: è la stessa regola dell'indice di
+   ricerca, coerente col disegno; cambiarlo tocca `core/knowledge.py`, fuori scope.
+4. *Il default di `BRAIN_BASE_URL` è l'IP nudo e la variabile non è in `BEC/.env`*
+   — **azione di rilascio**: scriverla esplicitamente in `BEC/.env`, altrimenti il
+   giorno del dominio chi la dimentica non vede errori, solo link nel vuoto.
+
+**Nota sul disegno**: la sez. 2 diceva «MCP: non si tocca» e la fase 2 lo tocca.
+Non è un rilievo: il Registro riporta la decisione di Giuseppe che rimette l'MCP
+in scope, ed è più recente del disegno.
+
 ## 5. Collaudo           (collaudatore)
+
+**Verdetto: PASSA.**
+
+**Controlli automatici (output vero)**
+```
+makemigrations --check --dry-run → No changes detected
+check                            → System check identified no issues (0 silenced).
+test core.tests.test_mcp_tools   → Ran 19 tests ... OK
+test core                        → Ran 49 tests ... OK
+FEC: npm run build               → ✓ built (tsc -b + vite)
+```
+`FEC/dist` **ricostruita** prima delle prove UI (la fase 2 ha toccato `it.json`).
+Nota per chi rilancia i test: al primo tentativo `test core` è morto con
+`EOFError` perché un altro agente stava usando lo stesso database di test —
+**due agenti non possono testare insieme**; secondo tentativo, 49 verdi.
+
+**Il giro completo, come lo vive il cliente.** MCP in-process (non via curl: il
+servizio live gira ancora `main`), sul DB vero:
+```
+BRAIN_BASE_URL = http://81.17.96.27:9093
+blog:247 | Curare la menopausa… metodo Marion Gluck | Medyca                    | …/content/blog/247
+blog:150 | Ormoni Bioidentici: cosa sono…           | competitor: G. Giudice    | …/content/blog/150
+reel:291 | vampate di calore                        | competitor: serenamissori | …/content/reel/291
+blog:890 | CANALE SALUTE: SINDROME METABOLICA…      | riferimento: YouTVRS      | …/content/blog/890
+leggi_articolo/leggi_reel/leggi → stesso titolo e stesso link
+```
+Su **20 hit** dei quattro strumenti di ricerca: **20/20** con titolo + di + link,
+e **20/20** col link che punta **al proprio id** (un link con l'id di un altro
+contenuto sarebbe peggio di nessun link). Le `instructions` contengono la regola
+«titolo, poi chi è, poi il link… mai il solo numero».
+
+**Il link funziona davvero nel brain** (Playwright, loggato, 1280px **e** 380px,
+stesso esito):
+- `/content/blog/247` → si apre **quel** contenuto, stesso titolo che l'MCP cita ✓
+- `/content/reel/291` → scheda reel, stesso autore che l'MCP cita ✓
+- campo: `blog:247` ✓ · `blog 2:247` (col numero di citazione) ✓ · `reel:291` ✓
+- `blog:999999` → «non esiste più / potrebbe essere stato rimosso» pulito ✓
+- `ciao` → nessuna navigazione, errore inline ✓
+- deep-link a freddo: `GET /content/...` → 200 via nginx; da sloggato → `/login`.
+
+**Dopo il giro di correzioni** (`9d4981e`), riprovato: 502 finto sull'endpoint →
+«Il contenuto c'è: è la piattaforma che non risponde. Riprova» + Riprova (non più
+«rimosso»); chiusura da deep-link a freddo → `/knowledge-bank`.
+
+**Cosa NON ho potuto provare**
+- `eval_mcp` parla con l'MCP **live via HTTPS** = codice di `main`: oggi non
+  misura questo ramo. La metrica `citable_reference_accuracy` va letta **dopo il
+  rilascio**.
+- Il contratto nuovo arriva al cliente solo dopo **merge + restart**.
+- **Avviso per il rilascio**: il servizio importa `mcp_bridge.server` dalla
+  **stessa working tree del repo**, non da una copia. Un restart mentre il repo è
+  su un ramo metterebbe in produzione il ramo. Ordine corretto:
+  **merge → checkout `main` → restart**.
+
+**Osservazione per il prossimo giro (non blocca)**: il **titolo dei reel è spesso
+generico** — `reel:291`, `reel:883`, `reel:36` si chiamano **tutti** «vampate di
+calore». Il link li distingue, il titolo no: se il Claude del cliente cita tre
+reel nella stessa risposta, il cliente legge tre volte lo stesso nome.
 
 ## 6. Rilascio           (rilasciatore)
 
