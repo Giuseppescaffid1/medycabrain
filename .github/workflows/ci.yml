@@ -78,6 +78,13 @@ jobs:
       - name: Test
         run: python manage.py test core
 
+      # Il cancello MCP, reso leggibile a parte nella lista dei check: la MR
+      # verso main passa solo se tutti e 10 gli strumenti del connettore
+      # rispondono col contratto giusto (embedder e LLM finti, nessun modello
+      # pesante). Gira già dentro `test core`; questo step lo nomina.
+      - name: Test cancello MCP
+        run: python manage.py test core.tests.test_mcp_tools -v 2
+
   frontend:
     name: Frontend (build e tipi)
     runs-on: ubuntu-latest

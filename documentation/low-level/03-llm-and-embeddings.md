@@ -197,6 +197,14 @@ flowchart TD
    `_INDEX_CACHE`, keyed on a cheap `_corpus_stamp()` fingerprint (uses `Max(updated_at)` so
    in-place re-embeds invalidate the cache). Only `is_active=True, is_on_topic=True` documents
    and `enrich_status=DONE` reels with non-empty text are indexed.
+   - **`kind` filter (optional).** `kind="reel"` / `"blog"` narrows the index to one content type
+     right here, exactly as `only_inspiration` narrows it to reference material. This is what the
+     typed MCP tools (`cerca_reel` / `cerca_articoli`) pass. It matters for **latency**: filtering
+     the type up front means the pool the rerank pays for is all the right type and of size
+     `want=max(top_k, RERANK_POOL)`, instead of over-fetching a mixed pool of `top_k*3=24` and
+     discarding most after the LLM ran. Measured, that cut a typed search from 11–14s into the
+     `cerca_tutto` regime (~2.6s), and killed the starvation where a minority type post-filtered
+     to fewer than `top_k` results. Chat callers leave `kind=None`.
 2. **Embed the query** — `_embed_query()`.
 3. **Hybrid rank** — `_rank()` blends dense and lexical: `0.75 * cosine + 0.25 * lexical_score`.
    The lexical term (`_lexical_score`) is what catches exact drug/brand names like "Bijuva"

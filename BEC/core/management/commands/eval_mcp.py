@@ -143,6 +143,13 @@ class Command(BaseCommand):
                 truth = self._db_owner(h.get("id", ""))
                 if truth is None:
                     continue
+                # Reference material has owner_type="competitor" in the DB but is
+                # labelled "riferimento: …" on purpose (exempt from the
+                # owned/competitor rule — CLAUDE.md), so its `di` no longer
+                # contains "competitor". Checking it against owner_type would
+                # count a correct label as a false negative.
+                if h.get("ispirazione"):
+                    continue
                 own_checked += 1
                 said_comp = "competitor" in (h.get("di") or "").lower()
                 own_correct += int(said_comp == (truth == "competitor"))

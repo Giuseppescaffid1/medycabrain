@@ -252,7 +252,8 @@ RERANK_POOL = 15  # candidates the LLM reranker reorders before the top_k cut
 
 
 def semantic_search(query: str, top_k: int = 6, scope: str = "all",
-                    rerank: bool = False, only_inspiration: bool = False) -> list[dict]:
+                    rerank: bool = False, only_inspiration: bool = False,
+                    kind: str | None = None) -> list[dict]:
     """Hybrid retrieval over the knowledge bank.
 
     Documents are ranked by embedding similarity blended with verbatim
@@ -269,8 +270,19 @@ def semantic_search(query: str, top_k: int = 6, scope: str = "all",
     cosine space of the small embedder — and the top_k best are returned. The
     reranker failing (no LLM, bad reply) falls back to the blend order, never
     to an error.
+
+    `kind` ("reel" / "blog" / None) narrows the index to one content type
+    BEFORE ranking, exactly as `only_inspiration` does. It is the cheap lever
+    behind the typed MCP tools: filtering to the right type up front means the
+    rerank pays for a pool of `want` items that are all the right type, instead
+    of over-fetching a mixed pool of 24, reranking all of it, and discarding
+    most — which cost 11-14s and could starve (8 articles asked out of a
+    reel-dominated pool came back as two, because the post-filter ran AFTER the
+    cut). Filtered here, a typed search runs in the cerca_tutto regime (~2.6s).
     """
     index = _load_index(scope)
+    if kind:
+        index = [i for i in index if i.get("kind") == kind]
     if only_inspiration:
         # Rank INSIDE the reference material, never filter after the fact: a
         # handful of short reference cards would never reach the top of a
