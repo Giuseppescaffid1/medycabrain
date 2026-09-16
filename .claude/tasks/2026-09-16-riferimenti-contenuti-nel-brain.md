@@ -3,7 +3,7 @@ id: 2026-09-16-riferimenti-contenuti-nel-brain
 titolo: Dai riferimenti dell'MCP (blog:843, reel:199) si deve poter arrivare al contenuto nel brain
 stato: pronto
 ramo: feat/riferimenti-contenuti
-pr: ""
+pr: "https://github.com/Giuseppescaffid1/medycabrain/pull/8"
 ticket: ""
 ---
 
