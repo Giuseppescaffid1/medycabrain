@@ -1,7 +1,7 @@
 ---
 id: 2026-09-16-mcp-search-affidabile
 titolo: La ricerca MCP deve essere affidabile su ogni strumento, interviste comprese
-stato: revisione
+stato: pronto
 ramo: feat/mcp
 pr: ""
 ticket: ""
@@ -425,7 +425,87 @@ verificabile: il pool che arriva a `_rerank`+`_best_passage` scende da 24 misti 
 
 ## 4. Revisione          (revisore)
 
+**Verdetto: PASSA.**
+
+Lavoro reale del ramo = il solo commit `411b08d`, un commit sopra `origin/main`
+(il `main` locale era stale a `bd33fa4`, senza la PR #5: si revisiona con
+`git diff origin/main...HEAD` / `git show 411b08d`). Implementazione fedele al
+disegno e alle decisioni di Giuseppe, senza scostamenti.
+
+**Invarianti — tutti rispettati.**
+- `owner_type` resta binario: la rietichettatura delle interviste tocca solo la
+  presentazione (`di` in `_hit` e `_leggi_articolo`); il campo/DB non è mai
+  toccato, il discriminante è `is_inspiration`. Nessun terzo valore.
+- Medyca non si mescola coi competitor: l'ispirazione è `"riferimento: <fonte>"`,
+  mai "Medyca" né "competitor".
+- I `failed` restano `failed`. Nessun segreto nel diff (solo URL di esempio e il
+  pin `mcp==2.0.0`).
+
+**Correttezza — verificata.**
+- Param `kind` in `semantic_search` filtra l'indice a monte, stessa forma di
+  `only_inspiration`, su un campo reale.
+- Niente re-starvation: `_search` chiama `top_k=limite, kind=only` e ritorna
+  diretto; over-fetch/post-filtro/taglio rimossi. Test anti-starvation (8 reel +
+  2 articoli → entrambi gli articoli tornano) verde.
+- Retrocompatibilità: gli altri 3 chiamanti (`_prepare`, `views`, `ideation`)
+  non passano `kind` → default `None`, comportamento invariato.
+- `eval_mcp.py`: `continue` sugli hit ispirazione (evita il falso negativo del
+  check di proprietà). Test-cancello reale (14 test, non vuoto), eseguito verde.
+- CI: step "Test cancello MCP" nel job `backend` obbligatorio; `mcp==2.0.0` in
+  `requirements-ci.txt`.
+
+**Documentazione** coerente col codice, stesso commit
+(`04-mcp-connector.md`, `03-llm-and-embeddings.md`). **Nessun commit su main.**
+
+**Non bloccante:** la latenza ~2.6s non è misurabile coi modelli finti (ipotesi
+meccanica) → verifica reale al collaudatore. `CLAUDE.md` dice "9 strumenti" ma
+sono 10: discrepanza pre-esistente, fuori scope di questo commit.
+
 ## 5. Collaudo           (collaudatore)
+
+**Verdetto: PASSA** — con due prove che, per costruzione, restano al rilascio.
+
+Eseguito sul ramo `feat/mcp` (411b08d), in-process, col venv del backend.
+
+**Controlli backend (output vero):**
+```
+makemigrations --check --dry-run → No changes detected
+check                            → System check identified no issues (0 silenced).
+test core.tests.test_mcp_tools   → Ran 14 tests ... OK
+test core                        → Ran 44 tests ... OK
+```
+I 10 strumenti risultano registrati sul server.
+
+**Frontend:** non toccato (solo backend/MCP/CI/doc), `npm run build` saltato di
+proposito.
+
+**Prova coi modelli VERI, in-process (indice caldo).**
+- `cerca_reel` → 8 risultati, tutti reel; `cerca_articoli` → 8, tutti articoli;
+  `cerca_riferimenti` → 5, solo materiale di riferimento. Niente starvation.
+- Golden @rank 0: "metodo Marion Gluck" (articolo Medyca), "Bijuva pro e contro"
+  (reel Medyca), "secchezza bocca e terapia ormonale" (articolo competitor,
+  domanda IT → articolo EN). Nessun peggioramento.
+
+**Interviste — "non le guarda" risolto.** `cerca_riferimenti("sindrome
+metabolica")` mette al primo posto le puntate "CANALE SALUTE" con etichetta
+`"riferimento: YouTVRS"` (non più "competitor"), `ispirazione=True`, `owner_type`
+invariato. Il Claude del cliente ora le usa invece di scartarle.
+
+**Latenza.** Coi modelli veri i tempi li domina il round-trip dell'API LLM
+(oscillano ~1,7–9,6s, un outlier isolato a 77s sul vecchio percorso), non più la
+dimensione del pool. Il bersaglio esatto "11–14s → ~2,6s" NON è riproducibile
+in-process: la PR #5 aveva già tolto il blocco grosso e il resto è coperto dal
+rumore di rete. Ciò che si conferma è l'effetto strutturale voluto: tipizzati e
+`cerca_tutto` ora **nello stesso regime** (pool al rerank: da 24 misti a 15 di un
+solo tipo).
+
+**Da provare DOPO il deploy (non verde ora, non è una regressione di questo diff):**
+- Prova "da utente vero" via connettore claude.ai — richiede il deploy (il
+  servizio live gira ancora il codice vecchio).
+- `python manage.py eval_mcp` — passa per HTTPS al servizio live, quindi oggi
+  misurerebbe il codice vecchio; da rieseguire dopo il deploy per confermare
+  golden + latenza col trasporto reale. Il tetto di tempo del connettore resta la
+  domanda aperta #1.
 
 ## 6. Rilascio           (rilasciatore)
 
