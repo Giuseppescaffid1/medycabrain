@@ -3,7 +3,7 @@ id: 2026-09-16-mcp-search-affidabile
 titolo: La ricerca MCP deve essere affidabile su ogni strumento, interviste comprese
 stato: pronto
 ramo: feat/mcp
-pr: ""
+pr: "https://github.com/Giuseppescaffid1/medycabrain/pull/6"
 ticket: ""
 ---
 
