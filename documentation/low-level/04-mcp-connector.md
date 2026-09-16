@@ -83,20 +83,30 @@ differ only in which side of the corpus they keep, so they can never drift into 
 question differently:
 
 ```python
-hits = semantic_search(query, top_k=limite * (3 if only else 1), scope=scope, rerank=True)
-if only:                       # "reel" | "blog" | None
-    hits = [h for h in hits if h["kind"] == only]
+hits = semantic_search(query, top_k=limite, scope=scope, rerank=True, kind=only)
+return [_hit(h) for h in hits]   # "reel" | "blog" | None
 ```
 
 - `scope` is clamped to `all` / `medyca` / `competitor`; `limite` clamped to 1–20.
-- **The pool is over-fetched 3× when filtering**, or the filter starves: asking for 8 articles
-  out of a pool of 8 mixed hits returns two.
+- **The type filter is pushed into `semantic_search` (`kind=only`), not applied after the
+  rerank.** The old code over-fetched `limite*3`, reranked the whole mixed pool, then dropped
+  the wrong type. That cost 11–14s (the LLM reranked 24 items to return 8) and could **starve**:
+  asking for 8 articles out of a reel-dominated pool returned two, because the post-filter ran
+  *after* the top_k cut. With `kind` filtering the index up front, the rerank sees a pool that is
+  all the right type and of the minimum size, so a typed search runs in the `cerca_tutto` regime
+  (~2.6s vs 11–14s) and nothing survives the rerank only to be discarded. See
+  [03-llm-and-embeddings](03-llm-and-embeddings.md#semantic_searchquery-top_k-scope-rerank).
 - `rerank=True` — Claude gets the same LLM-sharpened order the in-app chat uses. The rerank step
   is best-effort and **fails fast to the blend order** (`retries=0`, `max_tokens=2000`); before
   2026-09-15 a truncated rerank was retried 3× and made search hang ~30–40s, which the client
   reported as "search not working" — see [03-llm-and-embeddings](03-llm-and-embeddings.md#6-optional-rerank).
-- Each hit is shaped by `_hit(h)` into `{id, tipo, di, titolo, estratto, url, pertinenza}`,
-  where `id` is `"reel:123"` / `"blog:45"` and `di` labels ownership.
+- Each hit is shaped by `_hit(h)` into `{id, tipo, di, titolo, estratto, url, ispirazione,
+  pertinenza}`, where `id` is `"reel:123"` / `"blog:45"` and `di` labels provenance:
+  **`Medyca`** for owned, **`competitor: <fonte>`** for competitors, and
+  **`riferimento: <fonte>`** for reference material (`ispirazione=true`). Reference material
+  keeps `owner_type="competitor"` in the DB — it is not Medyca's own content — but labelling it
+  "competitor" made the client's Claude discard it as competitor noise, so the label alone is
+  reframed (the DB field stays binary). See `cerca_riferimenti` below.
 
 For how `semantic_search` ranks, see
 [03-llm-and-embeddings.md](03-llm-and-embeddings.md#retrieval--rag--coreknowledgepy).
@@ -131,6 +141,15 @@ filtering a general search afterwards: a handful of short reference cards never 
 of a 1.483-item corpus, so a post-filter returns an empty list and reads as "we have nothing on
 that" when we do. That was the first implementation and it returned 0 results every time.
 
+**Provenance is spelled `riferimento: <fonte>`, not `competitor`.** These items carry
+`owner_type="competitor"` in the DB (a TV episode is not Medyca's own content), so before the
+2026-09-16 fix `_hit` and `leggi_articolo` labelled them `competitor: YouTVRS` — and the
+client's Claude, told to keep the two sides apart, discarded the very material the client had
+added on purpose. `owner_type` stays binary in the DB (a third value would be misfiled as Medyca
+by 26 call sites — see `KnowledgeDocument`); only the label is reframed, in `_hit` and
+`_leggi_articolo`. `eval_mcp`'s ownership check skips inspiration hits for the same reason, or a
+correct label would read as a false negative.
+
 **The on-topic verdict is reframed for this shelf.** `leggi_articolo` normally returns
 `in_tema` / `fuori_tema_perche`. For reference material it returns `in_tema: true` plus a
 `perimetro` line instead, because all 11 videos the client added came back `is_on_topic=False`
@@ -160,6 +179,35 @@ Pure ORM over the cluster tables (`owner = "owned"` for `medyca`, else `"competi
 - Per cluster, sample claims: `ArgumentAssignment.objects.filter(run=run, cluster=c).select_related("argument")[:3]`.
 - Returns `{id, tema (label_it), descrizione (description_it), contenuti (size),
   parole_chiave (keywords[:6]), esempi_affermazioni}`.
+
+## The CI gate test
+
+`BEC/core/tests/test_mcp_tools.py` is the **gate on the pull request**: the `backend` job in
+`.github/workflows/ci.yml` runs `python manage.py test core.tests.test_mcp_tools -v 2` as a
+named step ("Test cancello MCP"), and `main` is protected so the merge is blocked until it is
+green. It calls all ten tools in-process (the `@server.tool` decorator returns the function
+unchanged, so no HTTP server is started) against a tiny corpus seeded through the ORM.
+
+It tests the **contract and the wiring, not retrieval quality**, because CI runs on
+`requirements-ci.txt` — no torch, no sentence-transformers, no LLM keys. Two stubs keep the heavy
+models out: `core.knowledge._get_embedder` is replaced with a fake whose `.encode()` returns
+fixed-width normalised vectors (the only place search needs the embedder, since document vectors
+are read from the DB), and every seeded text is `< 700` chars so `_best_passage` short-circuits to
+the single chunk without encoding it; `core.knowledge.client.chat_json` (the reranker's one call)
+is stubbed to `{}`, so `_rerank` keeps the blend order and nothing leaves the process.
+
+What it asserts: every hit's shape; `cerca_reel` returns only reels, `cerca_articoli` only
+articles, `cerca_riferimenti` only inspiration; the ownership labels (competitor → "competitor",
+owned → "Medyca", reference → "riferimento" and never a bare side); **no starvation** (with a
+reel-majority corpus `cerca_articoli` still returns the seeded articles); and that all ten tools
+are registered on the `MCPServer` (a barrier against a lost or renamed tool). Note that because
+the test lives in `core/tests/`, the existing `manage.py test core` step already runs it; the
+dedicated step only makes the gate **readable** in the checks list.
+
+The `mcp` package itself is a CI dependency now (`mcp==2.0.0` in `requirements-ci.txt`): importing
+`mcp_bridge.server` imports `mcp`, and its deps are all light (anyio, httpx, starlette, uvicorn,
+pydantic) — no torch. The live, real-model suite (`manage.py eval_mcp`, over HTTPS through nginx)
+stays on the VPS and out of the gate.
 
 ## Transport, deployment, and security
 

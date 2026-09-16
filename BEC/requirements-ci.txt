@@ -25,3 +25,8 @@ requests==2.32.3
 numpy==1.26.4
 curl_cffi==0.7.4
 Pillow==10.4.0
+# Il test-cancello MCP (core/tests/test_mcp_tools.py) importa mcp_bridge.server,
+# che importa `mcp`. Senza questa riga la CI fallisce con ModuleNotFoundError.
+# Le dipendenze di mcp sono tutte leggere (anyio, httpx, starlette, uvicorn,
+# pydantic…): niente torch. 2.0.0 è la versione installata in produzione sul VPS.
+mcp==2.0.0

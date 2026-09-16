@@ -77,7 +77,14 @@ def _hit(h: dict) -> dict:
         # reference: the type is what Claude uses to decide how to cite it.
         "tipo": ("materiale di riferimento" if h.get("inspiration")
                  else "articolo" if h["kind"] == "blog" else "reel"),
-        "di": ("Medyca" if h.get("owner") != "competitor"
+        # Reference material carries owner_type="competitor" in the DB (a TV
+        # episode is not Medyca's own content) but is exempt from the
+        # owned/competitor rule — CLAUDE.md. Labelling it "competitor: …" made
+        # the client's Claude discard it as competitor noise; "Medyca" would be
+        # the opposite lie. "riferimento: <fonte>" is neither, and owner_type
+        # stays binary in the DB — this is presentation only.
+        "di": (f"riferimento: {h.get('account') or '?'}" if h.get("inspiration")
+               else "Medyca" if h.get("owner") != "competitor"
                else f"competitor: {h.get('account', '?')}"),
         "titolo": h.get("title") or "(senza titolo)",
         "estratto": h.get("snippet") or "",
@@ -147,8 +154,13 @@ def _search(query: str, scope: str, limite: int, only: str | None,
     of the corpus they keep, so they can never drift into ranking the same
     question differently. `only` is "reel", "blog", or None for both.
 
-    When filtering, the pool is over-fetched so the filter does not starve —
-    asking for 8 articles out of a pool of 8 mixed hits would return two.
+    The type filter is pushed DOWN into semantic_search (`kind=only`), not
+    applied here after the fact. Filtering after an over-fetched, reranked pool
+    made a typed search pay the LLM rerank on 24 mixed items to return 8 — 11-14s
+    — and could starve when the wanted type was rare (asking for 8 articles out
+    of a reel-dominated pool returned two). With `kind` filtering the index up
+    front, the rerank sees a pool of the right type and size and runs in the
+    cerca_tutto regime; nothing survives the rerank only to be dropped.
     rerank=True gives the client's Claude the same LLM-sharpened order the
     in-app chat gets.
     """
@@ -156,12 +168,9 @@ def _search(query: str, scope: str, limite: int, only: str | None,
 
     scope = scope if scope in ("all", "medyca", "competitor") else "all"
     limite = max(1, min(int(limite), 20))
-    hits = semantic_search(query, top_k=limite * (3 if only else 1),
-                           scope=scope, rerank=True,
-                           only_inspiration=only_inspiration)
-    if only:
-        hits = [h for h in hits if h["kind"] == only]
-    return [_hit(h) for h in hits[:limite]]
+    hits = semantic_search(query, top_k=limite, scope=scope, rerank=True,
+                           only_inspiration=only_inspiration, kind=only)
+    return [_hit(h) for h in hits]
 
 
 @server.tool(
@@ -270,7 +279,12 @@ def _leggi_articolo(pk: int) -> dict:
     testo = (d.content_text or d.content_md)[:12000]
     return {
         "tipo": "video di riferimento" if d.source_type == "video" else "articolo",
-        "di": ("Medyca" if d.owner_type == "owned"
+        # Same reference-material exemption as _hit: labelled by its source, not
+        # as "competitor" or "Medyca". owner_type is untouched (still binary in
+        # the DB); this is presentation only.
+        "di": (f"riferimento: {d.source.name if d.source else (d.author or '?')}"
+               if d.is_inspiration
+               else "Medyca" if d.owner_type == "owned"
                else f"competitor: {d.source.name if d.source else (d.author or '?')}"),
         "ispirazione": d.is_inspiration,
         # Said plainly rather than left to be inferred from an empty string:
