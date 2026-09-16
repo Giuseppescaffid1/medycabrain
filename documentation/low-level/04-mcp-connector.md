@@ -19,7 +19,7 @@ both:
 
 ## Where it lives
 
-- **The server:** `BEC/mcp_bridge/server.py` (~383 lines) — the whole thing.
+- **The server:** `BEC/mcp_bridge/server.py` (~640 lines) — the whole thing.
 - `BEC/mcp_bridge/__init__.py` — empty package marker.
 - **The retrieval engine it reuses:** `BEC/core/knowledge.py` (`semantic_search`, the
   reranker, the embedder).
@@ -101,7 +101,7 @@ return [_hit(h) for h in hits]   # "reel" | "blog" | None
   2026-09-15 a truncated rerank was retried 3× and made search hang ~30–40s, which the client
   reported as "search not working" — see [03-llm-and-embeddings](03-llm-and-embeddings.md#6-optional-rerank).
 - Each hit is shaped by `_hit(h)` into `{id, tipo, di, titolo, estratto, url, ispirazione,
-  pertinenza}`, where `id` is `"reel:123"` / `"blog:45"` and `di` labels provenance:
+  pertinenza, apri_nel_brain}`, where `id` is `"reel:123"` / `"blog:45"` and `di` labels provenance:
   **`Medyca`** for owned, **`competitor: <fonte>`** for competitors, and
   **`riferimento: <fonte>`** for reference material (`ispirazione=true`). Reference material
   keeps `owner_type="competitor"` in the DB — it is not Medyca's own content — but labelling it
@@ -110,6 +110,42 @@ return [_hit(h) for h in hits]   # "reel" | "blog" | None
 
 For how `semantic_search` ranks, see
 [03-llm-and-embeddings.md](03-llm-and-embeddings.md#retrieval--rag--coreknowledgepy).
+
+### A reference must be self-explanatory: `apri_nel_brain`
+
+The client reported (2026-09-16) that his own client could not tell **which content** an answer
+was talking about: Claude cited `blog 2:843` / `reel 2:199` and there was nothing to do with that
+number. (The `2` is not ours — it is the citation index the client's Claude puts in front of our
+id; nothing in `server.py` prepends a number.)
+
+So every hit, and every `leggi_*` result, now carries three things that make it citable on its
+own:
+
+| field | what it is |
+|---|---|
+| `titolo` | the readable name of the content — for an article `KnowledgeDocument.title`; a reel has **no title column**, so `_leggi_reel` builds it the way the search index does (`primary_topic` → `summary_it` → `caption[:80]`), so the same reel is named the same way whether it was found or read |
+| `di` | who it belongs to — `Medyca` / `competitor: <fonte>` / `riferimento: <fonte>` |
+| `apri_nel_brain` | `{BRAIN_BASE_URL}/content/{reel\|blog}/{id}` — the card **inside the client's brain**, with our analysis |
+
+`apri_nel_brain` is built by `_brain_link(kind, pk)` and lands on the frontend route
+`/content/:kind/:id` (`FEC/src/pages/ContentDetail.tsx`), the same route the brain's "vai al
+contenuto" field navigates to — so a citation and a hand-typed reference open the identical card.
+It is **not** the same as `url`, which is the original post on instagram/medyca.it and shows none
+of our analysis.
+
+**The base URL is an env var, never hardcoded:** `BRAIN_BASE_URL` in `BEC/.env`
+(default `http://81.17.96.27:9093`, see `BEC/.env.example`). The brain moves with the deployment —
+the day it gets a hostname, a link frozen into the code would quietly point at nothing.
+
+**The rule that makes it work is in the server `instructions`**, not in the field: the connector
+now tells the client's Claude to cite a content as *titolo — di (link)*
+(«Metodo Marion Gluck — Medyca (http://…/content/blog/843)») and **never** with the bare number.
+The id stays what Claude passes to `leggi_reel` / `leggi_articolo`; it is not what a human reads.
+
+The brain is behind login, and that is accepted: the client is already logged into his own brain
+when he follows the link (decision, 2026-09-16). Known limit: many reels have a generic
+`primary_topic` ("vampate di calore"), so two different reels can share a title — the link still
+disambiguates them, the title alone does not.
 
 ### `leggi_reel(id)` / `leggi_articolo(id)` / `leggi(id)` — full text of one item
 `_parse_id(id, atteso)` accepts `"reel:123"` or, for a typed tool that already knows the kind, a
@@ -130,6 +166,9 @@ A typed tool given the other kind's id returns a readable redirect
   `fuori_tema_perche`, and `d.arguments.all()[:10]`. Plain text on purpose, so a quote can be
   verified verbatim against exactly what Claude was given.
 - **`leggi`** routes on the id prefix; it exists for `cerca_tutto` results.
+
+All three also return `titolo` and `apri_nel_brain` (see the section above): the answer is written
+while *reading* a content, so the link has to be there too, not only on the search hit it came from.
 
 ### `cerca_riferimenti(query, scope="all", limite=8)` — the client's own reference shelf
 Searches **only** the material flagged `is_inspiration` — TV episodes, talks, external videos the
@@ -199,8 +238,12 @@ is stubbed to `{}`, so `_rerank` keeps the blend order and nothing leaves the pr
 What it asserts: every hit's shape; `cerca_reel` returns only reels, `cerca_articoli` only
 articles, `cerca_riferimenti` only inspiration; the ownership labels (competitor → "competitor",
 owned → "Medyca", reference → "riferimento" and never a bare side); **no starvation** (with a
-reel-majority corpus `cerca_articoli` still returns the seeded articles); and that all ten tools
-are registered on the `MCPServer` (a barrier against a lost or renamed tool). Note that because
+reel-majority corpus `cerca_articoli` still returns the seeded articles); that every hit and every
+`leggi_*` is **citable** — `apri_nel_brain` equals `{BRAIN_BASE_URL}/content/{kind}/{id}` for its
+*own* id (a link built from the wrong id would send the client to somebody else's content), the
+base URL comes from the module variable and not from a literal, and the server `instructions`
+still carry the citation rule; and that all ten tools are registered on the `MCPServer` (a barrier
+against a lost or renamed tool). Note that because
 the test lives in `core/tests/`, the existing `manage.py test core` step already runs it; the
 dedicated step only makes the gate **readable** in the checks list.
 
@@ -215,7 +258,9 @@ and the golden cases had gone stale calling it, so the suite crashed on the firs
 `Unknown tool: cerca` (found the day the type-filter branch was deployed, 2026-09-16). `_call`
 now surfaces an `isError` result as a readable `CommandError` naming the tool, instead of an
 opaque `json.loads` crash. There is a golden case for the reference material
-(`interviste_riferimento`) that asserts the `riferimento:` label. The LLM **judge** is advisory
+(`interviste_riferimento`) that asserts the `riferimento:` label. It also reports
+`citable_reference_accuracy`: the share of live hits carrying `titolo`, `di` **and** a
+`apri_nel_brain` pointing at their own id — the live counterpart of the gate's link check. The LLM **judge** is advisory
 (wrapped in try/except → `None` on failure, never a suite failure) and its mean relevance sits
 around 1.0–1.2 on this corpus; its own call was truncating at 900 tokens (~48 vote objects +
 Sonnet's preamble), so it now asks for 4000 — the hard signals are hit-rate, ownership and

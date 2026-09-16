@@ -44,6 +44,14 @@ from mcp.server.mcpserver import MCPServer  # noqa: E402
 MCP_SECRET = os.environ.get("MCP_SECRET", "")
 MCP_INVITE = os.environ.get("MCP_INVITE", "")
 
+# Where the brain's own UI lives, so every reference can carry a link the
+# client can click. Never hardcoded: the brain moves with the deployment (IP
+# today, a hostname the day it gets one), and a stale link in a citation is
+# worse than no link. Default is the current preview, BRAIN_BASE_URL in
+# BEC/.env overrides it.
+BRAIN_BASE_URL = os.environ.get("BRAIN_BASE_URL",
+                                "http://81.17.96.27:9093").rstrip("/")
+
 server = MCPServer(
     name="Medyca Content Intelligence",
     instructions=(
@@ -64,9 +72,26 @@ server = MCPServer(
         "mappa degli argomenti. Tutte le analisi sono in italiano.\n"
         "Cita sempre da quale contenuto (e di chi) viene un'affermazione: "
         "confondere ciò che dice Medyca con ciò che dicono i competitor è "
-        "l'errore peggiore possibile."
+        "l'errore peggiore possibile.\n"
+        "COME SI CITA UN CONTENUTO: scrivi sempre il `titolo`, poi chi è "
+        "(`di`), poi il link `apri_nel_brain`; per esempio «Metodo Marion "
+        "Gluck — Medyca (http://…/content/blog/843)». NON citare mai un "
+        "contenuto con il solo numero ('blog:843', 'reel:199'): quel numero "
+        "serve a te per richiamare `leggi_articolo`/`leggi_reel`, ma a chi "
+        "legge non dice nulla. Il link apre il contenuto dentro la "
+        "piattaforma del cliente, che così vede di che si parla."
     ),
 )
+
+
+def _brain_link(kind: str, pk) -> str:
+    """The address of this content inside the client's own brain.
+
+    Same route the brain's "vai al contenuto" field lands on
+    (`FEC/src/pages/ContentDetail.tsx`, rotta `/content/:kind/:id`), so a
+    citation and a hand-typed reference open exactly the same card.
+    """
+    return f"{BRAIN_BASE_URL}/content/{kind}/{pk}"
 
 
 def _hit(h: dict) -> dict:
@@ -89,6 +114,11 @@ def _hit(h: dict) -> dict:
         "titolo": h.get("title") or "(senza titolo)",
         "estratto": h.get("snippet") or "",
         "url": h.get("url") or "",
+        # The reference the client can actually follow. `id` is for calling
+        # `leggi_*`; `url` is the original post on instagram/medyca.it. Neither
+        # shows our analysis, and the client reported not understanding which
+        # content "blog:843" meant — this opens the card in his own brain.
+        "apri_nel_brain": _brain_link(h["kind"], h["id"]),
         "ispirazione": bool(h.get("inspiration")),
         "pertinenza": h.get("score", 0),
     }
@@ -247,8 +277,15 @@ def _leggi_reel(pk: int) -> dict:
     tr = getattr(r, "transcript", None)
     return {
         "tipo": "reel",
+        # A reel has no title column: built here exactly as the search index
+        # builds it (core/knowledge.py), so the same reel is named the same way
+        # whether it was found or read.
+        "titolo": ((enr.primary_topic if enr else "")
+                   or (enr.summary_it if enr else "")
+                   or r.caption[:80] or "(senza titolo)"),
         "di": ("Medyca" if r.account.owner_type == "owned"
                else f"competitor: @{r.account.username}"),
+        "apri_nel_brain": _brain_link("reel", r.id),
         "url": f"https://www.instagram.com/reel/{r.shortcode}/",
         "pubblicato": r.posted_at.isoformat() if r.posted_at else None,
         "visualizzazioni": r.view_count, "like": r.like_count,
@@ -279,6 +316,8 @@ def _leggi_articolo(pk: int) -> dict:
     testo = (d.content_text or d.content_md)[:12000]
     return {
         "tipo": "video di riferimento" if d.source_type == "video" else "articolo",
+        "titolo": d.title or "(senza titolo)",
+        "apri_nel_brain": _brain_link("blog", d.id),
         # Same reference-material exemption as _hit: labelled by its source, not
         # as "competitor" or "Medyca". owner_type is untouched (still binary in
         # the DB); this is presentation only.

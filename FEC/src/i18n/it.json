@@ -355,7 +355,7 @@
     },
     "goto": {
       "title": "Aprire un contenuto da un riferimento",
-      "body": "Quando fai domande a Claude tramite il connettore, ogni contenuto viene citato con un codice tipo blog:843 o reel:199. Per vedere di quale contenuto si tratta, apri la pagina «Chiedi alla Knowledge Bank»: in alto trovi il campo «Vai a un contenuto». Incolla lì il codice — va bene anche se davanti c'è un numero di citazione, per esempio «blog 2:843» — e premi Apri. Si apre la scheda del contenuto con titolo, fonte, testo o trascrizione e il link all'originale. Se il codice non è chiaro, o il contenuto è stato rimosso, te lo diciamo con un messaggio semplice."
+      "body": "Quando fai domande a Claude tramite il connettore, ogni contenuto citato arriva con il suo titolo, di chi è (Medyca, un competitor o un riferimento) e un link che si apre qui dentro — per esempio «Metodo Marion Gluck — Medyca». Clicca il link e vedi subito la scheda del contenuto: titolo, fonte, testo o trascrizione e il link all'originale. Se hai in mano solo un codice tipo blog:843 o reel:199 (magari da una risposta vecchia), apri la pagina «Chiedi alla Knowledge Bank»: in alto trovi il campo «Vai a un contenuto». Incolla lì il codice — va bene anche se davanti c'è un numero di citazione, per esempio «blog 2:843» — e premi Apri. Se il codice non è chiaro, o il contenuto è stato rimosso, te lo diciamo con un messaggio semplice. Per aprire un link devi essere già dentro la piattaforma: se non lo sei, ti chiede prima di entrare."
     },
     "download": {
       "title": "Schema della pipeline",

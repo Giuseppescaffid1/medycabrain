@@ -1,7 +1,7 @@
 ---
 id: 2026-09-16-riferimenti-contenuti-nel-brain
 titolo: Dai riferimenti dell'MCP (blog:843, reel:199) si deve poter arrivare al contenuto nel brain
-stato: sviluppo
+stato: revisione
 ramo: feat/riferimenti-contenuti
 pr: ""
 ticket: ""
@@ -297,24 +297,119 @@ A livello HTTP ho anche verificato: le rotte SPA `/content/...` servono
 per 879/896 e **404** per gli id inesistenti (è la condizione su cui poggia lo
 stato "non trovato").
 
-### FASE 2 — RIMANDATA AL CAPO (dopo il merge della PR #7)
-
-Questa è **solo la fase 1 (frontend)**. La **fase 2 (MCP)** è **rimandata al capo**
-dopo che la PR #7 sarà fusa in `main` (la #7 tocca `eval_mcp` e non è ancora in
-main → conflitto di file). La fase 2 comprende, e **non è stata toccata qui**:
-- rendere i riferimenti dell'MCP auto-esplicativi: **titolo + fonte leggibili**
-  (es. «Metodo Marion Gluck — Medyca») e un **link cliccabile** al contenuto nel
-  brain (`/content/{kind}/{id}` — bersaglio già pronto grazie a questa fase);
-- `BEC/mcp_bridge/server.py`, `documentation/low-level/04-mcp-connector.md`,
-  `BEC/core/management/commands/eval_mcp.py` — **non toccati** per istruzione
-  esplicita.
-
-### Cosa resta fuori (oltre alla fase 2)
+### Cosa resta fuori dalla fase 1
 
 - Solo `reel:`/`blog:`; i riferimenti a temi/cluster (spazio di id diverso) sono
   fuori portata, come da disegno.
 - Nessun ritorno-al-contenuto dopo il login (decisione di Giuseppe: basta essere
   loggati).
+
+---
+
+### Cosa ho fatto — FASE 2 (solo MCP)
+
+Fatta dopo il merge della PR #7, sul ramo ribasato sul `main` aggiornato.
+La causa: il cliente del cliente leggeva «blog 2:843» e non aveva idea di quale
+contenuto si parlasse. Ora **ogni riferimento dell'MCP si spiega da solo**: porta
+il **titolo**, **di chi è** e un **link cliccabile** che apre la scheda dentro il
+brain — la rotta `/content/:kind/:id` costruita nella fase 1.
+
+### File toccati (fase 2)
+
+- **`BEC/mcp_bridge/server.py`**
+  - Nuova `BRAIN_BASE_URL` da env (`os.environ.get("BRAIN_BASE_URL",
+    "http://81.17.96.27:9093")`) + `_brain_link(kind, pk)` →
+    `{BASE}/content/{kind}/{id}`. Niente indirizzo scritto nel codice: il giorno
+    in cui il brain prende un dominio, un link congelato punterebbe nel vuoto.
+  - `_hit()`: nuovo campo **`apri_nel_brain`**. `titolo` e `di` restano come
+    prima. Non è `url`: `url` è il post originale su instagram/medyca.it e non
+    mostra la nostra analisi; `apri_nel_brain` apre la scheda nel brain.
+  - `_leggi_reel` / `_leggi_articolo` (quindi `leggi_reel`, `leggi_articolo`,
+    `leggi`): stesso campo `apri_nel_brain`, **più `titolo`**, che prima non
+    c'era in nessuno dei due. La risposta la si scrive leggendo il contenuto, non
+    guardando l'hit di ricerca: il link deve esserci anche lì. Per il reel, che
+    non ha una colonna titolo, il titolo è costruito **con la stessa regola
+    dell'indice di ricerca** (`primary_topic` → `summary_it` → `caption[:80]`),
+    così lo stesso reel si chiama allo stesso modo sia trovato sia letto.
+  - **`instructions` del server**: aggiunta la regola di citazione — sempre
+    «titolo — di (link)», **mai** il numero nudo; il numero serve solo a
+    richiamare `leggi_*`. È il pezzo che fa davvero capire il cliente: il campo
+    da solo sarebbe dato inutilizzato.
+- **`BEC/core/tests/test_mcp_tools.py`** (test-cancello, gira senza rete):
+  `apri_nel_brain` aggiunto alla forma dell'hit; nuovi casi — ogni hit ha il link
+  **del proprio id** (un link con l'id sbagliato manderebbe il cliente sul
+  contenuto di un altro: peggio che nessun link), `_hit` con `blog:843`/`reel:199`
+  finisce in `/content/blog/843` e `/content/reel/199`, la base viene dalla
+  variabile e non da un letterale (patch di `BRAIN_BASE_URL`), le `instructions`
+  contengono ancora la regola di citazione, e `leggi_reel`/`leggi_articolo`/`leggi`
+  restituiscono link + titolo. 19 test, verdi.
+- **`BEC/core/management/commands/eval_mcp.py`** — non stravolto: solo un
+  controllo leggero nel giro golden già esistente, che conta la quota di hit
+  **citabili** (titolo + di + link che punta al proprio id) e la stampa come
+  metrica `citable_reference_accuracy`, anche nel Δ contro il run precedente.
+- **`BEC/.env.example`** — nuova sezione «Connettore MCP» che documenta
+  `BRAIN_BASE_URL` e perché va cambiata quando il brain cambia indirizzo.
+- **`documentation/low-level/04-mcp-connector.md`** — nuova sezione «A reference
+  must be self-explanatory: `apri_nel_brain`» (i tre campi, la forma del link, il
+  rimando alla rotta `/content/:kind/:id`, la env var, la regola nelle
+  `instructions`, il limite del titolo generico dei reel); forma di `_hit`
+  aggiornata; riga sui `leggi_*`; il paragrafo del test-cancello e quello di
+  `eval_mcp`. Corretto anche il conteggio righe di `server.py`, già vecchio.
+- **`FEC/src/i18n/it.json`** (`docs.goto.body`) — la pagina Documentazione
+  in-app ora dice, in parole semplici, che i contenuti citati arrivano con
+  titolo, autore e link cliccabile; il campo «Vai a un contenuto» resta per i
+  codici vecchi. Nessun cambio di codice nel frontend.
+
+### Verifica (output vero)
+
+```
+$ cd BEC
+$ venv/bin/python manage.py test core.tests.test_mcp_tools -v 2
+Ran 19 tests in 0.773s
+OK
+$ venv/bin/python manage.py test core
+Ran 49 tests in 5.519s
+OK
+$ venv/bin/python manage.py check
+System check identified no issues (0 silenced).
+$ venv/bin/python manage.py makemigrations --check --dry-run
+No changes detected
+```
+
+Verifica **in-process** sul DB vero (non via curl: il servizio live
+`medycabrain-mcp` gira il codice di `main`, non questo ramo, quindi misurerebbe
+il vecchio):
+
+```
+BRAIN_BASE_URL = http://81.17.96.27:9093
+  blog:8   | Il metodo Marion Gluck: curarsi con gli ormon | Medyca | http://81.17.96.27:9093/content/blog/8
+  blog:247 | Curare la menopausa con terapia ormonale bioi | Medyca | http://81.17.96.27:9093/content/blog/247
+leggi_articolo(blog:8): titolo='Il metodo Marion Gluck: curarsi con gli ormoni bioidentici — Medyca'
+                        di='Medyca' link=http://81.17.96.27:9093/content/blog/8
+  reel:883 | vampate di calore | competitor: menopausa_insieme | http://81.17.96.27:9093/content/reel/883
+leggi_reel(reel:883): titolo='vampate di calore' di='competitor: @menopausa_insieme'
+                      link=http://81.17.96.27:9093/content/reel/883
+```
+
+### Cosa resta fuori (fase 2)
+
+- **Il brain resta dietro login** e il link non porta con sé un accesso: chi lo
+  apre da sloggato viene mandato a `/login` e il bersaglio si perde (decisione di
+  Giuseppe: va bene così).
+- **L'indirizzo di default è l'IP nudo `http://81.17.96.27:9093`.** Il giorno del
+  dominio basta cambiare `BRAIN_BASE_URL` in `BEC/.env` e riavviare
+  `medycabrain-mcp` — nessun codice da toccare.
+- **Titolo dei reel generico**: molti reel hanno `primary_topic` uguale ("vampate
+  di calore"), quindi due reel diversi possono avere lo stesso titolo. Il link li
+  distingue, il titolo da solo no. Migliorare il titolo dei reel vorrebbe dire
+  toccare anche l'indice di ricerca (`core/knowledge.py`): non fatto qui.
+- **`temi`** continua a restituire un `id` di cluster senza link: spazio di id
+  diverso, fuori portata come da disegno.
+- **Niente rilascio**: il servizio `medycabrain-mcp` gira ancora il codice di
+  `main`; il nuovo contratto arriva al cliente solo dopo merge + restart (compito
+  del rilasciatore).
+- `eval_mcp` **non è stato eseguito**: parla con l'MCP live via HTTPS, che è
+  ancora il vecchio codice — lo misurerà il collaudatore dopo il rilascio.
 
 ## 4. Revisione          (revisore)
 

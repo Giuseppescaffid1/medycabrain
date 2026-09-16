@@ -185,7 +185,7 @@ class MCPToolsGate(TestCase):
 
     # ── hit shape ──────────────────────────────────────────────────────────
     _HIT_KEYS = {"id", "tipo", "di", "titolo", "estratto", "url",
-                 "ispirazione", "pertinenza"}
+                 "ispirazione", "pertinenza", "apri_nel_brain"}
 
     def test_search_hits_have_the_documented_shape(self):
         hits = server.cerca_tutto("menopausa vampate terapia", limite=8)
@@ -193,6 +193,44 @@ class MCPToolsGate(TestCase):
         for h in hits:
             self.assertEqual(set(h), self._HIT_KEYS, h)
             self.assertRegex(h["id"], r"^(reel|blog):\d+$")
+
+    # ── self-explanatory references: title + source + link on every hit ────
+    def test_every_hit_carries_a_brain_link_for_its_own_id(self):
+        """The client could not tell which content 'blog:843' meant.
+
+        Every hit must be citable as "titolo — di (link)", and the link must
+        point at THIS hit: a link built from the wrong id would send the client
+        to somebody else's content, which is worse than no link at all.
+        """
+        for h in server.cerca_tutto("menopausa vampate terapia", limite=8):
+            kind, pk = h["id"].split(":")
+            self.assertEqual(h["apri_nel_brain"],
+                             f"{server.BRAIN_BASE_URL}/content/{kind}/{pk}", h)
+            self.assertTrue(h["titolo"], h)
+            self.assertTrue(h["di"], h)
+
+    def test_brain_link_uses_the_kind_and_id_of_the_hit(self):
+        hit = server._hit({"kind": "blog", "id": 843, "owner": "owned",
+                           "title": "Il metodo Marion Gluck"})
+        self.assertTrue(hit["apri_nel_brain"].endswith("/content/blog/843"), hit)
+        reel = server._hit({"kind": "reel", "id": 199, "owner": "competitor",
+                            "account": "competitor.ig", "title": "t"})
+        self.assertTrue(reel["apri_nel_brain"].endswith("/content/reel/199"), reel)
+
+    def test_brain_base_url_is_not_hardcoded_in_the_link(self):
+        """The brain moves with the deployment; a stale link is a wrong link."""
+        with mock.patch.object(server, "BRAIN_BASE_URL", "https://brain.example"):
+            hit = server._hit({"kind": "blog", "id": 7, "owner": "owned",
+                               "title": "t"})
+        self.assertEqual(hit["apri_nel_brain"],
+                         "https://brain.example/content/blog/7")
+
+    def test_server_instructions_forbid_citing_a_bare_number(self):
+        # The instructions are what actually makes the client's Claude cite
+        # readably; without this line the new field is just unused data.
+        instr = server.server.instructions
+        self.assertIn("apri_nel_brain", instr)
+        self.assertIn("titolo", instr)
 
     # ── typed searches keep only their side ────────────────────────────────
     def test_cerca_reel_returns_only_reels(self):
@@ -263,6 +301,25 @@ class MCPToolsGate(TestCase):
         self.assertEqual(rif["tipo"], "video di riferimento")
         self.assertTrue(rif["ispirazione"])
         self.assertNotIn("competitor", rif["di"].lower())
+
+    def test_leggi_gives_back_the_link_it_must_be_cited_with(self):
+        # Reading a content is where Claude writes the answer from, so the link
+        # has to be there too — not only on the search hit it came from.
+        reel = server.leggi_reel(f"reel:{self.reel_owned.id}")
+        self.assertEqual(
+            reel["apri_nel_brain"],
+            f"{server.BRAIN_BASE_URL}/content/reel/{self.reel_owned.id}")
+        self.assertTrue(reel["titolo"])
+
+        doc = server.leggi_articolo(f"blog:{self.doc_owned.id}")
+        self.assertEqual(
+            doc["apri_nel_brain"],
+            f"{server.BRAIN_BASE_URL}/content/blog/{self.doc_owned.id}")
+        self.assertEqual(doc["titolo"], "Il metodo Marion Gluck")
+
+        # Same through the untyped tool, which routes on the prefix.
+        self.assertEqual(server.leggi(f"blog:{self.doc_rif.id}")["apri_nel_brain"],
+                         f"{server.BRAIN_BASE_URL}/content/blog/{self.doc_rif.id}")
 
     def test_leggi_routes_on_the_id_prefix(self):
         self.assertEqual(server.leggi(f"reel:{self.reel_owned.id}")["tipo"], "reel")

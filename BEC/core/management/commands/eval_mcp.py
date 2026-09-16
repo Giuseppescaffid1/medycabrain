@@ -16,7 +16,10 @@ What is measured, per layer:
               IN the corpus (checked at suite-design time), including a
               cross-language case (Italian query → English IMS article)
   integrity   ownership labels on every hit vs the database truth — the one
-              error this product must never make; panoramica counts vs ORM
+              error this product must never make; panoramica counts vs ORM;
+              and that every hit is citable (titolo + di + a brain link
+              pointing at its own id), since a bare "blog:843" told the
+              client's own client nothing
   groundedness leggi: every claim's quote must appear verbatim in the text
               it claims to come from
   relevance   LLM judge (0-2 per hit) over the cerca result sets — the
@@ -141,6 +144,7 @@ class Command(BaseCommand):
         # ── 2. il golden set ───────────────────────────────────────────
         judge_material = []
         hits_at_k = own_checked = own_correct = 0
+        link_checked = link_correct = 0
         for case in GOLDEN:
             rows, ms = self._call(case["tool"], case["args"])
             latencies.setdefault("cerca", []).append(ms)
@@ -153,6 +157,16 @@ class Command(BaseCommand):
             judge_material.append((case["args"]["query"], rows))
             # ownership su OGNI hit, contro il DB
             for h in rows:
+                # Il riferimento deve essere citabile: titolo + di + link che
+                # punta proprio a questo id. Un link costruito sull'id
+                # sbagliato porterebbe il cliente su un altro contenuto, che è
+                # peggio che non avere il link.
+                if h.get("id"):
+                    link_checked += 1
+                    link_correct += int(
+                        (h.get("apri_nel_brain") or "").endswith(
+                            "/content/" + h["id"].replace(":", "/"))
+                        and bool(h.get("titolo")) and bool(h.get("di")))
                 truth = self._db_owner(h.get("id", ""))
                 if truth is None:
                     continue
@@ -171,6 +185,11 @@ class Command(BaseCommand):
         results["metrics"]["ownership_accuracy"] = round(own_acc, 4)
         self._line(f"proprietà corretta su {own_checked} hit: {own_acc:.0%}",
                    own_acc == 1.0)
+
+        link_acc = link_correct / link_checked if link_checked else 0.0
+        results["metrics"]["citable_reference_accuracy"] = round(link_acc, 4)
+        self._line(f"riferimento citabile (titolo+di+link) su {link_checked} "
+                   f"hit: {link_acc:.0%}", link_acc == 1.0)
 
         # ── 3. groundedness: leggi su un articolo e un reel ────────────
         grounded = total_claims = 0
@@ -251,7 +270,8 @@ class Command(BaseCommand):
             self.stdout.write("\n  Δ vs run precedente "
                               f"({old['at'][:16]}):")
             for k in ("hit_rate_golden", "ownership_accuracy",
-                      "groundedness", "judge_relevance"):
+                      "citable_reference_accuracy", "groundedness",
+                      "judge_relevance"):
                 a, b = old.get("metrics", {}).get(k), results["metrics"].get(k)
                 if a is not None and b is not None and not isinstance(a, str):
                     arrow = "=" if a == b else ("↑" if b > a else "↓")
