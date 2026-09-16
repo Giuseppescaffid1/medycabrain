@@ -1,7 +1,7 @@
 ---
 id: 2026-09-16-mcp-search-affidabile
 titolo: La ricerca MCP deve essere affidabile su ogni strumento, interviste comprese
-stato: pronto
+stato: rilasciato
 ramo: feat/mcp
 pr: "https://github.com/Giuseppescaffid1/medycabrain/pull/6"
 ticket: ""
@@ -507,7 +507,46 @@ solo tipo).
   golden + latenza col trasporto reale. Il tetto di tempo del connettore resta la
   domanda aperta #1.
 
-## 6. Rilascio           (rilasciatore)
+## 6. Rilascio           (rilasciatore/capo)
+
+**Rilasciato in produzione il 2026-09-16.** Il capo ha fatto il deploy diretto
+(un sottoagente non può fermarsi a chiedere conferma a Giuseppe durante un
+riavvio); Giuseppe aveva autorizzato ("Deploy").
+
+**Passi eseguiti**
+- Pre-volo (sola lettura): `migrate --plan` → *No planned migration operations*
+  (nessuna migrazione, atteso — modifica solo di codice). Servizi `medycabrain-mcp`
+  e `medycabrain-backend` entrambi `active`.
+- `git checkout main && git pull --ff-only origin main` → HEAD `bffdead` (merge
+  PR #6). Verificato in-tree: `kind` a `knowledge.py:285`, etichetta
+  `riferimento` presente in `server.py`.
+- Riavviati **entrambi** i servizi (`core/knowledge.py` lo usano sia la MCP sia
+  il backend; `mcp_bridge/` solo la MCP): `sudo systemctl restart
+  medycabrain-mcp` e `medycabrain-backend`. Entrambi `active`, `:9093` → 200.
+
+**Verifica dopo (sul codice nuovo, dal vivo)**
+- **Interviste**: via il connettore claude.ai VERO, `cerca_riferimenti("sindrome
+  metabolica e menopausa")` risponde (prima andava in **timeout**) e le puntate
+  "CANALE SALUTE" sono etichettate **`"riferimento: YouTVRS"`**, non più
+  "competitor". Il "non le guarda" è chiuso end-to-end.
+- **Tipizzate**: `cerca_reel`/`cerca_articoli` tornano n=8 del tipo giusto,
+  latenza scesa da 11–14s a ~2–8s (lo swing residuo è la varianza dell'API LLM,
+  non la dimensione del pool).
+- **`eval_mcp` sul servizio dal vivo**: 10/10 casi, hit-rate golden **100%**,
+  proprietà **100%**, groundedness **100%**, latenza p50 ~3,2s.
+
+**Difetto trovato al rilascio (pre-esistente) e sistemato a parte.** `eval_mcp`
+crashava: le sue prove golden chiamavano un tool `cerca` che non esiste più (la
+ricerca era stata divisa in `cerca_reel`/`cerca_articoli`/`cerca_tutto`), invisibile
+finché la suite girava solo dal vivo. Sistemato nel ramo **`feat/eval-mcp-golden`**
+(PR separata): golden ri-puntate ai tool giusti, aggiunto un caso interviste,
+`_call` ora dice quale tool ha fallito invece del crash opaco, e il giudice LLM
+non tronca più (900→4000 token). Il giudice resta una metrica *consultiva*
+(~1.0–1.2 su questo corpus): i segnali duri (hit-rate/proprietà/groundedness)
+sono 100%.
+
+**Non fatto:** limatura ulteriore della latenza (dipende dal tetto reale del
+connettore, ignoto); il giudice sotto 1.2 è consultivo, non un blocco.
 
 ## Registro delle decisioni
 

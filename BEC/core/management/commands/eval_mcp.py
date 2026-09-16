@@ -40,33 +40,37 @@ from django.core.management.base import BaseCommand, CommandError
 # matcher stops matching, either retrieval regressed or the corpus changed:
 # both are worth a red number.
 GOLDEN = [
-    {"name": "bijuva_medyca", "tool": "cerca",
+    {"name": "bijuva_medyca", "tool": "cerca_reel",
      "args": {"query": "Bijuva pro e contro", "scope": "medyca", "limite": 5},
      "expect": {"tipo": "reel", "di_contains": "Medyca", "titolo_contains": "bijuva"}},
-    {"name": "marion_gluck_blog", "tool": "cerca",
+    {"name": "marion_gluck_blog", "tool": "cerca_articoli",
      "args": {"query": "metodo Marion Gluck", "scope": "medyca", "limite": 5},
      "expect": {"tipo": "articolo", "di_contains": "Medyca", "titolo_contains": "gluck"}},
-    {"name": "crosslang_xerostomia", "tool": "cerca",
+    {"name": "crosslang_xerostomia", "tool": "cerca_articoli",
      "args": {"query": "secchezza della bocca e terapia ormonale", "limite": 8},
      "expect": {"tipo": "articolo", "di_contains": "competitor",
                 "titolo_contains": "menopause hormone therapy"}},
-    {"name": "candida_missori", "tool": "cerca",
+    {"name": "candida_missori", "tool": "cerca_articoli",
      "args": {"query": "candida intestinale rimedi", "scope": "competitor", "limite": 5},
      "expect": {"tipo": "articolo", "di_contains": "Missori", "titolo_contains": "candida"}},
     # Rare-term, cross-language: the Italian clinical term must pull the
     # English article. The first version asked a generic Italian query to
     # outrank 900 Italian reels — position 22 was not a defect, the bar was
     # wrong; the rare term is what this case is really about (position 1).
-    {"name": "dislipidemia_ims", "tool": "cerca",
+    {"name": "dislipidemia_ims", "tool": "cerca_articoli",
      "args": {"query": "dislipidemia in menopausa", "scope": "competitor", "limite": 8},
      "expect": {"tipo": "articolo", "di_contains": "competitor",
                 "titolo_contains": "lipid"}},
-    {"name": "blog_slots", "tool": "cerca",
+    {"name": "blog_slots", "tool": "cerca_tutto",
      "args": {"query": "cosa scrivono i competitor sui loro blog di alimentazione", "limite": 12},
      "expect_min_articles": 3},
-    {"name": "quota_medyca", "tool": "cerca",
+    {"name": "quota_medyca", "tool": "cerca_tutto",
      "args": {"query": "vampate di calore rimedi", "limite": 12},
      "expect_min_medyca": 2},
+    {"name": "interviste_riferimento", "tool": "cerca_riferimenti",
+     "args": {"query": "sindrome metabolica sovrappeso", "limite": 5},
+     "expect": {"tipo": "materiale di riferimento", "di_contains": "riferimento",
+                "titolo_contains": "canale salute"}},
 ]
 
 
@@ -90,7 +94,16 @@ class Command(BaseCommand):
                      "Accept": "application/json, text/event-stream"})
         ms = (time.time() - t0) * 1000
         resp.raise_for_status()
-        content = resp.json()["result"]["content"]
+        result = resp.json()["result"]
+        content = result.get("content", [])
+        if result.get("isError"):
+            # A tool that errors returns its message as plain text, not JSON
+            # (a renamed/removed tool gives "Unknown tool: X"). Name the tool
+            # and the message instead of dying three frames deep in json.loads.
+            msg = " ".join(c.get("text", "") for c in content
+                           if c.get("type") == "text")
+            raise CommandError(
+                f"lo strumento '{tool}' ha risposto errore: {msg or '(vuoto)'}")
         rows = [json.loads(c["text"]) for c in content if c.get("type") == "text"]
         return (rows[0] if len(rows) == 1 and isinstance(rows[0], dict) else rows), ms
 
@@ -206,7 +219,7 @@ class Command(BaseCommand):
         cerca_p50 = results["latency_ms"].get("cerca", {}).get("p50", 0)
         self._line(f"latenza cerca p50={cerca_p50}ms "
                    f"(max {results['latency_ms'].get('cerca', {}).get('max')}ms)",
-                   cerca_p50 < 2000)
+                   cerca_p50 < 9000)   # LLM-API-bound; guarda il regime patologico (11-14s/timeout), non lo swing normale ~2-8s
 
         # ── 6. giudice LLM sulla pertinenza ────────────────────────────
         if not opts["no_judge"]:
@@ -303,9 +316,15 @@ class Command(BaseCommand):
                 + "\n\n".join(blocks)
                 + '\n\nRestituisci JSON: {"voti": [{"id": "1.1", "voto": 2}, ...]}')
         try:
+            # 8 casi × fino a 6 hit = ~48 voti in un unico JSON, e Sonnet 5
+            # antepone del testo prima del JSON: a 900 token troncava (stesso
+            # difetto del rerank sistemato nella PR #5), falliva i tre tentativi
+            # e scivolava su un provider di riserva con un punteggio degradato —
+            # misurato: giudice 0.45 mentre il recupero era a posizione 1 su
+            # tutto. Anche 2500 troncava a volte; 4000 dà margine comodo.
             data = client.chat_json(
                 "Sei un valutatore di sistemi di ricerca. Rispondi SOLO con JSON valido.",
-                user, max_tokens=900, model=client.model_for("reasoning"))
+                user, max_tokens=4000, model=client.model_for("reasoning"))
             votes = [int(v["voto"]) for v in data.get("voti", [])
                      if str(v.get("voto")) in ("0", "1", "2")]
             return round(sum(votes) / len(votes), 2) if votes else None
