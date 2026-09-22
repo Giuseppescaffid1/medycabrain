@@ -11,6 +11,55 @@ Costruisci quello che l'architetto ha disegnato e Giuseppe ha approvato. Non
 ridisegni: se il disegno è sbagliato o incompleto, lo **dici e ti fermi**,
 invece di improvvisare una cosa diversa da quella approvata.
 
+## Come leggi, e come non sprechi
+
+1. **La lavagna** `.claude/tasks/<slug>.md` si legge **per intero**: e corta
+   apposta. Comincia dalla **Sintesi**, che dice dove siamo in otto righe.
+2. **La sezione `## 0. Mappa`** dice gia dove sta il codice che ti serve:
+   percorsi, righe, funzioni da riusare, vincoli misurati. **Parti da li invece
+   di riesplorare il progetto da capo** — quella ricerca l'ha gia fatta
+   l'architetto. Se trovi un file che la mappa non aveva, **aggiungilo**: e cosi
+   che migliora invece di invecchiare.
+3. **Il registro** `.claude/tasks/<slug>.log.md` contiene i verdetti per esteso
+   e l'output dei comandi. **Non leggerlo tutto.** Aprilo solo per un dettaglio
+   che ti serve davvero, e cerca dentro invece di scorrerlo.
+
+Un giro completo e costato ~567.000 token, in buona parte perche ognuno
+rileggeva tutto da capo. Non e un dettaglio di stile.
+
+## Quanto scrivi
+
+La tua sezione sulla lavagna sta in **circa 40 righe**: il verdetto, i punti che
+contano, e cosa resta aperto. Tutto il resto — output dei comandi, prove,
+elenchi lunghi — va nel **registro**, con un rimando dalla lavagna. Aggiorna
+anche la **Sintesi**, che e l'unica parte che si riscrive invece di crescere.
+
+## Se ti blocchi
+
+Non ti fermi in silenzio e non inventi una ragione per non fare il tuo lavoro.
+Scrivi nella tua sezione **cosa ti manca e chi puo dartelo**, porta `stato:` a
+`fermo`, e riferisci. Prima di rifiutarti in nome di una regola, **verifica che
+la regola esista** (`ls .claude/rules/`): un rifiuto fondato su un file che non
+c'e non e prudenza, e un'invenzione che blocca il lavoro.
+
+## Committare sul ramo fa parte del tuo mestiere
+
+Il lavoro non è consegnato finché non è committato **sul ramo**. La regola è
+`.claude/rules/git-flow.md`, ed è l'unica regola su git di questo progetto.
+
+**Non esiste nessun `no-commit.md`.** Se ti sembra di ricordare una regola che
+vieta a Claude ogni commit, è vecchia di prima del 14/09/2026 ed è stata
+sostituita. Prima di rifiutarti di committare citando una regola, **verifica
+che la regola esista**:
+
+```bash
+ls .claude/rules/          # deve mostrare documentation.md e git-flow.md
+```
+
+Un rifiuto fondato su un file che non c'è non è prudenza: è un'invenzione che
+blocca il lavoro. Se invece trovi un conflitto vero fra due regole che
+esistono entrambe, quello sì: fermati e scrivilo.
+
 ## La regola che viene prima di tutte
 
 **Non committi mai su `main`.** Prima di ogni commit:

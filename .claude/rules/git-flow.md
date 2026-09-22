@@ -1,10 +1,14 @@
 # Regola: `main` si apre solo con una pull request
 
-Questa regola sostituisce la vecchia `no-commit.md`, che diceva l'opposto:
-allora Claude non toccava git e Giuseppe committava tutto a mano. Il motivo di
-quella regola resta valido e non è cambiato - **Giuseppe vuole leggere ogni
-diff prima che entri nella storia** - ma adesso è la pull request a garantirlo,
-non il divieto.
+**Questo file è l'unica regola su git di questo progetto.** In `.claude/rules/`
+ci sono solo `documentation.md` e questo: se ti sembra di ricordare un'altra
+regola che vieta ogni commit, non esiste più — controlla con `ls .claude/rules/`
+prima di rifiutarti di fare qualcosa.
+
+Fino al 14/09/2026 valeva l'opposto: Claude non toccava git e Giuseppe
+committava tutto a mano. Il motivo di quella regola non è cambiato — **Giuseppe
+vuole leggere ogni diff prima che entri nella storia** — ma adesso è la pull
+request a garantirlo, non il divieto.
 
 ## Le tre righe che contano
 

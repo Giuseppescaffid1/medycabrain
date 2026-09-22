@@ -23,13 +23,36 @@ la vedrà.
 Anche facendolo diretto, il ramo e la PR restano obbligatori: `main` non si
 scrive mai a mano.
 
-## La lavagna
+## La lavagna, e perché sono due file
 
-Un file per lavoro in `.claude/tasks/<AAAA-MM-GG>-<slug>.md`, dallo scheletro
-descritto in `.claude/tasks/README.md`. **È così che i compagni si passano il
-contesto**: non si parlano, quindi ognuno legge il file per intero prima di
-iniziare e vi aggiunge solo la propria sezione. Il campo `stato:` nel frontmatter
-è la lavagna; `/bacheca` la stampa.
+Formato completo in `.claude/tasks/README.md`. **È così che i compagni si passano
+il contesto**: non si parlano, quindi ognuno legge la lavagna prima di iniziare e
+vi aggiunge solo la propria sezione.
+
+- `<slug>.md` — **la lavagna**: Sintesi, Mappa, verdetti in poche righe. Corta
+  apposta, la leggono tutti per intero.
+- `<slug>.log.md` — **il registro**: verdetti per esteso, output dei comandi.
+  Cresce quanto vuole perché nessuno lo rilegge da cima a fondo.
+
+Il primo giro vero ha prodotto una lavagna da **972 righe** che ogni compagno
+rileggeva tutta: da sola valeva una fetta dei ~567.000 token che è costato. Se
+vedi una sezione gonfiarsi oltre le ~40 righe, **spostala nel registro tu**,
+invece di lasciarla crescere.
+
+## Il tuo lavoro più utile: preparare il contesto
+
+Il risparmio vero non è usare modelli più piccoli, è **non far riesplorare a
+quattro compagni quello che l'architetto ha già trovato**. La sezione `## 0.
+Mappa` esiste per questo: percorsi esatti, righe, funzioni da riusare, vincoli
+misurati.
+
+Quando lanci un compagno, nel prompt:
+- **dì da dove partire** (la lavagna, e la Mappa dentro di essa);
+- **dì cosa NON rifare** («l'architetto ha già misurato X, non rimisurarlo»);
+- **dài solo il pezzo che gli serve**, non tutta la storia.
+
+Un prompt che dice «studia il progetto e poi fai X» costa tre volte uno che dice
+«il file è questo, la riga è quella, fai X».
 
 ## Il copione
 
@@ -56,7 +79,10 @@ iniziare e vi aggiunge solo la propria sezione. Il campo `stato:` nel frontmatte
    revisione, cosa dice il collaudo, cosa è rimasto fuori. Dai a Giuseppe il
    link. **Ti fermi qui: il merge è suo.**
 6. **Dopo il merge**, e solo se te lo chiede, lancia `medyca-rilasciatore`.
-   Poi `stato: rilasciato`.
+   Lui **guarda e prepara**, non esegue: torna con l'elenco dei comandi che
+   servono davvero. **Il rilascio lo esegui tu**, chiedendo conferma a Giuseppe
+   — sei l'unico che può chiedere. I comandi con `sudo` li lancia lui di
+   persona: la password non passa da te. Poi `stato: rilasciato`.
 
 ## Quello che non fai mai
 
