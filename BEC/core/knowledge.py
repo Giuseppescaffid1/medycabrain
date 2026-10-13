@@ -95,6 +95,17 @@ def _load_index(scope: str = "all") -> list[dict]:
     if hit and hit[0] == stamp:
         return hit[1]
 
+    if scope != "all":
+        # A scoped index is a filter of the full one, never a second read of
+        # Postgres: the full build costs ~19s, and the specific-term check
+        # needs the full index anyway, so a scoped search after any corpus
+        # change used to pay that twice (~40s, past the MCP client's timeout).
+        keep = {"medyca": ("owned",), "owned": ("owned",),
+                "competitor": ("competitor",)}.get(scope, ())
+        items = [it for it in _load_index("all") if it["owner"] in keep]
+        _INDEX_CACHE[scope] = (stamp, items)
+        return items
+
     items = []
     want_owned = scope in ("all", "medyca", "owned")
     want_comp = scope in ("all", "competitor")
@@ -210,6 +221,13 @@ def _lexical_score(query: str, text: str) -> float:
     return sum(1 for w in words if w in hay) / len(words)
 
 
+def _lexical_score_hay(words: list[str], hay: str) -> float:
+    """_lexical_score on pre-split query words and a pre-normalized text."""
+    if not words:
+        return 0.0
+    return sum(1 for w in words if w in hay) / len(words)
+
+
 # A query word found in at most this share of the whole corpus is a SPECIFIC
 # term — a drug, a brand, a procedure — and every result must contain it.
 #
@@ -293,11 +311,14 @@ RELEVANCE_FLOOR = 0.60
 def _rank(index: list[dict], query: str, qvec) -> list[tuple[float, dict, float]]:
     if not index:
         return []
+    words = _query_words(query)
     mat = np.vstack([it["vec"] for it in index])
     dense = mat @ qvec  # normalized vectors → cosine
     out = []
     for i, it in enumerate(index):
-        lex = _lexical_score(query, f"{it['title']} {it['summary']} {it['text']}")
+        # it["hay"] is the same title+summary+text, normalized once per index
+        # build: normalizing ~2.000 full texts on every query cost 5-7s.
+        lex = _lexical_score_hay(words, it["hay"])
         out.append((0.75 * float(dense[i]) + 0.25 * lex, it, lex))
     out.sort(key=lambda r: -r[0])
     return out
