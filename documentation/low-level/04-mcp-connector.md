@@ -288,6 +288,14 @@ groundedness, all of which the suite checks at 100%.
   a search was ~14 s; warm ~0.5 s). The embedder load is behind a lock: warming runs in a
   background thread while requests are already being served, and two concurrent loads of
   SentenceTransformer leave it half-built (`Cannot copy out of meta tensor`).
+- **Database connection heals itself.** Every tool is registered through `_tool()`, which
+  calls Django's `close_old_connections()` before and after the call, and
+  `CONN_HEALTH_CHECKS = True` (in `config/settings/base.py`) pings a reused connection before
+  its first query. Without this, nothing ever refreshed the connection: Django does it only
+  around a web request, and the SDK runs each sync tool in an anyio worker thread that keeps
+  its connection forever. When Postgres restarted on 2026-10-10, every tool answered
+  `connection already closed` until the service was restarted by hand (reported 2026-10-13).
+  Tested by killing the server's backends with `pg_terminate_backend`: the next call answers.
 - **HTTPS:** no dedicated DNS/cert for medycabrain — it rides `messtudent.com`'s existing 443
   cert via an nginx `location /medyca-mcp/` block that proxies to `127.0.0.1:8025`. **That
   nginx block is not in this repo** — `deploy/nginx-medycabrain.conf` is only the port-9093 app

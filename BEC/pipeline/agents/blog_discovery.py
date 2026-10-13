@@ -40,7 +40,11 @@ from django.utils import timezone as dj_tz
 
 logger = logging.getLogger(__name__)
 
-_UA_HONEST = "medycabrain/1.0 (+https://www.medyca.it; content research crawler)"
+# No "crawler", "research" or "compatible" in it: WAF word lists answer 403 to
+# any of them (measured 2026-10-13 on ginecologiafiorillopalese.it and
+# lidialamarca.it, both nginx), while this exact string gets 200. It still
+# names us and links to us, which is what an honest UA is for.
+_UA_HONEST = "medycabrain/1.0 (+https://www.medyca.it)"
 _UA_BROWSER = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
                "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
 
@@ -91,27 +95,33 @@ class Budget:
 def _fetch(source, url: str, budget: Budget, *, xml: bool = False) -> str:
     """One polite, SSRF-validated request, with the honest UA first.
 
-    On a 403 the browser UA is retried once and the fallback is RECORDED on
-    the source — the dishonesty is a documented, per-source, observable
-    exception rather than the default posture.
+    On a 403 the other UA is retried once and the one that worked is
+    RECORDED on the source (crawl_state.ua_fallback) — the browser UA is a
+    documented, per-source, observable exception rather than the default.
+
+    The retry goes both ways. It used to go only honest → browser, and the
+    flag never came back: some anti-bot setups refuse a Chrome UA that does
+    not come with a Chrome TLS fingerprint, so a site that once 403'd our
+    old UA was stuck on a UA it also refuses, and read 0 articles forever.
     """
     from core.external_ref import RefusedURL, safe_get
 
     if not budget.take():
         raise BudgetSpent()
     types = ("xml", "html", "text") if xml else ("html", "text")
-    ua = _UA_BROWSER if source.crawl_state.get("ua_fallback") else _UA_HONEST
+    fallback = bool(source.crawl_state.get("ua_fallback"))
+    ua, other = (_UA_BROWSER, _UA_HONEST) if fallback else (_UA_HONEST, _UA_BROWSER)
     try:
         return safe_get(url, allow_types=types, max_bytes=10_000_000, user_agent=ua)
     except RefusedURL as exc:
-        if "403" in str(exc) and ua == _UA_HONEST:
-            source.crawl_state["ua_fallback"] = True
-            body = safe_get(url, allow_types=types, max_bytes=10_000_000,
-                            user_agent=_UA_BROWSER)
-            logger.info("[discovery] %s: 403 con UA onesto, passo al browser UA",
-                        source.name)
-            return body
-        raise
+        if "403" not in str(exc):
+            raise
+        body = safe_get(url, allow_types=types, max_bytes=10_000_000,
+                        user_agent=other)
+        source.crawl_state["ua_fallback"] = not fallback
+        logger.info("[discovery] %s: 403 con %s, passo all'altro UA",
+                    source.name, "browser UA" if fallback else "UA onesto")
+        return body
 
 
 class BudgetSpent(RuntimeError):
