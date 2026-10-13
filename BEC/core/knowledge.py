@@ -120,6 +120,12 @@ def _load_index(scope: str = "all") -> list[dict]:
             # be judged off-topic and vanish from the library the moment he
             # added it. A model's opinion must not delete a human's choice.
             .filter(is_active=True, owner_type__in=owners)
+            # An article whose analysis FAILED still carries the model
+            # default is_on_topic=True, and the embed step embeds it anyway
+            # — 11 such pages (catalogue entries among them) sat in search
+            # with no topic and no summary (2026-10-13). Reels already
+            # require enrich_status=DONE; articles now do too.
+            .filter(enrich_status=DONE)
             .filter(Q(is_on_topic=True) | Q(is_inspiration=True))
             .exclude(embedding=[])
             .select_related("source"))

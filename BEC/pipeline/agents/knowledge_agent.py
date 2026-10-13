@@ -42,6 +42,34 @@ KB_SYSTEM = (
     "Rispondi SEMPRE ed esclusivamente con un oggetto JSON valido."
 )
 
+# What "in tema" means, said once and shared by the analysis and by the
+# re-check command (reprocess_topic), so the two can never judge differently.
+# Before 2026-10-13 the prompt never said it: the example answer read
+# `"is_on_topic": true`, and the model copied it — veterinary tylosin, a
+# children's TB syrup and calamine cream from a pharmacy catalogue all came
+# out "in tema" and surfaced in the client's searches.
+TOPIC_CRITERION = """\
+"is_on_topic" è true SOLO se l'articolo parla di almeno una di queste cose:
+- menopausa, perimenopausa, postmenopausa, andropausa;
+- salute ormonale della donna adulta: ciclo, sindrome premestruale,
+  fertilità, ormoni e tiroide;
+- terapie ormonali che una donna in menopausa può usare, comprese le
+  preparazioni galeniche e bioidentiche (estradiolo, progesterone, estriolo,
+  testosterone, DHEA, tibolone) e le loro regole di prescrizione;
+- disturbi che la menopausa cambia: vampate, secchezza e atrofia vaginale,
+  vulvodinia, libido, osteoporosi, rischio cardiovascolare, peso,
+  metabolismo, sonno, umore, pelle, tumori femminili e loro terapie ormonali.
+È false per tutto il resto, anche se è un argomento medico: farmaci per
+altre malattie, pediatria, veterinaria, dermatologia generica, cannabis,
+schede prodotto o pagine di catalogo, normative non ormonali, ricette,
+eventi, pagine promozionali, testi di cookie o di servizio.
+Conta l'uso, non la molecola: un farmaco qualsiasi usato per uno dei disturbi
+qui sopra (es. una crema per la vulvodinia, un antiestrogeno per il tumore al
+seno) è true. Nel dubbio, se l'articolo tocca davvero uno di questi temi
+anche solo in parte, è true: nascondere un articolo utile costa più di
+mostrarne uno in più.
+"""
+
 KB_ENRICH_USER = """\
 Analizza questo articolo del blog di {source_name}{ownership}.
 
@@ -52,13 +80,15 @@ TESTO:
 
 Il testo può essere in un'altra lingua: analizza comunque IN ITALIANO.
 
+""" + TOPIC_CRITERION.replace("{", "{{").replace("}", "}}") + """
+
 Restituisci un JSON:
 {{
   "summary_it": "riassunto in 2-3 frasi, in italiano",
   "topics": ["4-8 argomenti/parole chiave in italiano, minuscolo"],
   "primary_topic": "IL soggetto specifico dell'articolo, 2-5 parole. Mai un termine ombrello come 'menopausa' o 'salute femminile': ciò che distingue QUESTO articolo dagli altri",
-  "is_on_topic": true,
-  "off_topic_reason": "se is_on_topic è false: perché (es. ricetta di cucina, pagina promozionale)"
+  "is_on_topic": true oppure false, secondo la regola qui sopra,
+  "off_topic_reason": "se is_on_topic è false: di cosa parla davvero (es. farmaco pediatrico, ricetta di cucina)"
 }}
 """
 

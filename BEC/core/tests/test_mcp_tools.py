@@ -127,7 +127,8 @@ class MCPToolsGate(TestCase):
             source_url="https://medyca.it/blog/marion-gluck",
             title="Il metodo Marion Gluck", content_text=owned_text,
             summary_it="Metodo Marion Gluck.", primary_topic="marion gluck",
-            is_on_topic=True, embedding=_vec(owned_text).tolist())
+            is_on_topic=True, enrich_status=DONE,
+            embedding=_vec(owned_text).tolist())
         DocumentArgument.objects.create(
             document=cls.doc_owned,
             text_it="Il metodo usa ormoni bioidentici su misura.",
@@ -140,7 +141,8 @@ class MCPToolsGate(TestCase):
             source_url="https://competitor.example/blog/tos",
             title="Terapia ormonale in menopausa", content_text=comp_text,
             summary_it="TOS competitor.", primary_topic="terapia ormonale",
-            is_on_topic=True, embedding=_vec(comp_text).tolist())
+            is_on_topic=True, enrich_status=DONE,
+            embedding=_vec(comp_text).tolist())
 
         # Reference material: a TV episode the client added on purpose. It carries
         # owner_type="competitor" and is_on_topic=False (a menopause-centred
@@ -155,7 +157,8 @@ class MCPToolsGate(TestCase):
             author="YouTVRS", summary_it="Sindrome metabolica.",
             primary_topic="sindrome metabolica", is_on_topic=False,
             off_topic_reason="Tratta salute metabolica, non menopausa.",
-            is_inspiration=True, embedding=_vec(rif_text).tolist())
+            is_inspiration=True, enrich_status=DONE,
+            embedding=_vec(rif_text).tolist())
 
         # A current competitor cluster with one assigned reel argument, for `temi`.
         run = ClusterRun.objects.create(

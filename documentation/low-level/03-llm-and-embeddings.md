@@ -197,7 +197,7 @@ flowchart TD
 
 1. **Load index** — `_load_index(scope)` reads all vectors from Postgres and caches them in
    `_INDEX_CACHE`, keyed on a cheap `_corpus_stamp()` fingerprint (uses `Max(updated_at)` so
-   in-place re-embeds invalidate the cache). Only `is_active=True, is_on_topic=True` documents
+   in-place re-embeds invalidate the cache). Only `is_active=True, enrich_status=DONE, is_on_topic=True` documents (reference material is exempt from `is_on_topic`, not from `DONE`: an article whose analysis failed still carries the default `is_on_topic=True` and used to sit in search with no topic or summary, 11 of them on 2026-10-13)
    and `enrich_status=DONE` reels with non-empty text are indexed.
    - **`kind` filter (optional).** `kind="reel"` / `"blog"` narrows the index to one content type
      right here, exactly as `only_inspiration` narrows it to reference material. This is what the

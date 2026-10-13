@@ -44,6 +44,27 @@ flowchart LR
 | 8 | **knowledge** | `knowledge_agent.py` | The **live fallback** for articles the batch could not take, plus embedding (which needs no LLM and always runs here). Enrich + embed blog articles (Medyca's and competitors'), using `model_for("analysis")`: `primary_topic`, on-topic verdict, `DocumentArgument` extraction (verbatim quote required). No hook/format — those are video-craft only. | `enrich_status`/`embed_status`/`argument_status=done` |
 | 9 | **cluster** | `cluster_agent.py` | Two-layer clustering (below). Writes a fresh `ClusterRun` **per scope**, flips `is_current` atomically, then refreshes `CustomTopic` matches (`core/custom_topics.recompute_matches`). | new current `ClusterRun` per scope |
 
+### What "in tema" means for an article (2026-10-13)
+
+The analysis prompt (`knowledge_agent.KB_ENRICH_USER`) now carries `TOPIC_CRITERION`: an
+article is in tema only if it is about menopause, adult female hormonal health, hormone
+therapies a woman in menopause may use (compounded/bioidentical included), or a disorder
+menopause changes. Other drugs, paediatrics, veterinary, cannabis, catalogue pages, cookie
+text are not. Before, the prompt never defined it and its example answer said `true`, so the
+model said `true`: a pharmacy catalogue (Farmagalenica) brought calamine, veterinary tylosin
+and a children's TB syrup into the client's searches. Old verdicts are re-asked with
+`manage.py reprocess_topic`.
+
+The criterion judges **the use, not the molecule**, and says "in doubt, true": the first
+version, tried on Farmagalenica, dropped a diazepam cream for vulvodinia and tamoxifen. With
+the rule it removed 28 of 36 catalogue pages (veterinary, paediatric, cannabis, unrelated
+drugs) and kept the hormone and vulvodinia ones (2026-10-13).
+
+Known limit: the analysis runs on the first live provider. On 2026-10-13 the Anthropic key
+had **no credit** ("credit balance is too low"), so analysis fell to `gpt-oss-120b` on the
+fast provider, and the nightly `batch` stage (Anthropic Batch API) cannot run until it is
+topped up.
+
 ### Blog reader: who we say we are (measured 2026-10-13)
 
 The blog reader sends two possible User-Agents (the name a request gives the site):
@@ -553,6 +574,7 @@ All under `BEC/core/management/commands/`. Run with `python manage.py <name>`.
 |---|---|
 | `run_pipeline` | Run the DAG (cron entrypoint). Flags: `--dry-run`, `--limit`, `--only <stage>`, `--skip-<stage>`. Stages come from `pipeline.dag.build_steps()`, shared with the manual run. |
 | `run_job <id>` | Execute a queued `Job` by id, detached. |
+| `reprocess_topic` | Re-ask **only** the "in tema" verdict of competitor articles with the current `TOPIC_CRITERION` (summaries, topics and themes untouched). Dry run by default, `--apply` writes; `--source`, `--limit`. Never touches Medyca's articles or reference material. |
 | `reprocess` | Re-run stages (`transcribe`, `enrich`, `knowledge`), resumable. Flags: `--stage`, `--scope`, `--limit`, `--only-stale`, `--with-transcript`, `--not-model`. |
 | `ingest_blog` | Fetch a specific Medyca blog article (or several). |
 | `import_apify` | Fill `video_url`/`caption`/`posted_at`/`duration` from an Apify export. |
