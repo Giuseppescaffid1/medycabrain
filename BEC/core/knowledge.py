@@ -60,6 +60,7 @@ def _embed_query(text: str) -> np.ndarray:
 
 
 _INDEX_CACHE: dict = {}
+_INDEX_LOCK = threading.RLock()  # re-entrant: a scoped build reads the full one
 
 
 def _corpus_stamp() -> tuple:
@@ -94,7 +95,17 @@ def _load_index(scope: str = "all") -> list[dict]:
     hit = _INDEX_CACHE.get(scope)
     if hit and hit[0] == stamp:
         return hit[1]
+    # One build at a time: the MCP's background refresher and a question
+    # arriving together would otherwise both pay the ~19s build, on the same
+    # CPU. The second waits, then finds the first one's result.
+    with _INDEX_LOCK:
+        hit = _INDEX_CACHE.get(scope)
+        if hit and hit[0] == stamp:
+            return hit[1]
+        return _build_index(scope, stamp)
 
+
+def _build_index(scope: str, stamp: tuple) -> list[dict]:
     if scope != "all":
         # A scoped index is a filter of the full one, never a second read of
         # Postgres: the full build costs ~19s, and the specific-term check
@@ -488,7 +499,11 @@ def _rerank(query: str, hits: list[dict]) -> list[dict]:
         data = client.chat_json(
             "Sei un valutatore di pertinenza per una ricerca. Solo JSON valido.",
             user, max_tokens=2000, temperature=0.0,
-            model=client.model_for("bulk"), retries=0)
+            model=client.model_for("bulk"), retries=0,
+            # Remote only, 20s at most: if the provider is busy the blend
+            # order is served at once, instead of a local-CPU rerank that
+            # took >120s and timed the MCP search out.
+            allow_local=False, timeout=20)
         order = data.get("ordine") if isinstance(data, dict) else None
         if not order:
             return hits

@@ -236,6 +236,17 @@ flowchart TD
    pool, asking for a JSON `{"ordine": [...]}` ordering, then returns the top `top_k`. On *any*
    failure it falls back to the blend order — it never errors out. Both the chat and MCP `cerca`
    call it with `rerank=True`.
+   - **Remote only, 20 s at most** (`allow_local=False, timeout=20`). When the remote
+     provider was rate-limited the rerank dropped to local Ollama and an MCP search hung
+     >120 s, past the client's timeout (2026-10-13). Now it serves the blend order instead.
+     `client.chat(allow_local=False)` is the switch; use it for any call someone is waiting on
+     that has its own fallback.
+   - **Index freshness:** the MCP process rebuilds the index in a background thread
+     (`mcp_bridge/server.py::_warm`, checks `_corpus_stamp()` every 60 s), and `_load_index`
+     builds one at a time behind `_INDEX_LOCK`. Before, the first question after any corpus
+     change (every nightly run) paid the ~19 s build and timed out. Measured after a change:
+     1.3–1.6 s. Scoped indexes (`medyca`, `competitor`) are filters of the full one, not
+     separate reads.
    - **Known limit / why `retries=0`:** with a full pool of long snippets Sonnet 5 sometimes
      prefaces the JSON with a line of reasoning and tips over the ceiling (`stop_reason=max_tokens`).
      At the old `max_tokens=1000` this surfaced as an intermittent **~30–40s hang** on MCP search —

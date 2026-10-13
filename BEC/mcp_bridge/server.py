@@ -659,21 +659,32 @@ async def _deny(send, status: int, msg: str):
 
 
 def _warm():
-    """Load the embedder and the retrieval index at startup.
+    """Load the embedder, then keep the retrieval index fresh in the background.
 
-    Cold, the first `cerca` costs ~14s (sentence-transformers + 900 vectors
-    off the DB). The client's very first question through their Claude is
-    exactly the wrong moment to pay that.
+    Cold, the first `cerca` costs ~37s (embedder ~17s + ~2.100 items off the
+    DB ~19s), past the client's Claude timeout. A rebuild is needed not only
+    at startup but after every corpus change — every nightly run — and the
+    first question of the morning used to pay it and time out (2026-10-13).
+    So this thread checks the corpus fingerprint every minute (~10ms when
+    nothing changed) and rebuilds before a question has to.
     """
+    import time
+
     try:
         from core.knowledge import _get_embedder, _load_index
         _get_embedder()
-        _load_index("all")
     except Exception:  # noqa: BLE001 — warming is a courtesy, not a dependency
-        pass
-    finally:
-        # This thread exits; its connection must not linger as an orphan.
-        connection.close()
+        return
+    while True:
+        try:
+            _load_index("all")
+        except Exception:  # noqa: BLE001 — retried next minute
+            pass
+        finally:
+            # Same rule as the tools: a long-lived thread must not keep a
+            # connection that Postgres may have closed in the meantime.
+            close_old_connections()
+        time.sleep(60)
 
 
 import threading  # noqa: E402

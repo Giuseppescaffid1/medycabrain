@@ -440,15 +440,22 @@ def _providers() -> list[tuple[str, dict | None]]:
 
 def chat(system: str, user: str, max_tokens: int = 800, temperature: float = 0.2,
          retries: int = 2, json_mode: bool = False, timeout: int = 240,
-         on_token=None, priority: bool = False, model: str = "") -> str:
+         on_token=None, priority: bool = False, model: str = "",
+         allow_local: bool = True) -> str:
     """Return raw assistant text, trying providers in order with retries.
 
     json_mode nudges Ollama to emit valid JSON — set only for extraction
     prompts, never for free-text answers (it degrades prose quality).
     timeout applies to the Ollama call (long jobs pass a bigger value).
+    allow_local=False skips Ollama: for a call someone is waiting on that has
+    a safe fallback of its own (the search rerank), a 2-minute local answer
+    is worse than none — it hung MCP searches past the client's timeout
+    whenever the remote provider was rate-limited (2026-10-13).
     """
     global _hf_disabled, _fast_disabled
     providers = _providers()
+    if not allow_local:
+        providers = [p for p in providers if p[0] != "ollama"]
     if not providers:
         raise LLMError("no LLM provider available (no key, Ollama disabled)")
 
