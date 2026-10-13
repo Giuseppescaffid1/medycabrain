@@ -60,6 +60,13 @@ version, tried on Farmagalenica, dropped a diazepam cream for vulvodinia and tam
 the rule it removed 28 of 36 catalogue pages (veterinary, paediatric, cannabis, unrelated
 drugs) and kept the hormone and vulvodinia ones (2026-10-13).
 
+The criterion names the borderline groups on purpose (thyroid, PCOS, pelvic floor and
+prolapse, breast screening, male hormones, sexually transmitted infections). A narrower
+first wording, run with `gpt-oss-120b` (the Anthropic key had no credit), wanted to drop
+exactly those: tested on 37 known cases it got about half right; the current wording gets
+33/37, and the misses are general nutrition pages. **Always dry-run `reprocess_topic` and
+read the list before `--apply`**: the verdict is only as good as the model answering.
+
 Known limit: the analysis runs on the first live provider. On 2026-10-13 the Anthropic key
 had **no credit** ("credit balance is too low"), so analysis fell to `gpt-oss-120b` on the
 fast provider, and the nightly `batch` stage (Anthropic Batch API) cannot run until it is

@@ -49,25 +49,27 @@ KB_SYSTEM = (
 # children's TB syrup and calamine cream from a pharmacy catalogue all came
 # out "in tema" and surfaced in the client's searches.
 TOPIC_CRITERION = """\
-"is_on_topic" è true SOLO se l'articolo parla di almeno una di queste cose:
-- menopausa, perimenopausa, postmenopausa, andropausa;
-- salute ormonale della donna adulta: ciclo, sindrome premestruale,
-  fertilità, ormoni e tiroide;
-- terapie ormonali che una donna in menopausa può usare, comprese le
-  preparazioni galeniche e bioidentiche (estradiolo, progesterone, estriolo,
-  testosterone, DHEA, tibolone) e le loro regole di prescrizione;
-- disturbi che la menopausa cambia: vampate, secchezza e atrofia vaginale,
-  vulvodinia, libido, osteoporosi, rischio cardiovascolare, peso,
-  metabolismo, sonno, umore, pelle, tumori femminili e loro terapie ormonali.
-È false per tutto il resto, anche se è un argomento medico: farmaci per
-altre malattie, pediatria, veterinaria, dermatologia generica, cannabis,
-schede prodotto o pagine di catalogo, normative non ormonali, ricette,
-eventi, pagine promozionali, testi di cookie o di servizio.
-Conta l'uso, non la molecola: un farmaco qualsiasi usato per uno dei disturbi
-qui sopra (es. una crema per la vulvodinia, un antiestrogeno per il tumore al
-seno) è true. Nel dubbio, se l'articolo tocca davvero uno di questi temi
-anche solo in parte, è true: nascondere un articolo utile costa più di
-mostrarne uno in più.
+"is_on_topic" è true se l'articolo parla di salute femminile, ormoni o
+menopausa, anche solo in parte. In particolare è true per:
+- menopausa, perimenopausa, postmenopausa; andropausa e ormoni maschili;
+- ormoni e ghiandole: tiroide, insulina, ovaio policistico (PCOS), ciclo,
+  sindrome premestruale, fertilità, contraccezione;
+- terapie ormonali, anche galeniche e bioidentiche (estradiolo, progesterone,
+  estriolo, testosterone, DHEA, tibolone) e le loro regole;
+- salute intima e pelvica: vulvodinia, secchezza, infezioni e infiammazioni
+  vulvovaginali e sessualmente trasmesse, pavimento pelvico, prolasso,
+  incontinenza;
+- seno e tumori femminili: prevenzione, ecografia, mammografia, terapie;
+- ciò che cambia con la menopausa: vampate, osteoporosi, cuore, peso,
+  metabolismo, sonno, umore, pelle, capelli, alimentazione e integratori.
+Un farmaco qualsiasi usato per uno di questi disturbi conta: conta l'uso,
+non la molecola.
+È false solo quando l'articolo non tocca nessuno di questi temi: farmaci
+per altre malattie (es. ragadi anali, esofagite, tubercolosi), pediatria,
+veterinaria, cannabis, chirurgia o medicina estetica generica, profili e
+pagine del personale, elenchi di link, ricette, eventi, cookie.
+Nel dubbio è true: nascondere un articolo utile costa più che mostrarne uno
+in più.
 """
 
 KB_ENRICH_USER = """\
