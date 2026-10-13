@@ -17,6 +17,10 @@ numpy==1.26.4
 Pillow==10.4.0
 requests==2.32.3
 trafilatura==2.1.0
+# Quanto è comune una parola in italiano (core/knowledge.py:_specific_terms):
+# distingue un nome di farmaco ("tibolone") da un verbo raro nel corpus
+# ("consigliano"), così la ricerca filtra solo sui nomi veri.
+wordfreq==3.1.1
 
 # Audio di video presi da un link (core/link_ingest.py) e permalink Instagram
 # (downloader_agent). Era installato ma non dichiarato: un ambiente ricreato

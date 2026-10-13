@@ -181,7 +181,9 @@ ranking.
 ```mermaid
 flowchart TD
     Q["query"] --> E["_embed_query()<br/>MiniLM vector"]
-    IDX["_load_index(scope)<br/>vectors from Postgres,<br/>cached by _corpus_stamp()"] --> R
+    IDX["_load_index(scope)<br/>vectors from Postgres,<br/>cached by _corpus_stamp()"]
+    IDX --> G["_specific_terms()<br/>drug/brand name in the query?<br/>keep only items that contain it"]
+    G --> R
     E --> R["_rank()<br/>0.75·cosine + 0.25·lexical"]
     R --> M["merge owned vs competitor<br/>quota: OWNED_SHARE=5/12<br/>floor: RELEVANCE_FLOOR=0.60"]
     M --> P["_best_passage()<br/>pick closest chunk"]
@@ -205,6 +207,20 @@ flowchart TD
      discarding most after the LLM ran. Measured, that cut a typed search from 11–14s into the
      `cerca_tutto` regime (~2.6s), and killed the starvation where a minority type post-filtered
      to fewer than `top_k` results. Chat callers leave `kind=None`.
+   - **Specific-term gate.** `_specific_terms(query)` finds query words (5+ letters) that are
+     rare in the whole corpus (`SPECIFIC_TERM_MAX_SHARE = 0.03`) **and** rare in Italian
+     (`wordfreq` Zipf below `SPECIFIC_TERM_MAX_ZIPF = 1.5`). Those are drug, brand or
+     procedure names, and the index is narrowed to items that contain one verbatim. If none
+     does, the search returns **nothing** rather than padding. Why: cosine scores here are
+     compressed (~0.35–0.47), so "tibolone" (5 competitor articles) came back with calamine,
+     diltiazem and gabapentin pages that never name it (client test, 2026-10-13). Measured:
+     tibolone, bijuva, fezolinetant, utrogestan Zipf 0.0, vulvodinia 1.05 → gated; estradiolo
+     2.07, consigliano 3.45, menopausa 56% of the corpus → not gated, ranking stays semantic.
+     The Italian check exists because "consigliano" is under 3% of the corpus too, and gating on
+     it turned an insomnia question into a search for the verb. A typo (found nowhere) is not
+     gated. Without `wordfreq` installed (the CI) there is no gate.
+     **Known limit:** a synonym or a misspelling inside the documents (e.g. "Tibolon" written
+     differently) is not matched, and a generic question that only *implies* a drug is not gated.
 2. **Embed the query** — `_embed_query()`.
 3. **Hybrid rank** — `_rank()` blends dense and lexical: `0.75 * cosine + 0.25 * lexical_score`.
    The lexical term (`_lexical_score`) is what catches exact drug/brand names like "Bijuva"

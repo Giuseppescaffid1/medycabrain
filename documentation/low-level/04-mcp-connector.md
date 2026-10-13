@@ -88,6 +88,10 @@ return [_hit(h) for h in hits]   # "reel" | "blog" | None
 ```
 
 - `scope` is clamped to `all` / `medyca` / `competitor`; `limite` clamped to 1–20.
+- **Fewer results than `limite` is normal** when the query names a drug or brand: every hit
+  must contain that name (the specific-term gate in
+  [03-llm-and-embeddings.md](03-llm-and-embeddings.md)). "tibolone" in competitor articles
+  returns 6, not 8 padded with unrelated pages.
 - **The type filter is pushed into `semantic_search` (`kind=only`), not applied after the
   rerank.** The old code over-fetched `limite*3`, reranked the whole mixed pool, then dropped
   the wrong type. That cost 11–14s (the LLM reranked 24 items to return 8) and could **starve**:

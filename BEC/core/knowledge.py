@@ -160,6 +160,8 @@ def _load_index(scope: str = "all") -> list[dict]:
             "vec": np.asarray(emb.vector, dtype=np.float32),
             "chunks": emb.chunk_vectors or None,
         })
+    for it in items:
+        it["hay"] = _norm(f"{it['title']} {it['summary']} {it['text']}")
     _INDEX_CACHE[scope] = (stamp, items)
     return items
 
@@ -186,20 +188,73 @@ def _chunks(text: str, size: int = 700, overlap: int = 120) -> list[str]:
     return out
 
 
+def _norm(t: str) -> str:
+    import unicodedata
+    return unicodedata.normalize("NFKC", t or "").lower()
+
+
+def _query_words(query: str) -> list[str]:
+    return [w for w in re.findall(r"\w+", _norm(query)) if len(w) >= 5]
+
+
 def _lexical_score(query: str, text: str) -> float:
     """Fraction of the query's distinctive words that appear verbatim.
 
     Embeddings miss rare tokens — drug and brand names like "Bijuva" are
     exactly what a client asks about, so keyword evidence is blended in.
     """
-    import re
-    import unicodedata
-    norm = lambda t: unicodedata.normalize("NFKC", t or "").lower()
-    words = [w for w in re.findall(r"\w+", norm(query)) if len(w) >= 5]
+    words = _query_words(query)
     if not words:
         return 0.0
-    hay = norm(text)
+    hay = _norm(text)
     return sum(1 for w in words if w in hay) / len(words)
+
+
+# A query word found in at most this share of the whole corpus is a SPECIFIC
+# term — a drug, a brand, a procedure — and every result must contain it.
+#
+# Blending keywords at 25% was not enough on its own: cosine scores in this
+# space are compressed (~0.35-0.47 for everything), so for "tibolone" — in 5
+# competitor articles out of ~730 — the remaining slots of an 8-result search
+# were filled with Farmagalenica pages on calamine, diltiazem and gabapentin
+# that never mention it (0.40 against 0.39 for a real match; client test
+# 2026-10-13). An article that does not contain the drug's name cannot tell
+# you what anyone says about that drug, so returning 5 honest results beats
+# returning 8.
+#
+# Measured on the 2.120-item corpus (2026-10-13): tibolone 1.7%, bijuva 1.8%,
+# fezolinetant 0.3% → specific; estradiolo 5.9%, vampate 11%, menopausa 56% →
+# topics, where meaning matters more than the word and ranking stays semantic.
+#
+# Rare in the corpus is not enough: ordinary Italian is rare here too
+# ("consigliano" is under 3%, and gating on it turned an insomnia question
+# into a search for the verb). So the word must ALSO be rare in Italian:
+# wordfreq's Zipf scale, measured — tibolone/bijuva/fezolinetant/utrogestan
+# 0.0, vulvodinia 1.05 vs estradiolo 2.07, raccomandano 2.77, consigliano 3.45.
+# Frequency is measured on the WHOLE corpus, not the scoped one: a term that
+# exists only on the competitor side must give an empty Medyca search ("Medyca
+# has nothing on it"), not 8 Medyca items about something else. A word found
+# nowhere (a typo) is not specific and changes nothing.
+SPECIFIC_TERM_MAX_SHARE = 0.03
+SPECIFIC_TERM_MAX_ZIPF = 1.5
+
+
+def _specific_terms(query: str) -> list[str]:
+    try:
+        from wordfreq import zipf_frequency
+    except ImportError:  # CI installs no wordfreq: no gate, plain ranking
+        return []
+    corpus = _load_index("all")
+    if not corpus:
+        return []
+    out = []
+    for w in _query_words(query):
+        if zipf_frequency(w, "it") >= SPECIFIC_TERM_MAX_ZIPF:
+            continue
+        df = sum(1 for it in corpus if w in it["hay"])
+        if 0 < df <= SPECIFIC_TERM_MAX_SHARE * len(corpus):
+            out.append(w)
+    return out
 
 
 # Medyca's own material is 70 items against 835 competitor ones. On one global
@@ -291,6 +346,11 @@ def semantic_search(query: str, top_k: int = 6, scope: str = "all",
         index = [i for i in index if i.get("inspiration")]
     if not index:
         return []
+    specific = _specific_terms(query)
+    if specific:
+        index = [i for i in index if any(w in i["hay"] for w in specific)]
+        if not index:
+            return []
     q = _embed_query(query)
     # Retrieve a pool, cut to top_k after the LLM has had its say.
     want = max(top_k, RERANK_POOL) if rerank else top_k
