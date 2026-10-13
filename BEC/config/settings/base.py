@@ -84,6 +84,11 @@ else:
         }
     }
 
+# Ping a reused connection before its first query, so a Postgres restart
+# costs nothing instead of one "connection already closed" per process/thread.
+# The MCP bridge depends on this (see mcp_bridge/server.py::_tool).
+DATABASES["default"]["CONN_HEALTH_CHECKS"] = True
+
 # ── Django REST Framework ──────────────────────────────────────────────────────
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [

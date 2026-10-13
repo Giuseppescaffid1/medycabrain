@@ -26,6 +26,7 @@ gunicorn workers, so a slow MCP call cannot occupy an app slot.
 
 from __future__ import annotations
 
+import functools
 import os
 import sys
 from pathlib import Path
@@ -38,6 +39,7 @@ import django  # noqa: E402
 django.setup()
 
 from django.conf import settings  # noqa: E402
+from django.db import close_old_connections, connection  # noqa: E402
 
 from mcp.server.mcpserver import MCPServer  # noqa: E402
 
@@ -84,6 +86,43 @@ server = MCPServer(
 )
 
 
+def _tool(**kwargs):
+    """`server.tool`, plus a database connection that heals itself.
+
+    Django refreshes its connections only around a web request
+    (request_started/finished). This process never runs one: the MCP SDK
+    calls each sync tool in an anyio worker thread, and that thread keeps its
+    connection for the life of the process. When Postgres restarted on
+    2026-10-10 every thread kept a dead socket, and all ten tools answered
+    "connection already closed" until the service was restarted by hand.
+
+    So each call does what a request would: close_old_connections() before
+    (with CONN_HEALTH_CHECKS on, a dead connection fails its ping and is
+    replaced, so the call itself succeeds) and after (drops a connection
+    that errored or outlived CONN_MAX_AGE). functools.wraps keeps the
+    signature, so the tool schema is unchanged.
+
+    Skipped inside an open transaction: close_old_connections() closes any
+    connection not in autocommit, which would kill a TestCase's wrapping
+    transaction (Django's test client disconnects it for the same reason).
+    A real MCP call never runs inside one.
+    """
+    def _refresh():
+        if not connection.in_atomic_block:
+            close_old_connections()
+
+    def deco(fn):
+        @functools.wraps(fn)
+        def wrapped(*a, **kw):
+            _refresh()
+            try:
+                return fn(*a, **kw)
+            finally:
+                _refresh()
+        return server.tool(**kwargs)(wrapped)
+    return deco
+
+
 def _brain_link(kind: str, pk) -> str:
     """The address of this content inside the client's own brain.
 
@@ -124,7 +163,7 @@ def _hit(h: dict) -> dict:
     }
 
 
-@server.tool(
+@_tool(
     description=(
         "Cosa contiene la banca dati adesso: quanti reel e articoli per "
         "Medyca e per i competitor, quali fonti sono monitorate, quanti "
@@ -203,7 +242,7 @@ def _search(query: str, scope: str, limite: int, only: str | None,
     return [_hit(h) for h in hits]
 
 
-@server.tool(
+@_tool(
     description=(
         "Cerca SOLO tra i reel Instagram (video), di Medyca e dei "
         "competitor. Cerca nelle trascrizioni, nelle didascalie e "
@@ -217,7 +256,7 @@ def cerca_reel(query: str, scope: str = "all", limite: int = 8) -> list[dict]:
     return _search(query, scope, limite, only="reel")
 
 
-@server.tool(
+@_tool(
     description=(
         "Cerca SOLO tra gli articoli di blog, di Medyca e dei competitor. "
         "Cerca nel testo integrale e nell'analisi. `scope`: 'all' | "
@@ -231,7 +270,7 @@ def cerca_articoli(query: str, scope: str = "all", limite: int = 8) -> list[dict
     return _search(query, scope, limite, only="blog")
 
 
-@server.tool(
+@_tool(
     description=(
         "Cerca in TUTTO: reel e articoli insieme, ordinati per pertinenza. "
         "Usalo solo quando la domanda attraversa i due mondi (per esempio "
@@ -366,7 +405,7 @@ def _leggi_articolo(pk: int) -> dict:
     }
 
 
-@server.tool(
+@_tool(
     description=(
         "Il contenuto completo di UN REEL, dato il suo id ('reel:123' o "
         "solo '123'): trascrizione integrale, didascalia, tema, riassunto, "
@@ -381,7 +420,7 @@ def leggi_reel(id: str) -> dict:
     return _leggi_reel(parsed[1])
 
 
-@server.tool(
+@_tool(
     description=(
         "Il contenuto completo di UN ARTICOLO di blog, dato il suo id "
         "('blog:45' o solo '45'): testo integrale, fonte, autore, data, "
@@ -396,7 +435,7 @@ def leggi_articolo(id: str) -> dict:
     return _leggi_articolo(parsed[1])
 
 
-@server.tool(
+@_tool(
     description=(
         "Il contenuto completo di un elemento di QUALSIASI tipo, dato l'id "
         "con il suo prefisso ('reel:123' o 'blog:45'). Comodo dopo "
@@ -416,7 +455,7 @@ def leggi(id: str) -> dict:
     return {"errore": "tipo sconosciuto: usa 'reel:123' o 'blog:45'"}
 
 
-@server.tool(
+@_tool(
     description=(
         "Cerca SOLO nel materiale di riferimento che il cliente ha aggiunto "
         "apposta come ispirazione: puntate TV, interventi, video esterni. "
@@ -431,7 +470,7 @@ def cerca_riferimenti(query: str, scope: str = "all", limite: int = 8) -> list[d
     return _search(query, scope, limite, only=None, only_inspiration=True)
 
 
-@server.tool(
+@_tool(
     description=(
         "I blog monitorati, uno per riga: di chi è (Medyca o competitor), "
         "l'indirizzo, quanti articoli ne abbiamo, quando è stato letto "
@@ -466,7 +505,7 @@ def fonti_blog(scope: str = "all") -> list[dict]:
     ]
 
 
-@server.tool(
+@_tool(
     description=(
         "La mappa dei temi correnti (clustering automatico dei contenuti). "
         "`scope`: 'medyca' per i temi dei contenuti di Medyca, 'competitor' "
@@ -632,6 +671,9 @@ def _warm():
         _load_index("all")
     except Exception:  # noqa: BLE001 — warming is a courtesy, not a dependency
         pass
+    finally:
+        # This thread exits; its connection must not linger as an orphan.
+        connection.close()
 
 
 import threading  # noqa: E402

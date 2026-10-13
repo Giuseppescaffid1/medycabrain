@@ -44,6 +44,25 @@ flowchart LR
 | 8 | **knowledge** | `knowledge_agent.py` | The **live fallback** for articles the batch could not take, plus embedding (which needs no LLM and always runs here). Enrich + embed blog articles (Medyca's and competitors'), using `model_for("analysis")`: `primary_topic`, on-topic verdict, `DocumentArgument` extraction (verbatim quote required). No hook/format — those are video-craft only. | `enrich_status`/`embed_status`/`argument_status=done` |
 | 9 | **cluster** | `cluster_agent.py` | Two-layer clustering (below). Writes a fresh `ClusterRun` **per scope**, flips `is_current` atomically, then refreshes `CustomTopic` matches (`core/custom_topics.recompute_matches`). | new current `ClusterRun` per scope |
 
+### Blog reader: who we say we are (measured 2026-10-13)
+
+The blog reader sends two possible User-Agents (the name a request gives the site):
+the honest `medycabrain/1.0 (+https://www.medyca.it)` first, and a Chrome string as a
+per-source exception (`crawl_state.ua_fallback`). On a **403** it tries the other one
+once and remembers whichever worked. Article bodies (`blog_agent._download`) do the
+same in reverse: Chrome first, honest on a 403.
+
+Why it matters: `ginecologiafiorillopalese.it` and `lidialamarca.it` (both nginx) answer
+403 to any UA containing **"crawler", "research" or "compatible"**, and also to the full
+Chrome string (it does not come with a Chrome TLS fingerprint). The old honest UA had
+"content research crawler" in it, and the fallback only went honest → Chrome and never
+back. So both sources read **0 articles** on 30/09 and 08/10, while the site was open.
+With the plain honest UA: 35 and 140 candidates, 19 + 19 articles on the first run.
+
+Known limit: a source reads at most `per_source_pages` (25) pages per run, once every
+`crawl_interval_h` (168 h). A large backlog like Lidia La Marca's 140 articles takes
+several weekly runs to arrive in full.
+
 ## Video taken from a link (the fourth door, widened)
 
 `BEC/core/link_ingest.py` + the existing upload flow. The client pastes a **blob of his own

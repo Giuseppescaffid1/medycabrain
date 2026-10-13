@@ -39,11 +39,21 @@ def _download(url: str, attempts: int = 3) -> str | None:
     addresses only this server can reach.
     """
     from core.external_ref import RefusedURL, safe_get
+    from pipeline.agents.blog_discovery import _UA_HONEST
 
     for i in range(attempts):
         try:
             return safe_get(url, max_bytes=5_000_000)
         except RefusedURL as exc:
+            # Some anti-bot setups 403 the default Chrome UA (no Chrome TLS
+            # fingerprint behind it) and accept our plain honest UA —
+            # ginecologiafiorillopalese.it and lidialamarca.it, 2026-10-13.
+            # One retry with it; any other refusal is a verdict.
+            if "403" in str(exc):
+                try:
+                    return safe_get(url, max_bytes=5_000_000, user_agent=_UA_HONEST)
+                except RefusedURL as exc2:
+                    exc = exc2
             logger.debug("[blog] fetch rifiutato per %s: %s", url, exc)
             return None  # a refusal is a verdict, not a transient error
         except Exception as exc:  # noqa: BLE001
