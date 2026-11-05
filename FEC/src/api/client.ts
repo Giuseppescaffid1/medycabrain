@@ -27,3 +27,30 @@ apiClient.interceptors.response.use(
 );
 
 export { TOKEN_KEY };
+
+/** Status of a failed request, or undefined when the server never answered. */
+export function errorStatus(error: unknown): number | undefined {
+  return axios.isAxiosError(error) ? error.response?.status : undefined;
+}
+
+/**
+ * A flat list that the interface treats as a whole (ideas, drafts): follows
+ * the paginator's `next` instead of silently stopping at the first page.
+ * Capped, so a runaway list cannot loop for ever.
+ */
+export async function fetchAllPages<T>(
+  url: string,
+  params: Record<string, unknown> = {},
+  maxPages = 10
+): Promise<T[]> {
+  const out: T[] = [];
+  for (let page = 1; page <= maxPages; page++) {
+    const { data } = await apiClient.get<T[] | { results: T[]; next: string | null }>(url, {
+      params: { ...params, page, page_size: 200 },
+    });
+    if (Array.isArray(data)) return data;
+    out.push(...data.results);
+    if (!data.next) break;
+  }
+  return out;
+}

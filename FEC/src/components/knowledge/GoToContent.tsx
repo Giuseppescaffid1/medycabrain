@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { Button, fieldCls } from "../ui/primitives";
 
@@ -13,7 +12,19 @@ import { Button, fieldCls } from "../ui/primitives";
  * must be thrown away: we keep the kind word and the id after the colon, and
  * ignore everything in between.
  */
-export function parseRef(raw: string): { kind: "reel" | "blog"; id: number } | null {
+export type ContentRef = { kind: "reel" | "blog"; id: number };
+
+export function parseRef(raw: string): ContentRef | null {
+  // The MCP's own link (`<base>/content/blog/843`, the `apri_nel_brain` field)
+  // is what the client copies most often, and it has no colon: the `kind:id`
+  // pattern below rejected the very format the MCP emits.
+  const link = raw.match(/\/content\/(reel|blog)\/(\d+)(?![\d])/i);
+  if (link) {
+    const id = parseInt(link[2], 10);
+    if (Number.isInteger(id) && id > 0) {
+      return { kind: link[1].toLowerCase() === "reel" ? "reel" : "blog", id };
+    }
+  }
   const m = raw.trim().match(/(reel|blog|articol[oi]|article)\b[^:]*:\s*(\d+)/i);
   if (!m) return null;
   const id = parseInt(m[2], 10);
@@ -23,9 +34,8 @@ export function parseRef(raw: string): { kind: "reel" | "blog"; id: number } | n
   return { kind: /^reel/i.test(m[1]) ? "reel" : "blog", id };
 }
 
-export function GoToContent() {
+export function GoToContent({ onOpen }: { onOpen: (ref: ContentRef) => void }) {
   const { t } = useTranslation();
-  const navigate = useNavigate();
   const [value, setValue] = useState("");
   const [error, setError] = useState(false);
 
@@ -36,10 +46,10 @@ export function GoToContent() {
       return;
     }
     setError(false);
-    // `fromApp` tells ContentDetail that its close button has a page of ours to
-    // go back to. Without it that page cannot know, and stepping back blindly
-    // would leave the brain when the link was opened in an already-used tab.
-    navigate(`/content/${ref.kind}/${ref.id}`, { state: { fromApp: true } });
+    // Opens in place, over the chat: navigating to /content/... unmounted the
+    // page and the whole conversation with it. The route stays for links
+    // opened from outside (the MCP's `apri_nel_brain`).
+    onOpen(ref);
   };
 
   return (

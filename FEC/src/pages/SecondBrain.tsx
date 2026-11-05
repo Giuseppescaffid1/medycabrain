@@ -3,10 +3,17 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { AnimatePresence, motion } from "framer-motion";
 import { fetchCoverageMap } from "../api/strategy";
-import { fetchIdeas, updateIdeaStatus, type ContentIdea } from "../api/secondBrain";
+import {
+  fetchBlogDrafts,
+  fetchIdeas,
+  updateBlogDraftStatus,
+  updateIdeaStatus,
+  type ContentIdea,
+} from "../api/secondBrain";
 import { useJobs } from "../contexts/JobsContext";
-import { Button, EmptyState, Skeleton, fieldCls } from "../components/ui/primitives";
+import { Button, EmptyState, ErrorState, Skeleton, fieldCls } from "../components/ui/primitives";
 import { IdeaCard } from "../components/plan/IdeaCard";
+import { BlogDraftCard } from "../components/plan/BlogDraftCard";
 import { useCopy } from "../lib/clipboard";
 import { PageTransition, staggerContainer, staggerItem } from "../components/ui/motion";
 
@@ -20,13 +27,19 @@ import { PageTransition, staggerContainer, staggerItem } from "../components/ui/
 export default function SecondBrain() {
   const { t } = useTranslation();
   const qc = useQueryClient();
-  const { jobs, startPlan } = useJobs();
+  const { jobs, startPlan, starting } = useJobs();
   const [n, setN] = useState(6);
   const [theme, setTheme] = useState("");
   const { copy, state: copyState } = useCopy();
 
   const coverage = useQuery({ queryKey: ["coverage-map"], queryFn: fetchCoverageMap });
   const ideas = useQuery({ queryKey: ["ideas"], queryFn: () => fetchIdeas() });
+  const drafts = useQuery({ queryKey: ["blog-drafts"], queryFn: fetchBlogDrafts });
+  const setDraftStatus = useMutation({
+    mutationFn: (v: { id: number; status: "saved" | "dismissed" }) =>
+      updateBlogDraftStatus(v.id, v.status),
+    onSettled: () => qc.invalidateQueries({ queryKey: ["blog-drafts"] }),
+  });
   const building = jobs.some(
     (j) => j.kind === "editorial" && (j.status === "queued" || j.status === "running")
   );
@@ -107,7 +120,7 @@ export default function SecondBrain() {
                 </label>
                 <Button
                   variant="primary"
-                  loading={building}
+                  loading={building || starting}
                   onClick={() => startPlan(n, theme.trim())}
                   className="shrink-0"
                 >
@@ -125,6 +138,9 @@ export default function SecondBrain() {
                 </h2>
                 <div className="flex flex-wrap gap-2">
                   {coverage.isLoading && <Skeleton className="h-8 w-40" />}
+                  {coverage.isError && (
+                    <ErrorState compact onRetry={() => void coverage.refetch()} retrying={coverage.isFetching} />
+                  )}
                   {coverage.data?.covered.map((c) => (
                     <button
                       key={c.id}
@@ -143,6 +159,9 @@ export default function SecondBrain() {
                 </h2>
                 <div className="flex flex-wrap gap-2">
                   {coverage.isLoading && <Skeleton className="h-8 w-40" />}
+                  {coverage.isError && (
+                    <ErrorState compact onRetry={() => void coverage.refetch()} retrying={coverage.isFetching} />
+                  )}
                   {coverage.data?.opportunities.map((o) => (
                     <button
                       key={o.id}
@@ -169,7 +188,9 @@ export default function SecondBrain() {
                   </Button>
                 )}
               </div>
-              {ideas.isLoading ? (
+              {ideas.isError ? (
+                <ErrorState onRetry={() => void ideas.refetch()} retrying={ideas.isFetching} />
+              ) : ideas.isLoading ? (
                 <Skeleton className="h-48" />
               ) : visible.length === 0 ? (
                 <EmptyState message={t("plan.empty")} />
@@ -198,6 +219,32 @@ export default function SecondBrain() {
                     ))}
                   </AnimatePresence>
                 </motion.div>
+              )}
+            </section>
+
+            {/* ── Blog drafts: written from a theme page ──────────── */}
+            <section>
+              <h2 className="mb-3 text-xs font-bold uppercase tracking-wider text-muted">
+                {t("blog.draftsTitle")}{" "}
+                {(drafts.data?.length ?? 0) > 0 ? `· ${drafts.data!.length}` : ""}
+              </h2>
+              {drafts.isError ? (
+                <ErrorState onRetry={() => void drafts.refetch()} retrying={drafts.isFetching} />
+              ) : drafts.isLoading ? (
+                <Skeleton className="h-32" />
+              ) : (drafts.data?.length ?? 0) === 0 ? (
+                <EmptyState message={t("blog.draftsEmpty")} />
+              ) : (
+                <div className="flex flex-col gap-3">
+                  {drafts.data!.map((d) => (
+                    <BlogDraftCard
+                      key={d.id}
+                      draft={d}
+                      onSave={() => setDraftStatus.mutate({ id: d.id, status: "saved" })}
+                      onDismiss={() => setDraftStatus.mutate({ id: d.id, status: "dismissed" })}
+                    />
+                  ))}
+                </div>
               )}
             </section>
           </div>

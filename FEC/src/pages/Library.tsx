@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useInfiniteQuery } from "@tanstack/react-query";
 import { useParams, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { motion } from "framer-motion";
@@ -11,7 +11,8 @@ import { ArticleDetailDrawer } from "../components/articles/ArticleDetailDrawer"
 import { fetchKnowledgeDocs } from "../api/knowledge";
 import { FilterBar } from "../components/filters/FilterBar";
 import { StatBar } from "../components/layout/StatBar";
-import { Button, EmptyState, Skeleton, fieldCls } from "../components/ui/primitives";
+import { EmptyState, ErrorState, Skeleton, fieldCls } from "../components/ui/primitives";
+import { LoadMore } from "../components/ui/LoadMore";
 import { ScopeBadge } from "../components/ui/ScopeBadge";
 import { PageTransition, staggerContainer, staggerItem } from "../components/ui/motion";
 import { useDebounced } from "../lib/useDebounced";
@@ -38,24 +39,34 @@ export default function Library() {
     [filters, scope, debouncedSearch]
   );
 
-  const { data, isLoading, isFetchingNextPage, hasNextPage, fetchNextPage } =
-    useInfiniteQuery({
-      queryKey: ["reels", effectiveFilters],
-      queryFn: ({ pageParam }) => fetchReels({ ...effectiveFilters, page: pageParam }),
-      initialPageParam: 1,
-      getNextPageParam: (lastPage, allPages) =>
-        lastPage.next ? allPages.length + 1 : undefined,
-      enabled: contentType === "reel",
-    });
-
-  const docsQuery = useQuery({
-    queryKey: ["knowledge-docs", scope, debouncedSearch],
-    queryFn: () => fetchKnowledgeDocs(debouncedSearch || undefined, scope),
-    enabled: contentType === "article",
+  const reelsQuery = useInfiniteQuery({
+    queryKey: ["reels", effectiveFilters],
+    queryFn: ({ pageParam }) => fetchReels({ ...effectiveFilters, page: pageParam }),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage, allPages) =>
+      lastPage.next ? allPages.length + 1 : undefined,
+    enabled: contentType === "reel",
+    // While the next keystroke loads, keep the previous results on screen:
+    // without it every letter flashed the skeletons.
+    placeholderData: keepPreviousData,
   });
 
-  const reels = data?.pages.flatMap((p) => p.results) ?? [];
-  const total = data?.pages[0]?.count ?? 0;
+  // Articles page like reels: 903 competitor articles used to stop at 100.
+  const docsQuery = useInfiniteQuery({
+    queryKey: ["knowledge-docs", scope, debouncedSearch],
+    queryFn: ({ pageParam }) =>
+      fetchKnowledgeDocs(debouncedSearch || undefined, scope, pageParam),
+    initialPageParam: 1,
+    getNextPageParam: (lastPage, allPages) =>
+      lastPage.next ? allPages.length + 1 : undefined,
+    enabled: contentType === "article",
+    placeholderData: keepPreviousData,
+  });
+
+  const reels = reelsQuery.data?.pages.flatMap((p) => p.results) ?? [];
+  const total = reelsQuery.data?.pages[0]?.count ?? 0;
+  const docs = docsQuery.data?.pages.flatMap((p) => p.results) ?? [];
+  const docsTotal = docsQuery.data?.pages[0]?.count ?? 0;
 
   return (
     <PageTransition>
@@ -99,29 +110,48 @@ export default function Library() {
 
         <div className="flex-1 px-4 py-4 sm:px-6 sm:py-5">
           {contentType === "article" ? (
-            docsQuery.isLoading ? (
+            docsQuery.isError && !docsQuery.data ? (
+              <ErrorState
+                onRetry={() => void docsQuery.refetch()}
+                retrying={docsQuery.isFetching}
+              />
+            ) : docsQuery.isLoading ? (
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3">
                 {Array.from({ length: 6 }).map((_, i) => (
                   <Skeleton key={i} className="h-44" />
                 ))}
               </div>
-            ) : !docsQuery.data?.length ? (
+            ) : docs.length === 0 ? (
               <EmptyState message={t("articles.empty")} />
             ) : (
-              <motion.div
-                variants={staggerContainer}
-                initial="initial"
-                animate="animate"
-                className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3"
-              >
-                {docsQuery.data.map((doc, i) => (
-                  <motion.div key={doc.id} className="h-full" variants={i < 20 ? staggerItem : undefined}>
-                    <ArticleCard doc={doc} onClick={() => setOpenDoc(doc.id)} />
-                  </motion.div>
-                ))}
-              </motion.div>
+              <>
+                <motion.div
+                  variants={staggerContainer}
+                  initial="initial"
+                  animate="animate"
+                  className="grid grid-cols-1 gap-3 sm:grid-cols-2 sm:gap-4 lg:grid-cols-3"
+                >
+                  {docs.map((doc, i) => (
+                    <motion.div key={doc.id} className="h-full" variants={i < 20 ? staggerItem : undefined}>
+                      <ArticleCard doc={doc} onClick={() => setOpenDoc(doc.id)} />
+                    </motion.div>
+                  ))}
+                </motion.div>
+                <LoadMore
+                  shown={docs.length}
+                  total={docsTotal}
+                  hasMore={!!docsQuery.hasNextPage}
+                  loading={docsQuery.isFetchingNextPage}
+                  onMore={() => void docsQuery.fetchNextPage()}
+                />
+              </>
             )
-          ) : isLoading ? (
+          ) : reelsQuery.isError && !reelsQuery.data ? (
+            <ErrorState
+              onRetry={() => void reelsQuery.refetch()}
+              retrying={reelsQuery.isFetching}
+            />
+          ) : reelsQuery.isLoading ? (
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4 xl:grid-cols-5">
               {Array.from({ length: 10 }).map((_, i) => (
                 <Skeleton key={i} className="aspect-[9/16]" />
@@ -143,20 +173,13 @@ export default function Library() {
                   </motion.div>
                 ))}
               </motion.div>
-              <div className="mt-6 flex items-center justify-center gap-4">
-                <span className="text-xs font-semibold text-muted">
-                  {reels.length} / {total}
-                </span>
-                {hasNextPage && (
-                  <Button
-                    variant="secondary"
-                    onClick={() => fetchNextPage()}
-                    loading={isFetchingNextPage}
-                  >
-                    {t("library.loadMore")}
-                  </Button>
-                )}
-              </div>
+              <LoadMore
+                shown={reels.length}
+                total={total}
+                hasMore={!!reelsQuery.hasNextPage}
+                loading={reelsQuery.isFetchingNextPage}
+                onMore={() => void reelsQuery.fetchNextPage()}
+              />
             </>
           )}
         </div>

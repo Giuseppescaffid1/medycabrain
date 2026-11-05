@@ -15,12 +15,12 @@ import { PageTransition } from "../components/ui/motion";
  * detail drawer the Library already uses — no new card was designed.
  *
  * The detail endpoints answer by id alone, blind to scope, so this works for a
- * Medyca or a competitor item without knowing which side it belongs to. The one
- * piece of logic here is telling "still loading" apart from "gone": the MCP
- * cites only active content, but an old reference can point at an id that was
- * since removed, and the drawer alone would spin forever on that 404. So we
- * resolve the content first and only mount the drawer once it is in cache; a
- * failure shows a plain "not found" instead of an endless spinner.
+ * Medyca or a competitor item without knowing which side it belongs to. An
+ * excluded reel still opens (the drawer says "Escluso" and offers "Ripristina"):
+ * a 404 now means only that the id does not exist. The one piece of logic here
+ * is telling "still loading" apart from "gone", so we resolve the content first
+ * and only mount the drawer once it is in cache; a failure shows a plain "not
+ * found" instead of an endless spinner.
  *
  * "Gone" is only ever a 404. Any other failure — a 502 while gunicorn restarts,
  * the network dropping — gets its own state: telling the client the content was
@@ -59,8 +59,8 @@ export default function ContentDetail() {
     retry: false,
   });
 
-  // A bad address, or a 404 from the detail endpoint (which filters
-  // `is_active=True`), means the content really is not there.
+  // A bad address, or a 404 from the detail endpoint, means the content really
+  // is not there.
   const status = isAxiosError(query.error) ? query.error.response?.status : undefined;
   if (!valid || status === 404) {
     return (

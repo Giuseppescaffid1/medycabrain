@@ -20,7 +20,15 @@ const ANCHORS: Record<string, Pos> = {
   "root:opportunity": { x: 0, y: 620 },
 };
 
-/** Themes fan into the half-plane pointing away from the centre. */
+/** Themes in the first ring of a hub, and how many more each outer ring takes.
+ *  One arc could not hold 307 competitor themes: they landed ~8 px apart and
+ *  overlapped. Rings keep the layout deterministic and every dot clickable. */
+const FIRST_RING = 24;
+const RING_GROWTH = 8;
+const RING_GAP = 90;
+
+/** Themes fan into the half-plane pointing away from the centre, in
+ *  concentric rings once there are more than fit on one arc. */
 export function worldPositions(nodes: GraphNode[]): Record<string, Pos> {
   const pos: Record<string, Pos> = {};
   const hubs = nodes.filter((n) => n.group === "hub");
@@ -34,17 +42,29 @@ export function worldPositions(nodes: GraphNode[]): Record<string, Pos> {
     const kids = nodes.filter((n) => n.parent === h.id);
     if (!kids.length) return;
     const outward = a.x === 0 ? Math.PI / 2 : a.x < 0 ? Math.PI : 0;
-    const spread = kids.length === 1 ? 0 : Math.PI * 1.05;
-    // Radius grows with the count so a crowded world spreads instead of
-    // stacking: spacing is what makes a node clickable.
-    const radius = 340 + Math.min(kids.length, 16) * 26;
-    kids.forEach((k, i) => {
-      const t =
-        kids.length === 1
-          ? outward
-          : outward - spread / 2 + (spread * i) / (kids.length - 1);
-      pos[k.id] = { x: a.x + Math.cos(t) * radius, y: a.y + Math.sin(t) * radius };
-    });
+    const spread = Math.PI * 1.05;
+
+    let placed = 0;
+    for (let ring = 0; placed < kids.length; ring++) {
+      const capacity = FIRST_RING + ring * RING_GROWTH;
+      const inRing = kids.slice(placed, placed + capacity);
+      // Radius grows with the count so a crowded ring spreads instead of
+      // stacking: spacing is what makes a node clickable.
+      const radius = 340 + Math.min(inRing.length, 16) * 26 + ring * RING_GAP;
+      // Each ring has its own count, hence its own step: dots do not line
+      // up radially from one ring to the next.
+      const step = inRing.length > 1 ? spread / (inRing.length - 1) : 0;
+      inRing.forEach((k, i) => {
+        const t =
+          kids.length === 1
+            ? outward
+            : inRing.length === 1
+              ? outward
+              : outward - spread / 2 + step * i;
+        pos[k.id] = { x: a.x + Math.cos(t) * radius, y: a.y + Math.sin(t) * radius };
+      });
+      placed += inRing.length;
+    }
   });
 
   return pos;

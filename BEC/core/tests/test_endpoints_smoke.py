@@ -11,6 +11,8 @@ from django.contrib.auth.models import User
 from rest_framework.authtoken.models import Token
 from rest_framework.test import APITestCase
 
+from core import models
+
 ENDPOINTS = [
     "/api/v1/reels/",
     "/api/v1/accounts/",
@@ -35,6 +37,15 @@ class EndpointSmokeTests(APITestCase):
     def setUpTestData(cls):
         cls.user = User.objects.create_user("smoke", password="smoke-pass")
         cls.token = Token.objects.create(user=cls.user)
+        # One row per model whose serializer is exercised only when it has a
+        # row to serialise: DRF builds `fields` lazily, so with empty tables a
+        # misspelt field (the missing comma in BlogDraftSerializer, which made
+        # /second-brain/blog-drafts/ answer 500 for weeks) passed this test.
+        models.BlogDraft.objects.create(
+            mode="draft", cluster_label="Tiroide", title="Bozza", content_md="Testo",
+            llm_model="test-model")
+        models.ContentIdea.objects.create(argument_it="Idea")
+        models.StrategyBrief.objects.create(input_text="Tema")
 
     def setUp(self):
         self.client.credentials(HTTP_AUTHORIZATION=f"Token {self.token.key}")

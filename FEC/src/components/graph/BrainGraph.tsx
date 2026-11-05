@@ -57,6 +57,10 @@ export function BrainGraph({
   const boxRef = useRef<HTMLDivElement>(null);
   const cyRef = useRef<Core | null>(null);
   const [open, setOpen] = useState<Set<string>>(new Set());
+  // On a phone the opportunity fan (one dashed arrow pair per gap, ~300 of
+  // them) is an unreadable knot of lines at 380px. There the map shows the
+  // worlds and their themes; the arrows stay on wider screens.
+  const compact = typeof window !== "undefined" && window.innerWidth < 640;
 
   const byId = useMemo(
     () => Object.fromEntries(data.nodes.map((n) => [n.id, n])),
@@ -87,10 +91,14 @@ export function BrainGraph({
           size: SIZE[n.group] ?? 30,
           kids: (childrenOf[n.id] ?? []).length,
         },
+        // Opportunities (hundreds, packed along the bottom) show their name
+        // only on hover or tap, otherwise the labels overprint each other.
+        classes: n.group === "opportunity" || n.group === "custom" ? "quiet" : "",
         position: pos[n.id],
       })),
       ...data.edges
         .filter((e) => visibleIds.has(e.source) && visibleIds.has(e.target))
+        .filter((e) => !(compact && e.kind === "flow"))
         .map((e, i) => ({
           data: {
             id: `e${i}`,
@@ -135,6 +143,11 @@ export function BrainGraph({
           selector: 'node[group = "hub"]',
           style: { "font-size": 17, "text-valign": "center", "text-margin-y": 0,
                    "text-outline-width": 4 },
+        },
+        { selector: "node.quiet", style: { label: "" } },
+        {
+          selector: "node.quiet.peek, node.quiet:selected",
+          style: { label: "data(label)", "z-index": 10 },
         },
         {
           selector: "node:selected",
@@ -185,10 +198,12 @@ export function BrainGraph({
     cy.on("tap", (evt) => {
       if (evt.target === cy) onSelect(null);
     });
-    cy.on("mouseover", "node", () => {
+    cy.on("mouseover", "node", (evt) => {
+      evt.target.addClass("peek");
       if (boxRef.current) boxRef.current.style.cursor = "pointer";
     });
-    cy.on("mouseout", "node", () => {
+    cy.on("mouseout", "node", (evt) => {
+      evt.target.removeClass("peek");
       if (boxRef.current) boxRef.current.style.cursor = "default";
     });
 
@@ -303,8 +318,8 @@ export function BrainGraph({
         ))}
       </div>
 
-      <div className="pointer-events-none absolute bottom-3 left-3 rounded-full bg-navy/70 px-3 py-1.5 text-[11px] text-white/70 backdrop-blur sm:bottom-4 sm:left-4">
-        {t("map.hint")}
+      <div className="pointer-events-none absolute bottom-3 left-3 max-w-[calc(100%-6rem)] rounded-2xl bg-navy/70 px-3 py-1.5 text-[11px] text-white/70 backdrop-blur sm:bottom-4 sm:left-4 sm:rounded-full">
+        {compact ? t("map.hintCompact") : t("map.hint")}
       </div>
 
       <button

@@ -6,7 +6,10 @@ import { askKnowledge, type AskResult, type KnowledgeHit } from "../api/knowledg
 import { Badge, Button, fieldCls } from "../components/ui/primitives";
 import { PageTransition, EASE } from "../components/ui/motion";
 import { AnswerBody } from "../components/knowledge/AnswerBody";
-import { GoToContent } from "../components/knowledge/GoToContent";
+import { GoToContent, type ContentRef } from "../components/knowledge/GoToContent";
+import { ReelDetailDrawer } from "../components/reels/ReelDetailDrawer";
+import { ArticleDetailDrawer } from "../components/articles/ArticleDetailDrawer";
+import { errorStatus } from "../api/client";
 
 type Scope = "all" | "medyca" | "competitor";
 
@@ -55,6 +58,8 @@ export default function KnowledgeBank() {
   // scrolled to and highlighted. Inert [n] text was the old behaviour.
   const [focus, setFocus] = useState<{ msg: number; n: number } | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
+  // A content opened from "Vai a un contenuto": a drawer over the chat.
+  const [openRef, setOpenRef] = useState<ContentRef | null>(null);
 
   const ask = useMutation<AskResult, unknown, string>({
     mutationFn: (query) =>
@@ -72,8 +77,19 @@ export default function KnowledgeBank() {
           model: data.model, refProblems: data.reference_problems,
         },
       ]),
-    onError: () =>
-      setMessages((m) => [...m, { role: "assistant", content: t("common.error") }]),
+    onError: (err) => {
+      // nginx cuts a request at 180 s and answers 504; the browser's own
+      // timeout (300 s) shows up as a code without a status. Both mean "too
+      // long", and saying so lets the client rephrase instead of retrying
+      // the same question.
+      const tooLong =
+        errorStatus(err) === 504 ||
+        (err as { code?: string } | null)?.code === "ECONNABORTED";
+      setMessages((m) => [
+        ...m,
+        { role: "assistant", content: t(tooLong ? "kb.timeout" : "common.error") },
+      ]);
+    },
   });
 
   // A reply takes ~30s and does not stream; a running counter is the honest
@@ -166,7 +182,7 @@ export default function KnowledgeBank() {
          {/* Jump straight to a content the MCP cited (blog:843 / reel:199).
              This is the page "about the content", so the shortcut lives here. */}
          <div className="mt-3">
-           <GoToContent />
+           <GoToContent onOpen={setOpenRef} />
          </div>
         </div>
 
@@ -249,6 +265,15 @@ export default function KnowledgeBank() {
             <div ref={endRef} />
           </div>
         </div>
+
+        <ReelDetailDrawer
+          reelId={openRef?.kind === "reel" ? openRef.id : null}
+          onClose={() => setOpenRef(null)}
+        />
+        <ArticleDetailDrawer
+          docId={openRef?.kind === "blog" ? openRef.id : null}
+          onClose={() => setOpenRef(null)}
+        />
 
         <div className="border-t border-border bg-white/85 px-4 py-3 backdrop-blur sm:px-6">
           <form
