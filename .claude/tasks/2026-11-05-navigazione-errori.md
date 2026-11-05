@@ -3,7 +3,7 @@ id: 2026-11-05-navigazione-errori
 titolo: Pagine di consultazione: niente schermi bianchi, liste complete, scope separati
 stato: pronto
 ramo: feat/navigazione-errori
-pr: ""
+pr: "https://github.com/Giuseppescaffid1/medycabrain/pull/13"
 ticket: ""
 ---
 
