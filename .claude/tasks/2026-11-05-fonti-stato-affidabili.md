@@ -3,7 +3,7 @@ id: 2026-11-05-fonti-stato-affidabili
 titolo: Fonti, account e pagina Stato che dicono la verità
 stato: pronto
 ramo: feat/fonti-stato-affidabili
-pr: ""
+pr: "https://github.com/Giuseppescaffid1/medycabrain/pull/11"
 ticket: ""
 ---
 
