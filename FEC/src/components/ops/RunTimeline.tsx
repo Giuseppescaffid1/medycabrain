@@ -33,8 +33,10 @@ const STAGE_COLOUR: Record<string, string> = {
   scrape: "bg-secondary",
   download: "bg-warning",
   transcribe: "bg-success",
+  batch: "bg-brand/60",
   enrich: "bg-brand",
   embed: "bg-secondary/60",
+  blogscrape: "bg-success/60",
   knowledge: "bg-muted",
   cluster: "bg-heading",
 };

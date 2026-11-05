@@ -2,12 +2,18 @@ import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { apiClient } from "../api/client";
 import { Skeleton } from "../components/ui/primitives";
+import { PanelError } from "../components/manage/parts";
 import { PageTransition } from "../components/ui/motion";
 import { Operations, type OperationsData } from "../components/ops/Operations";
 import { RunTimeline, type Run } from "../components/ops/RunTimeline";
 import { LiveActivity, type Job, type Reanalysis } from "../components/ops/LiveActivity";
 import { EvalsPanel, type EvalRun } from "../components/ops/EvalsPanel";
-import { PipelineQueue, type Budget, type QueueData } from "../components/ops/PipelineQueue";
+import {
+  PipelineQueue,
+  type Budget,
+  type LastPipelineJob,
+  type QueueData,
+} from "../components/ops/PipelineQueue";
 
 interface Stage {
   key: string;
@@ -31,7 +37,15 @@ interface StatusPayload {
   budget?: Budget | null;
   totals: Record<string, number>;
   stages: Stage[];
-  jobs: { id: number; kind: string; status: string; progress: number; message: string }[];
+  jobs: {
+    id: number;
+    kind: string;
+    kind_label?: string;
+    status: string;
+    progress: number;
+    message: string;
+  }[];
+  last_pipeline_job?: LastPipelineJob | null;
   accounts: { username: string; owner_type: string; reels: number; last_scraped_at: string | null }[];
   last: Record<string, string | null>;
 }
@@ -45,7 +59,7 @@ async function fetchStatus(): Promise<StatusPayload> {
  *  its own so a long backlog can be watched without reloading. */
 export default function Status() {
   const { t } = useTranslation();
-  const { data, isLoading, dataUpdatedAt, refetch, isFetching } = useQuery({
+  const { data, isLoading, isError, dataUpdatedAt, refetch, isFetching } = useQuery({
     queryKey: ["ops-status"],
     queryFn: fetchStatus,
     refetchInterval: 5000,
@@ -85,10 +99,28 @@ export default function Status() {
 
         <div className="flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-5">
           <div className="mx-auto max-w-4xl space-y-6">
-            {isLoading || !data ? (
+            {/* react-query keeps the last good data when a refresh fails, so a
+                failure is only "the page cannot be shown" before the first
+                success; afterwards it is a thin warning above the old data. */}
+            {isLoading ? (
               <Skeleton className="h-64" />
+            ) : !data ? (
+              <PanelError message={t("status.loadError")} onRetry={() => refetch()} />
             ) : (
               <>
+                {isError && (
+                  <p
+                    role="alert"
+                    className="rounded-xl bg-warning/10 px-4 py-2 text-xs font-semibold text-warning"
+                  >
+                    {t("status.staleError", {
+                      time: new Date(dataUpdatedAt).toLocaleTimeString("it-IT", {
+                        hour: "2-digit",
+                        minute: "2-digit",
+                      }),
+                    })}
+                  </p>
+                )}
                 {/* What is moving right now — first, because it is the
                     question the page is opened to answer. */}
                 <LiveActivity
@@ -103,6 +135,7 @@ export default function Status() {
                 <PipelineQueue
                   queue={data.queue}
                   job={data.jobs.find((j) => j.kind === "pipeline")}
+                  lastJob={data.last_pipeline_job}
                   budget={data.budget}
                   onStarted={() => refetch()}
                 />
@@ -217,7 +250,7 @@ export default function Status() {
                       {data.jobs.map((j) => (
                         <div key={j.id} className="rounded-xl border border-border bg-surface p-3 shadow-card">
                           <div className="flex justify-between gap-3 text-sm">
-                            <span className="font-semibold text-navy">{j.kind}</span>
+                            <span className="font-semibold text-navy">{j.kind_label ?? j.kind}</span>
                             <span className="tabular-nums text-muted">{j.progress}%</span>
                           </div>
                           <div className="truncate text-xs text-muted">{j.message}</div>
@@ -249,7 +282,9 @@ export default function Status() {
                           <tr key={a.username} className="text-navy">
                             <td className="px-4 py-2.5">
                               @{a.username}
-                              <span className="ml-2 text-xs text-muted">{a.owner_type}</span>
+                              <span className="ml-2 text-xs text-muted">
+                                {a.owner_type === "owned" ? t("scope.medyca") : t("scope.competitor")}
+                              </span>
                             </td>
                             <td className="px-4 py-2.5 text-right tabular-nums">{a.reels}</td>
                             <td className="px-4 py-2.5 text-xs text-muted">

@@ -33,6 +33,14 @@ Known limits, so nobody reads more into the estimate than it holds:
   estimate is therefore slightly pessimistic, which is the right direction.
 - **Failed rows are not counted as work.** They stay `failed` by design and
   are not auto-retried, so they are reported separately, never inside the ETA.
+- **Stuck rows are not counted as work either — they are `blocked`.** A reel
+  can say `pending` for a stage no agent will ever give it: a transcription
+  waiting on a video that has no audio (the transcriber selects only
+  `media_status=done` with an audio file), an analysis waiting on a
+  transcription that failed. Counting them made "7 rimanenti" a number that
+  never went down, however long the page was watched. Each stage's
+  reachability below uses the same filters as its agent. Nothing is retried or
+  re-marked here: blocked rows are only counted, and shown as such.
 """
 
 from __future__ import annotations
@@ -80,6 +88,40 @@ REEL_STAGES = [
     ("enrich", ["enrich_status", "argument_status"], "Analisi dei contenuti",
      ("enriched", "arg_reels")),
 ]
+
+# Which reels a stage's agent can ever pick up — the agents' own filters, in
+# one place. A `pending` column outside this set is blocked, not queued.
+# Written as functions because each one is built from the one before it: a
+# reel still waiting to download will reach transcription once it has audio.
+def _can_transcribe() -> Q:
+    return Q(is_active=True) & (
+        Q(media_status="pending") | (Q(media_status="done") & ~Q(audio_file="")))
+
+
+def _can_enrich() -> Q:
+    return Q(is_active=True) & (
+        Q(transcribe_status__in=("done", "skipped"))
+        | (Q(transcribe_status="pending") & _can_transcribe()))
+
+
+def _can_argue() -> Q:
+    return Q(is_active=True) & (
+        Q(enrich_status="done") | (Q(enrich_status="pending") & _can_enrich()))
+
+
+_REACHABLE = {
+    "media_status": lambda: Q(is_active=True),
+    "transcribe_status": _can_transcribe,
+    "enrich_status": _can_enrich,
+    "argument_status": _can_argue,
+}
+
+# Said to the client next to the number; plain words, one per stage.
+_BLOCKED_WHY = {
+    "download": "reel esclusi dall'analisi",
+    "transcribe": "senza audio da trascrivere",
+    "enrich": "trascrizione non riuscita o mancante",
+}
 
 # Used only until the log has a productive run for that stage to measure.
 # Order-of-magnitude values from the runs recorded up to 2026-09-11.
@@ -148,17 +190,20 @@ def _reel_counts() -> dict[str, dict[str, int]]:
     """One query for every stage column, rather than one query per stage.
 
     This is served inside `/ops/status/`, which the page polls every five
-    seconds per open tab.
+    seconds per open tab. `pending` is what an agent can still pick up,
+    `blocked` is pending that none ever will (see the module docstring).
     """
     from core.models import Reel
 
     cols = [c for _k, cols, _l, _i in REEL_STAGES for c in cols]
-    agg = Reel.objects.aggregate(**{
-        f"{col}__{state}": Count("id", filter=Q(**{col: state}))
-        for col in cols for state in ("pending", "failed")
-    })
-    return {col: {"pending": agg[f"{col}__pending"] or 0,
-                  "failed": agg[f"{col}__failed"] or 0}
+    aggs = {}
+    for col in cols:
+        reachable = _REACHABLE[col]()
+        aggs[f"{col}__pending"] = Count("id", filter=Q(**{col: "pending"}) & reachable)
+        aggs[f"{col}__blocked"] = Count("id", filter=Q(**{col: "pending"}) & ~reachable)
+        aggs[f"{col}__failed"] = Count("id", filter=Q(**{col: "failed"}))
+    agg = Reel.objects.aggregate(**aggs)
+    return {col: {k: agg[f"{col}__{k}"] or 0 for k in ("pending", "blocked", "failed")}
             for col in cols}
 
 
@@ -166,8 +211,9 @@ def snapshot() -> dict:
     """What is left to process, and how long it should take.
 
     `remaining` is the headline: distinct reels with at least one stage still
-    pending. Per stage, `waiting` carries the queue forward — a reel waiting to
-    be downloaded is also waiting, later, to be transcribed.
+    pending that an agent can reach; `blocked` counts the ones that cannot.
+    Per stage, `waiting` carries the queue forward — a reel waiting to be
+    downloaded is also waiting, later, to be transcribed.
     """
     from core.models import Reel
 
@@ -179,6 +225,8 @@ def snapshot() -> dict:
     for key, cols, label, _item_keys in REEL_STAGES:
         pending = sum(counts[c]["pending"] for c in cols)
         failed = sum(counts[c]["failed"] for c in cols)
+        # max, not sum: one stuck reel can be blocked in both columns of enrich
+        blocked = max(counts[c]["blocked"] for c in cols)
         # Reels that will still arrive here from the stages before it. Each one
         # becomes as many items as this stage has columns: a reel reaching
         # `enrich` has both to be analysed and to have its claims extracted.
@@ -195,6 +243,8 @@ def snapshot() -> dict:
             "pending": pending,        # queued at this stage right now
             "waiting": items,          # items it will handle before draining
             "failed": failed,
+            "blocked": blocked,
+            "blocked_reason": _BLOCKED_WHY.get(key, "") if blocked else "",
             "seconds_per_item": round(rate, 1),
             "eta_seconds": round(eta),
             "measured": bool(rate_info),
@@ -206,14 +256,19 @@ def snapshot() -> dict:
         # rather than the sum, which would carry the same reel forward twice.
         carry_reels += max(counts[c]["pending"] for c in cols)
 
-    pending_q = Q()
+    reachable_q, pending_q = Q(), Q()
     for _k, cols, _l, _i in REEL_STAGES:
         for col in cols:
             pending_q |= Q(**{col: "pending"})
-    remaining = Reel.objects.filter(pending_q).count()
+            reachable_q |= Q(**{col: "pending"}) & _REACHABLE[col]()
+    remaining = Reel.objects.filter(reachable_q).count()
+    # Pending somewhere, and nothing it is waiting on can ever run.
+    blocked = Reel.objects.filter(pending_q).exclude(reachable_q).count()
 
     return {
         "remaining": remaining,
+        "blocked": blocked,
+        "blocked_reasons": sorted({s["blocked_reason"] for s in stages if s["blocked_reason"]}),
         "total": Reel.objects.count(),
         "eta_seconds": round(total_eta),
         # False when no stage has a measured rate yet: the UI must say the

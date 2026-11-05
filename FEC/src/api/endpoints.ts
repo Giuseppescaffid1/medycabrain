@@ -61,16 +61,57 @@ export async function removeTag(reelId: number, tagId: number) {
 }
 
 // ── Accounts ───────────────────────────────────────────────────────────
-export async function fetchAccounts(): Promise<Account[]> {
-  const { data } = await apiClient.get<Account[] | Paginated<Account>>("/accounts/");
-  return Array.isArray(data) ? data : data.results;
+/**
+ * Every row of a paginated list, following `next`. The API pages at 24, and
+ * reading only the first page silently dropped accounts 25 and 26 from the
+ * list. Capped at 50 pages so a broken `next` cannot loop forever.
+ */
+export async function fetchAllPages<T>(
+  url: string,
+  params: Record<string, unknown> = {}
+): Promise<T[]> {
+  const out: T[] = [];
+  let page = 1;
+  for (let i = 0; i < 50; i++) {
+    const { data } = await apiClient.get<T[] | Paginated<T>>(url, {
+      params: { ...params, page_size: 100, page },
+    });
+    if (Array.isArray(data)) return data;
+    out.push(...data.results);
+    if (!data.next) break;
+    page += 1;
+  }
+  return out;
 }
+
+// No parameters on purpose: react-query hands its context object to a bare
+// `queryFn: fetchAccounts`, which a `removed` flag would read as true.
+export async function fetchAccounts(): Promise<Account[]> {
+  return fetchAllPages<Account>("/accounts/");
+}
+
+/** Only the accounts the client removed — the "Rimossi" filter. */
+export async function fetchRemovedAccounts(): Promise<Account[]> {
+  return fetchAllPages<Account>("/accounts/", { removed: 1 });
+}
+
+export async function restoreAccount(id: number): Promise<Account> {
+  const { data } = await apiClient.post<Account>(`/accounts/${id}/restore/`);
+  return data;
+}
+
+export type AddAccountResult = Account & {
+  /** True when an account the client had removed was brought back instead. */
+  restored?: boolean;
+  /** Set when the Apify budget is spent: when collection resumes. */
+  collection_paused_until?: string | null;
+};
 
 export async function addAccount(
   username: string,
   ownerType: Account["owner_type"] = "competitor"
-): Promise<Account> {
-  const { data } = await apiClient.post<Account>("/accounts/", {
+): Promise<AddAccountResult> {
+  const { data } = await apiClient.post<AddAccountResult>("/accounts/", {
     username,
     owner_type: ownerType,
   });

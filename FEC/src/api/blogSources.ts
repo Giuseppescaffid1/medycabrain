@@ -1,4 +1,5 @@
 import { apiClient } from "./client";
+import { fetchAllPages } from "./endpoints";
 
 /** A blog we crawl — the TrackedAccount of the article world. */
 export interface BlogSource {
@@ -9,6 +10,8 @@ export interface BlogSource {
   owner_type: "owned" | "competitor";
   language: string;
   is_active: boolean;
+  /** Set when the client removed it: hidden from the list, restorable. */
+  removed_at?: string | null;
   notes: string;
   crawl_interval_h: number;
   strategy: string;
@@ -20,16 +23,25 @@ export interface BlogSource {
 }
 
 export async function fetchBlogSources(): Promise<BlogSource[]> {
-  const { data } = await apiClient.get("/blog-sources/", { params: { page_size: 100 } });
-  return Array.isArray(data) ? data : data.results;
+  return fetchAllPages<BlogSource>("/blog-sources/");
+}
+
+/** Only the sources the client removed — the "Rimossi" filter. */
+export async function fetchRemovedBlogSources(): Promise<BlogSource[]> {
+  return fetchAllPages<BlogSource>("/blog-sources/", { removed: 1 });
+}
+
+export async function restoreBlogSource(id: number): Promise<BlogSource> {
+  const { data } = await apiClient.post<BlogSource>(`/blog-sources/${id}/restore/`);
+  return data;
 }
 
 export async function addBlogSource(v: {
   name: string;
   index_url: string;
   owner_type: "owned" | "competitor";
-}): Promise<BlogSource> {
-  const { data } = await apiClient.post<BlogSource>("/blog-sources/", v);
+}): Promise<BlogSource & { restored?: boolean }> {
+  const { data } = await apiClient.post<BlogSource & { restored?: boolean }>("/blog-sources/", v);
   return data;
 }
 

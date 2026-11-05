@@ -1,3 +1,5 @@
+import re
+
 from django.contrib.auth.models import User
 from rest_framework import serializers
 
@@ -20,21 +22,68 @@ class AnnotationSerializer(serializers.ModelSerializer):
         fields = ["is_favorite", "is_inspiration", "note", "tags", "updated_at"]
 
 
+# A source "removed" by the client is hidden, not deleted (see
+# TrackedAccount.removed_at). Adding it again therefore restores the old row;
+# the serializers below flag that case on `self.restorable` and the viewset
+# does the restoring, so a validator never writes to the database.
+
+def blog_url_variants(url: str) -> list[str]:
+    """Every spelling of one blog address the client could have typed.
+
+    http/https, with/without `www.`, with/without a trailing slash: the same
+    page to a person, three different strings to a UNIQUE column. Hosts differ
+    in case only by accident, so they are lower-cased first. The path stays as
+    given — two sections of one site (/blog and /menopausa) are separate,
+    legitimate sources.
+    """
+    from urllib.parse import urlsplit
+
+    u = urlsplit(url)
+    host = (u.hostname or "").lower()
+    bare = host[4:] if host.startswith("www.") else host
+    port = f":{u.port}" if u.port else ""
+    path = u.path.rstrip("/")
+    query = f"?{u.query}" if u.query else ""
+    out = []
+    for scheme in ("https", "http"):
+        for h in (bare, f"www.{bare}"):
+            for slash in ("", "/"):
+                out.append(f"{scheme}://{h}{port}{path}{slash}{query}")
+    return out
+
+
+def normalise_blog_url(value: str) -> str:
+    """The form a blog address is stored in: no fragment, no trailing slash,
+    host in lower case. The `www.`/scheme choice is kept as pasted — some sites
+    answer to only one of them and the crawler must hit the one it was given."""
+    from urllib.parse import urlsplit, urlunsplit
+
+    u = urlsplit((value or "").strip())
+    netloc = u.netloc.lower()
+    return urlunsplit((u.scheme.lower(), netloc, u.path.rstrip("/"), u.query, "")).rstrip("/")
+
+
 class BlogSourceSerializer(serializers.ModelSerializer):
     document_count = serializers.IntegerField(read_only=True, required=False)
 
+    # The model's own "already exists" message names the table in English. The
+    # real check, which also knows about address variants and removed sources,
+    # is validate_index_url.
     class Meta:
         model = models.BlogSource
         fields = [
             "id", "name", "index_url", "site_url", "owner_type", "language",
-            "is_active", "notes", "crawl_interval_h", "strategy",
+            "is_active", "removed_at", "notes", "crawl_interval_h", "strategy",
             "last_crawled_at", "consecutive_failures", "last_error",
             "document_count", "created_at",
         ]
         read_only_fields = [
             "site_url", "strategy", "language", "last_crawled_at",
-            "consecutive_failures", "last_error", "created_at",
+            "consecutive_failures", "last_error", "created_at", "removed_at",
         ]
+        extra_kwargs = {"index_url": {"validators": []}}
+
+    restorable = None
 
     def validate_index_url(self, value):
         """The URL a crawler will visit on a schedule: only public http(s).
@@ -46,14 +95,43 @@ class BlogSourceSerializer(serializers.ModelSerializer):
 
         from core.external_ref import RefusedURL, _check_public
 
-        value = (value or "").strip().rstrip("/")
+        value = normalise_blog_url(value)
         if urlparse(value).scheme not in ("http", "https"):
             raise serializers.ValidationError("Sono ammessi solo indirizzi http e https.")
         try:
             _check_public(value)
         except RefusedURL as exc:
             raise serializers.ValidationError(str(exc)) from exc
+
+        # Not a UniqueValidator: that compares the exact string, so
+        # ".../blog/" and ".../blog" both passed and the INSERT then failed
+        # with a 500. Compare every spelling instead.
+        clash = models.BlogSource.objects.filter(index_url__in=blog_url_variants(value))
+        if self.instance is not None:
+            clash = clash.exclude(pk=self.instance.pk)
+        found = min(clash, key=lambda b: b.removed_at is not None, default=None)
+        if found is not None:
+            if found.removed_at is None:
+                raise serializers.ValidationError(
+                    f"Questo blog è già tra le fonti: «{found.name}».")
+            if self.instance is not None:
+                # An edit cannot "restore" another row: the save would break
+                # the UNIQUE column and answer 500.
+                raise serializers.ValidationError(
+                    "Questa fonte esiste già tra le rimosse: ripristinala dal filtro «Rimossi».")
+            self.restorable = found
         return value
+
+    def validate(self, attrs):
+        found = self.restorable
+        wanted = attrs.get("owner_type")
+        if found is not None and wanted and wanted != found.owner_type:
+            # Silently flipping owned/competitor would mix Medyca's content
+            # with a competitor's — the one thing this platform never does.
+            was = "Medyca" if found.owner_type == "owned" else "Competitor"
+            raise serializers.ValidationError({"owner_type": (
+                f"Questa fonte era registrata come {was}: ripristinala dal filtro «Rimossi».")})
+        return attrs
 
     def create(self, validated_data):
         from urllib.parse import urlparse
@@ -63,6 +141,25 @@ class BlogSourceSerializer(serializers.ModelSerializer):
         return super().create(validated_data)
 
 
+_IG_USERNAME = re.compile(r"^[a-z0-9._]{1,30}$")
+
+
+def clean_instagram_username(raw: str) -> str:
+    """What the client typed → the bare lower-case handle, or "" if it is not one.
+
+    Accepts "@medyca", " Medyca ", and a pasted profile link
+    (https://www.instagram.com/medyca.menopausa/?hl=it). Instagram handles are
+    case-insensitive, and the column is unique and case-sensitive: without the
+    lower-casing "Medyca" and "medyca" would be two accounts.
+    """
+    raw = (raw or "").strip()
+    m = re.search(r"instagram\.com/([^/?#\s]+)", raw, re.IGNORECASE)
+    if m:
+        raw = m.group(1)
+    raw = raw.strip().lstrip("@").strip("/").lower()
+    return raw if _IG_USERNAME.match(raw) else ""
+
+
 class AccountSerializer(serializers.ModelSerializer):
     reel_count = serializers.IntegerField(read_only=True, required=False)
 
@@ -70,13 +167,44 @@ class AccountSerializer(serializers.ModelSerializer):
         model = models.TrackedAccount
         fields = [
             "id", "username", "display_name", "ig_user_id", "profile_pic_url",
-            "bio", "followers_count", "owner_type", "is_active", "notes",
-            "last_scraped_at", "reel_count", "created_at",
+            "bio", "followers_count", "owner_type", "is_active", "removed_at",
+            "notes", "last_scraped_at", "reel_count", "created_at",
         ]
         read_only_fields = [
             "ig_user_id", "profile_pic_url", "bio", "followers_count",
-            "last_scraped_at", "created_at", "display_name",
+            "last_scraped_at", "created_at", "display_name", "removed_at",
         ]
+        extra_kwargs = {"username": {"validators": []}}
+
+    restorable = None
+
+    def validate_username(self, value):
+        clean = clean_instagram_username(value)
+        if not clean:
+            raise serializers.ValidationError(
+                "Scrivi solo lo username, per esempio medyca.menopausa.")
+        clash = models.TrackedAccount.objects.filter(username=clean)
+        if self.instance is not None:
+            clash = clash.exclude(pk=self.instance.pk)
+        found = clash.first()
+        if found is not None:
+            if found.removed_at is None:
+                raise serializers.ValidationError("Questo account è già monitorato.")
+            if self.instance is not None:
+                # Same as for blogs: an edit would hit the UNIQUE column (500).
+                raise serializers.ValidationError(
+                    "Questa fonte esiste già tra le rimosse: ripristinala dal filtro «Rimossi».")
+            self.restorable = found
+        return clean
+
+    def validate(self, attrs):
+        found = self.restorable
+        wanted = attrs.get("owner_type")
+        if found is not None and wanted and wanted != found.owner_type:
+            was = "Medyca" if found.owner_type == "owned" else "Competitor"
+            raise serializers.ValidationError({"owner_type": (
+                f"Questo account era registrato come {was}: ripristinalo dal filtro «Rimossi».")})
+        return attrs
 
 
 class TranscriptSerializer(serializers.ModelSerializer):
@@ -301,3 +429,18 @@ class CustomTopicSerializer(serializers.ModelSerializer):
                   "medyca_matches", "competitor_matches", "doc_matches",
                   "competitor_doc_matches"]
         read_only_fields = ["created_at"]
+        extra_kwargs = {"label": {"validators": []}}
+
+    def validate_label(self, value):
+        # The column is unique but case-sensitive, so "Tiroide" and "tiroide"
+        # were both accepted and then mapped twice. Compare without case.
+        value = " ".join((value or "").split())
+        if not value:
+            raise serializers.ValidationError("Scrivi il nome del tema.")
+        clash = models.CustomTopic.objects.filter(label__iexact=value)
+        if self.instance is not None:
+            clash = clash.exclude(pk=self.instance.pk)
+        found = clash.first()
+        if found is not None:
+            raise serializers.ValidationError(f"Questo tema esiste già («{found.label}»).")
+        return value

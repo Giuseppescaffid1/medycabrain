@@ -40,7 +40,14 @@ CONTENT_FORMATS = [
 
 
 class TrackedAccount(models.Model):
-    """A public Instagram account we scrape reels from."""
+    """A public Instagram account we scrape reels from.
+
+    Two different "off" states share `is_active=False`, told apart by
+    `removed_at`: PAUSED (`removed_at` empty — scraping stops, the row stays in
+    the list) and REMOVED (`removed_at` set — hidden from the list, restorable
+    from the "Rimossi" filter). Never hard-deleted: `Reel.account` cascades, so
+    a delete would take every reel, transcript and analysis with it.
+    """
 
     username = models.CharField(max_length=64, unique=True)
     display_name = models.CharField(max_length=255, blank=True, default="")
@@ -56,6 +63,7 @@ class TrackedAccount(models.Model):
         default="competitor",
     )
     is_active = models.BooleanField(default=True)
+    removed_at = models.DateTimeField(null=True, blank=True)
     notes = models.TextField(blank=True, default="")
     # scrape_state: {"end_cursor": str, "consecutive_failures": int,
     #                "last_error": str, "provider": str}
@@ -398,6 +406,10 @@ class BlogSource(models.Model):
     or feed to use, and which URL shapes are articles. The LLM classification
     that fills it is paid once per site; every later crawl reads the cache
     and costs nothing.
+
+    Paused vs removed, as on TrackedAccount: both have `is_active=False`, and
+    only `removed_at` says the client took the source away. Removing also
+    hides its documents; restoring or un-pausing brings them back.
     """
 
     OWNER_CHOICES = [("competitor", "competitor"), ("owned", "owned")]
@@ -411,6 +423,7 @@ class BlogSource(models.Model):
                                   default="competitor")
     language = models.CharField(max_length=8, blank=True, default="")
     is_active = models.BooleanField(default=True)
+    removed_at = models.DateTimeField(null=True, blank=True)
     notes = models.TextField(blank=True, default="")
 
     # Cadence lives on the row, not in the crontab: our own blog matters

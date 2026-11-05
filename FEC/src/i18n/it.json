@@ -247,11 +247,15 @@
     "placeholder": "Es. tiroide, osteoporosi, Bijuva…",
     "add": "Aggiungi tema",
     "mapping": "Sto mappando i contenuti sul tema…",
-    "addError": "Impossibile aggiungere il tema (forse esiste già).",
+    "addError": "Impossibile aggiungere il tema.",
     "empty": "Nessun tema personalizzato ancora. Aggiungine uno qui sopra.",
     "noMatches": "Nessun contenuto trovato su questo tema in questo ambito: è un tema scoperto — un'opportunità.",
     "confirmRemove": "Rimuovere il tema \"{{label}}\"? I contenuti restano.",
-    "autoTitle": "Temi scoperti automaticamente"
+    "autoTitle": "Temi scoperti automaticamente",
+    "loadError": "Non riesco a caricare i temi. Non è vuoto: è un problema di collegamento.",
+    "added_one": "Tema aggiunto: {{count}} contenuto trovato.",
+    "added_other": "Tema aggiunto: {{count}} contenuti trovati.",
+    "removedOk": "Tema rimosso."
   },
   "clusters": {
     "title": "Cluster tematici",
@@ -282,15 +286,22 @@
     "lastScraped": "Ultimo aggiornamento",
     "status": "Stato",
     "active": "Attivo",
-    "inactive": "Inattivo",
+    "inactive": "In pausa",
     "never": "Mai",
     "remove": "Rimuovi",
-    "confirmRemove": "Rimuovere questo account dal monitoraggio? I reel già raccolti restano.",
+    "confirmRemove": "Rimuovere questo account dal monitoraggio? I reel già raccolti restano. Lo ritrovi nel filtro «Rimossi» e puoi ripristinarlo quando vuoi.",
     "igSection": "Account Instagram",
     "igSubtitle": "I profili di cui raccogliamo i reel, ogni notte.",
     "ownerLabel": "Di chi è",
     "usernameRequired": "Scrivi lo username Instagram, per esempio medyca.menopausa.",
-    "empty": "Nessun account monitorato. Usa «Aggiungi account» qui sopra per seguire il primo profilo Instagram."
+    "empty": "Nessun account monitorato. Usa «Aggiungi account» qui sopra per seguire il primo profilo Instagram.",
+    "loadError": "Non riesco a caricare gli account. Non è vuoto: è un problema di collegamento.",
+    "added": "Account aggiunto.",
+    "addedBudgetPaused": "Account aggiunto. La raccolta dei suoi reel riparte il {{date}}, quando si rinnova il budget.",
+    "restoredOnAdd": "@{{name}} era stato rimosso: l'ho ripristinato.",
+    "paused": "Account messo in pausa.",
+    "resumed": "Account riattivato.",
+    "removedOk": "Account rimosso. Lo trovi nel filtro «Rimossi»."
   },
   "common": {
     "loading": "Caricamento…",
@@ -352,7 +363,7 @@
         "Brief e bozze — pronti da usare, con le fonti citate",
         "Knowledge Bank — tutto il materiale, ricercabile",
         "Connettore per Claude (MCP): la banca dati interrogabile direttamente dal tuo Claude, in sola lettura",
-        "Fonti — la pagina da cui aggiungi e metti in pausa i profili Instagram, i blog e le interviste caricate, una scheda per tipo"
+        "Fonti — la pagina da cui aggiungi, metti in pausa, rimuovi e ripristini i profili Instagram, i blog e le interviste caricate, una scheda per tipo. Una fonte rimossa non si perde: la ritrovi nel filtro «Rimossi»"
       ]
     },
     "goto": {
@@ -378,6 +389,9 @@
         "Instagram non lascia più vedere l'elenco dei post di un profilo a chi non è collegato: per questo l'elenco passa da un servizio esterno. Il tuo account non è coinvolto.",
         "La raccolta ha un budget di 5 dollari al mese che si rinnova da solo. Al raggiungimento del tetto si ferma solo la raccolta di reel nuovi: tutto il resto della piattaforma continua a funzionare.",
         "Vengono raccolti solo i reel: storie, caroselli e foto singole no.",
+        "Qualche reel non si può lavorare: per esempio un video senza audio non può essere trascritto. Nella pagina «Stato pipeline» questi reel sono chiamati «non lavorabili» e non contano nell'attesa stimata.",
+        "Se il budget della raccolta è finito, puoi aggiungere un profilo Instagram ma i suoi reel arrivano solo dopo il rinnovo: il modulo te lo dice con la data.",
+        "Se aggiungi un blog con un indirizzo già presente (anche scritto in modo un po' diverso, con o senza www o con la barra finale) la piattaforma te lo dice. Due sezioni diverse dello stesso sito, per esempio /blog e /menopausa, restano invece due fonti separate.",
         "Undici dei ventitré account monitorati non hanno mai restituito contenuti (uno ha il nome scritto male) o non pubblicano da oltre un anno: vanno ripuliti.",
         "Dei video presi da un link non sempre riusciamo a ottenere l'audio: né YouTube né Vimeo lo danno a chi non è collegato con un account, e il collegamento che usiamo ogni tanto scade. In quel caso il video resta comunque in piattaforma con titolo, canale e link — cercabile e citabile come riferimento — ma senza trascrizione, e la riga te lo dice in chiaro. Se ti serve la trascrizione subito, carica il file video a mano."
       ]
@@ -466,7 +480,9 @@
     "pending": "in coda",
     "failed": "falliti",
     "refresh": "Aggiorna",
-    "updatedAt": "aggiornato alle"
+    "updatedAt": "aggiornato alle",
+    "loadError": "Non riesco a leggere lo stato della pipeline. Controlla la connessione e riprova.",
+    "staleError": "Ultimo aggiornamento non riuscito: mostro i dati delle {{time}}."
   },
   "flow": {
     "title": "Il flusso, passo per passo",
@@ -574,11 +590,20 @@
     "crawlNow": "Scansiona ora",
     "failed": "in errore",
     "reactivateHint": "Disattivata dopo errori ripetuti: clicca per riattivarla e riprovare",
-    "confirmRemove": "Rimuovere questo blog? Gli articoli già importati verranno esclusi dall'analisi.",
+    "confirmRemove": "Rimuovere questo blog? Gli articoli già importati verranno esclusi dall'analisi. Lo ritrovi nel filtro «Rimossi» e puoi ripristinarlo.",
     "nameLabel": "Nome",
     "urlLabel": "Indirizzo della pagina articoli",
     "urlRequired": "Incolla l'indirizzo della pagina articoli, per esempio https://esempio.it/blog.",
-    "urlInvalid": "Questo indirizzo non è valido. Copialo dalla barra del browser, per esempio https://esempio.it/blog."
+    "urlInvalid": "Questo indirizzo non è valido. Copialo dalla barra del browser, per esempio https://esempio.it/blog.",
+    "loadError": "Non riesco a caricare i blog. Non è vuoto: è un problema di collegamento.",
+    "added": "Blog aggiunto: la scansione è partita.",
+    "restoredOnAdd": "«{{name}}» era stato rimosso: l'ho ripristinato e la scansione è ripartita.",
+    "paused": "Blog messo in pausa.",
+    "resumed": "Blog riattivato: gli articoli tornano nell'analisi.",
+    "removedOk": "Blog rimosso. Lo trovi nel filtro «Rimossi».",
+    "restoredOk": "Blog ripristinato: la scansione è ripartita.",
+    "crawlStarted": "Scansione avviata.",
+    "reactivated": "Blog riattivato: provo subito a rileggerlo."
   },
   "articles": {
     "tab": "Articoli",
@@ -647,8 +672,12 @@
     "failedCount_one": "{{count}} fallito",
     "failedCount_other": "{{count}} falliti",
     "budget": "Budget della raccolta",
-    "budgetLeft": "Restano ${{left}} in questo mese. Si rinnova il {{renews}}. La raccolta si ferma da sola prima di superare il tetto.",
-    "budgetStopped": "Tetto raggiunto: la raccolta di nuovi reel è ferma fino al rinnovo. Tutto il resto continua a funzionare."
+    "budgetLeft": "Restano ${{left}} in questo mese. La raccolta riparte il {{renews}}. Si ferma da sola prima di superare il tetto.",
+    "budgetStopped": "Tetto raggiunto: la raccolta di nuovi reel è ferma. Riparte il {{renews}}, quando si rinnova il budget. Tutto il resto continua a funzionare.",
+    "blocked_one": "{{count}} reel non lavorabile: non conta nell'attesa",
+    "blocked_other": "{{count}} reel non lavorabili: non contano nell'attesa",
+    "lastDone": "Ultimo aggiornamento ({{when}}): {{message}}",
+    "lastFailed": "Ultimo aggiornamento non riuscito ({{when}}): {{why}}"
   },
   "manage": {
     "title": "Gestione fonti",
@@ -664,6 +693,12 @@
     "filterAll": "Tutti",
     "showing": "{{shown}} di {{total}}",
     "noResults": "Nessun risultato. Prova a cambiare la ricerca o il filtro.",
-    "toggleHint": "Clicca per attivare o mettere in pausa"
+    "toggleHint": "Clicca per attivare o mettere in pausa",
+    "retry": "Riprova",
+    "removed": "Rimossi",
+    "restore": "Ripristina",
+    "restored": "Ripristinato.",
+    "noneRemoved": "Non hai rimosso niente. Quello che rimuovi si ritrova qui e si può ripristinare.",
+    "actionFailed": "Non sono riuscito a farlo. Riprova tra un momento."
   }
 }

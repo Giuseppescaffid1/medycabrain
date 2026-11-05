@@ -76,14 +76,25 @@ Not drawn (no hard FKs, they are outputs / bookkeeping): `BlogDraft`, `ContentId
 
 **`TrackedAccount`** — `tracked_accounts`. A public Instagram account we scrape.
 - Key fields: `username` (unique), `display_name`, `ig_user_id`, `followers_count`,
-  **`owner_type`** (`owned`/`competitor`), `is_active`, `scrape_state` (JSON: `end_cursor`,
-  `consecutive_failures`, `last_error`, `provider`), `last_scraped_at`.
-- Relationship: `1:N` → `Reel` (`related_name="reels"`).
+  **`owner_type`** (`owned`/`competitor`), `is_active`, **`removed_at`**, `scrape_state` (JSON:
+  `end_cursor`, `consecutive_failures`, `last_error`, `provider`), `last_scraped_at`.
+- **Paused vs removed.** Both have `is_active=False`; only `removed_at` tells them apart.
+  *Paused* (`removed_at` empty): scraping stops, the row stays in the list as «In pausa».
+  *Removed* (`removed_at` set, migration `0023_removed_at`): hidden from the default list,
+  shown by `?removed=1` («Rimossi»), restorable. Adding the same username again restores the
+  row instead of failing. Never hard-deleted: `Reel.account` is CASCADE, so a delete would
+  take every reel, transcript and analysis with it. The reels of a removed account stay
+  active and stay in the analysis.
+- Relationship: `1:N` → `Reel` (`related_name="reels"`). The ER diagram above shows
+  relations only, not columns, so `removed_at` changes no line in it.
 
 **`BlogSource`** — `blog_sources`. A crawled blog. The article-world analog of a tracked
 account (deliberately *not* a shared base class).
 - Key fields: `name`, `site_url`, `index_url` (unique), **`owner_type`**, `language`,
-  `is_active`, `crawl_interval_h` (default `168` = weekly), `strategy`
+  `is_active`, **`removed_at`** (same pause/removed split as `TrackedAccount`; removing a
+  blog also sets its `KnowledgeDocument`s `is_active=False`, restoring or resuming it brings
+  them back — the opposite of an account, on purpose: a removed competitor blog must leave
+  the gap analysis), `crawl_interval_h` (default `168` = weekly), `strategy`
   (`unknown|sitemap|feed|index|mixed`), **`discovery`** (JSON — learned sitemap/feed + article
   URL patterns, classified once per site by an LLM and cached), `crawl_state` (JSON),
   `consecutive_failures`, `last_error`, `last_crawled_at`.
