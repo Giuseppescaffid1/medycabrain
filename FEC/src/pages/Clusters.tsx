@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { fetchClusters, type Scope } from "../api/endpoints";
 import type { Cluster } from "../api/types";
 import { motion } from "framer-motion";
-import { Badge, EmptyState, Skeleton } from "../components/ui/primitives";
+import { Badge, EmptyState, ErrorState, Skeleton } from "../components/ui/primitives";
 import { ScopeBadge } from "../components/ui/ScopeBadge";
 import { PageTransition, staggerContainer, staggerItem } from "../components/ui/motion";
 import { CustomTopics } from "../components/clusters/CustomTopics";
@@ -15,7 +15,7 @@ export default function Clusters() {
   const navigate = useNavigate();
   const { scope: scopeParam } = useParams();
   const scope: Scope = scopeParam === "medyca" ? "medyca" : "competitor";
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch, isFetching } = useQuery({
     queryKey: ["clusters", scope],
     queryFn: () => fetchClusters(scope),
   });
@@ -33,7 +33,9 @@ export default function Clusters() {
           <h2 className="mb-3 text-xs font-bold uppercase tracking-wider text-muted">
             {t("topics.autoTitle")}
           </h2>
-          {isLoading ? (
+          {isError ? (
+            <ErrorState onRetry={() => void refetch()} retrying={isFetching} />
+          ) : isLoading ? (
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
               {Array.from({ length: 6 }).map((_, i) => (
                 <Skeleton key={i} className="h-48" />

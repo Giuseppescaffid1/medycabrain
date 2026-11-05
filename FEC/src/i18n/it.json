@@ -45,7 +45,9 @@
     "benchmark": "Medyca vs Competitor",
     "benchmarkHint": "View medie per reel. I competitor hanno reach più alta: per questo pesiamo tutto in modo normalizzato.",
     "topContent": "Contenuti che performano di più",
-    "noClusters": "Nessun cluster ancora per questo scope."
+    "noClusters": "Nessun cluster ancora per questo scope.",
+    "showAll": "Mostra tutti i temi ({{count}})",
+    "showTop": "Mostra solo i primi {{count}}"
   },
   "timeline": {
     "title": "Timeline pubblicazioni",
@@ -155,7 +157,8 @@
     "untitled": "(senza titolo)",
     "typeAll": "Tutto",
     "typeReel": "Reel",
-    "typeArticle": "Articoli"
+    "typeArticle": "Articoli",
+    "timeout": "La risposta ha superato il tempo massimo (3 minuti). Prova una domanda più breve o un ambito più stretto: per esempio solo Medyca, oppure solo i reel."
   },
   "jobs": {
     "ideation": "Generazione idee di contenuto",
@@ -164,7 +167,12 @@
     "strategy": "Analisi strategica",
     "strategy_draft": "Generazione bozza",
     "done": "Completata",
-    "failed": "Fallita"
+    "failed": "Fallita",
+    "editorial": "Piano editoriale",
+    "blogsource_discover": "Scansione del blog",
+    "upload_transcribe": "Trascrizione del file caricato",
+    "link_transcribe": "Trascrizione del video da link",
+    "startFailed": "Non sono riuscito ad avviare il lavoro:"
   },
   "blog": {
     "articles": "articoli",
@@ -177,7 +185,11 @@
     "theme": "Tema",
     "readAll": "Leggi tutto",
     "collapse": "Comprimi",
-    "copy": "Copia"
+    "copy": "Copia",
+    "modeExpand": "Espansione di un articolo",
+    "modeDraft": "Bozza nuova",
+    "draftsTitle": "Bozze del blog",
+    "draftsEmpty": "Nessuna bozza ancora. Apri un tema e premi «Genera bozza» o «Espandi articolo»: il risultato compare qui."
   },
   "login": {
     "title": "Accedi",
@@ -186,7 +198,9 @@
     "password": "Password",
     "submit": "Entra",
     "error": "Credenziali non valide.",
-    "loading": "Accesso in corso…"
+    "loading": "Accesso in corso…",
+    "unreachable": "Il server non risponde: controlla la connessione e riprova.",
+    "serverError": "Errore del server (codice {{code}}). Riprova tra poco."
   },
   "stats": {
     "accounts": "Account",
@@ -262,7 +276,8 @@
     "arguments": "Argomenti del tema",
     "saidInNReels": "detto in {{count}} reel",
     "backToClusters": "Torna ai cluster",
-    "inNArticles": "in {{count}} articoli"
+    "inNArticles": "in {{count}} articoli",
+    "notFound": "Questo tema non esiste più o l'indirizzo non è valido."
   },
   "workspace": {
     "title": "Workspace",
@@ -295,7 +310,9 @@
   "common": {
     "loading": "Caricamento…",
     "error": "Si è verificato un errore.",
-    "close": "Chiudi"
+    "close": "Chiudi",
+    "loadError": "Non riesco a caricare questi dati adesso. Riprova tra poco.",
+    "retry": "Riprova"
   },
   "content": {
     "gotoLabel": "Vai a un contenuto",
@@ -352,12 +369,13 @@
         "Brief e bozze — pronti da usare, con le fonti citate",
         "Knowledge Bank — tutto il materiale, ricercabile",
         "Connettore per Claude (MCP): la banca dati interrogabile direttamente dal tuo Claude, in sola lettura",
-        "Fonti — la pagina da cui aggiungi e metti in pausa i profili Instagram, i blog e le interviste caricate, una scheda per tipo"
+        "Fonti — la pagina da cui aggiungi e metti in pausa i profili Instagram, i blog e le interviste caricate, una scheda per tipo",
+        "Bozze del blog — gli articoli scritti partendo da un tema (nuovi o ampliamenti) compaiono in fondo alla pagina Second Brain: li leggi, li copi, li tieni o li scarti"
       ]
     },
     "goto": {
       "title": "Aprire un contenuto da un riferimento",
-      "body": "Quando fai domande a Claude tramite il connettore, ogni contenuto citato arriva con il suo titolo, di chi è (Medyca, un competitor o un riferimento) e un link che si apre qui dentro — per esempio «Metodo Marion Gluck — Medyca». Clicca il link e vedi subito la scheda del contenuto: titolo, fonte, testo o trascrizione e il link all'originale. Se hai in mano solo un codice tipo blog:843 o reel:199 (magari da una risposta vecchia), apri la pagina «Chiedi alla Knowledge Bank»: in alto trovi il campo «Vai a un contenuto». Incolla lì il codice — va bene anche se davanti c'è un numero di citazione, per esempio «blog 2:843» — e premi Apri. Se il codice non è chiaro, o il contenuto è stato rimosso, te lo diciamo con un messaggio semplice. Se invece è la piattaforma a non rispondere sul momento, te lo diciamo in modo diverso — il contenuto c'è ancora — e ti diamo un bottone per riprovare. Per aprire un link devi essere già dentro la piattaforma: se non lo sei, ti chiede prima di entrare."
+      "body": "Quando fai domande a Claude tramite il connettore, ogni contenuto citato arriva con il suo titolo, di chi è (Medyca, un competitor o un riferimento) e un link che si apre qui dentro — per esempio «Metodo Marion Gluck — Medyca». Clicca il link e vedi subito la scheda del contenuto: titolo, fonte, testo o trascrizione e il link all'originale. Se il link che hai copiato è quello che ti ha dato Claude, incollalo così com'è nel campo «Vai a un contenuto», in alto nella pagina «Chiedi alla Knowledge Bank»: la scheda si apre sopra la chat, senza cancellare la conversazione. Se hai in mano solo un codice tipo blog:843 o reel:199 (magari da una risposta vecchia), incolla lo stesso codice nello stesso campo — va bene anche se davanti c'è un numero di citazione, per esempio «blog 2:843» — e premi Apri. Se il codice non è chiaro, o il contenuto è stato rimosso, te lo diciamo con un messaggio semplice. Se invece è la piattaforma a non rispondere sul momento, te lo diciamo in modo diverso — il contenuto c'è ancora — e ti diamo un bottone per riprovare. Se apri un link senza essere entrato, la piattaforma ti chiede di accedere e poi ti porta direttamente al contenuto."
     },
     "download": {
       "title": "Schema della pipeline",
@@ -379,7 +397,9 @@
         "La raccolta ha un budget di 5 dollari al mese che si rinnova da solo. Al raggiungimento del tetto si ferma solo la raccolta di reel nuovi: tutto il resto della piattaforma continua a funzionare.",
         "Vengono raccolti solo i reel: storie, caroselli e foto singole no.",
         "Undici dei ventitré account monitorati non hanno mai restituito contenuti (uno ha il nome scritto male) o non pubblicano da oltre un anno: vanno ripuliti.",
-        "Dei video presi da un link non sempre riusciamo a ottenere l'audio: né YouTube né Vimeo lo danno a chi non è collegato con un account, e il collegamento che usiamo ogni tanto scade. In quel caso il video resta comunque in piattaforma con titolo, canale e link — cercabile e citabile come riferimento — ma senza trascrizione, e la riga te lo dice in chiaro. Se ti serve la trascrizione subito, carica il file video a mano."
+        "Dei video presi da un link non sempre riusciamo a ottenere l'audio: né YouTube né Vimeo lo danno a chi non è collegato con un account, e il collegamento che usiamo ogni tanto scade. In quel caso il video resta comunque in piattaforma con titolo, canale e link — cercabile e citabile come riferimento — ma senza trascrizione, e la riga te lo dice in chiaro. Se ti serve la trascrizione subito, carica il file video a mano.",
+        "Se una pagina non riesce a caricare i dati, vedi un messaggio chiaro con il pulsante «Riprova»: una lista vuota vuol dire che non c'è niente, mai che qualcosa si è rotto.",
+        "Nella mappa del Second Brain i temi oltre i primi si dispongono in cerchi concentrici attorno al loro gruppo: così nessuno si sovrappone, anche quando sono centinaia."
       ]
     },
     "models": {
@@ -665,5 +685,13 @@
     "showing": "{{shown}} di {{total}}",
     "noResults": "Nessun risultato. Prova a cambiare la ricerca o il filtro.",
     "toggleHint": "Clicca per attivare o mettere in pausa"
+  },
+  "boundary": {
+    "pageTitle": "Questa pagina ha avuto un problema",
+    "pageBody": "Il resto della piattaforma funziona. Prova a ricaricare la pagina; se capita ancora, torna alla Home e riprova da lì.",
+    "home": "Torna alla Home",
+    "appTitle": "La piattaforma ha avuto un problema",
+    "appBody": "Non è andato perso niente. Ricarica la pagina per ripartire.",
+    "reload": "Ricarica"
   }
 }

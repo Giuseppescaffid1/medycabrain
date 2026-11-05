@@ -54,15 +54,28 @@ export async function fetchKnowledgeDoc(id: number): Promise<KnowledgeDocDetail>
   return data;
 }
 
+/** One page of the article list. The page used to take the first 100 and stop:
+ *  903 competitor articles showed as 100, with nothing saying so. */
 export async function fetchKnowledgeDocs(
-  search?: string,
-  scope: "medyca" | "competitor" = "medyca"
-): Promise<KnowledgeDoc[]> {
-  const { data } = await apiClient.get<Paginated<KnowledgeDoc> | KnowledgeDoc[]>(
-    "/knowledge/documents/",
-    { params: { search: search || undefined, scope, page_size: 100 } }
-  );
-  return Array.isArray(data) ? data : data.results;
+  search: string | undefined,
+  scope: "medyca" | "competitor",
+  page = 1
+): Promise<Paginated<KnowledgeDoc>> {
+  const { data } = await apiClient.get<Paginated<KnowledgeDoc>>("/knowledge/documents/", {
+    params: { search: search || undefined, scope, page, page_size: 48 },
+  });
+  return data;
+}
+
+/** The articles of one cluster (its own scope is implied by the cluster). */
+export async function fetchClusterDocs(
+  clusterId: number,
+  page = 1
+): Promise<Paginated<KnowledgeDoc>> {
+  const { data } = await apiClient.get<Paginated<KnowledgeDoc>>("/knowledge/documents/", {
+    params: { cluster: clusterId, page, page_size: 30 },
+  });
+  return data;
 }
 
 export async function searchKnowledge(query: string, topK = 6): Promise<KnowledgeHit[]> {

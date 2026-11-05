@@ -114,6 +114,8 @@ export interface Cluster {
   has_blog: boolean;
   reel_count: number;
   doc_count: number;
+  /** The side this cluster really belongs to, whatever the URL says. */
+  scope: "medyca" | "competitor";
 }
 
 export interface ClusterArgument {

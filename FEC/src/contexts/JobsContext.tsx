@@ -26,6 +26,12 @@ interface JobsState {
   startDraft: (briefId: number) => Promise<void>;
   startPlan: (n?: number, theme?: string) => Promise<void>;
   dismiss: (id: number) => void;
+  /** True from the click until the server answers: disable the button now,
+   *  or a double click queues the same job twice. */
+  starting: boolean;
+  /** Why the last start was refused, for the bar to show; null when fine. */
+  lastError: string | null;
+  clearError: () => void;
 }
 
 const JobsContext = createContext<JobsState | undefined>(undefined);
@@ -35,6 +41,9 @@ const KEEP_FINISHED_MS = 6000; // keep a done/failed job visible briefly
 export function JobsProvider({ children }: { children: ReactNode }) {
   const qc = useQueryClient();
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [starting, setStarting] = useState(false);
+  const [lastError, setLastError] = useState<string | null>(null);
+  const startingRef = useRef(false);
   const timer = useRef<number | null>(null);
   const finishedAt = useRef<Record<number, number>>({});
 
@@ -65,6 +74,17 @@ export function JobsProvider({ children }: { children: ReactNode }) {
           if (final.kind === "ideation" || final.kind === "editorial")
             qc.invalidateQueries({ queryKey: ["ideas"] });
           if (final.kind === "blog") qc.invalidateQueries({ queryKey: ["blog-drafts"] });
+          // Keys of the upload and blog-source panels (other screens, read in
+          // UploadPanel.tsx / BlogSourcesPanel.tsx): a finished transcription
+          // or crawl must show up in their lists without a manual reload.
+          if (final.kind === "upload_transcribe" || final.kind === "link_transcribe") {
+            qc.invalidateQueries({ queryKey: ["uploads"] });
+            qc.invalidateQueries({ queryKey: ["knowledge-docs"] });
+          }
+          if (final.kind === "blogsource_discover") {
+            qc.invalidateQueries({ queryKey: ["blog-sources"] });
+            qc.invalidateQueries({ queryKey: ["knowledge-docs"] });
+          }
           if (final.kind === "strategy" || final.kind === "strategy_draft")
             qc.invalidateQueries({ queryKey: ["briefs"] });
           qc.invalidateQueries({ queryKey: ["stats"] });
@@ -99,32 +119,59 @@ export function JobsProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => () => clearTimer(), []);
 
+  // A reload mid-job used to make the bar forget it: nothing asked the server
+  // what was running until the client started something new.
+  useEffect(() => {
+    poll();
+  }, [poll]);
+
   const registerJob = useCallback((job: Job) => {
     setJobs((prev) => [job, ...prev.filter((j) => j.id !== job.id)]);
     if (!timer.current) timer.current = window.setInterval(poll, POLL_MS);
     poll();
   }, [poll]);
 
-  const startPlan = useCallback(async (n = 6, theme = "") => {
-    const { startPlanJob } = await import("../api/secondBrain");
-    registerJob(await startPlanJob(n, theme));
-  }, [registerJob]);
+  // One guard for every start*: ignore a second click while the first is in
+  // flight, and turn a refusal into a message instead of an unhandled
+  // rejection (the button used to just do nothing).
+  const start = useCallback(
+    async (fn: () => Promise<Job>) => {
+      if (startingRef.current) return;
+      startingRef.current = true;
+      setStarting(true);
+      setLastError(null);
+      try {
+        registerJob(await fn());
+      } catch (e) {
+        const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+        setLastError(detail || (e as Error)?.message || "errore");
+      } finally {
+        startingRef.current = false;
+        setStarting(false);
+      }
+    },
+    [registerJob]
+  );
 
-  const startIdeation = useCallback(async (n = 8) => {
-    registerJob(await startIdeationJob(n));
-  }, [registerJob]);
+  const startPlan = useCallback(
+    (n = 6, theme = "") =>
+      start(async () => (await import("../api/secondBrain")).startPlanJob(n, theme)),
+    [start]
+  );
 
-  const startClusterBlog = useCallback(async (clusterId: number) => {
-    registerJob(await startClusterBlogJob(clusterId));
-  }, [registerJob]);
+  const startIdeation = useCallback((n = 8) => start(() => startIdeationJob(n)), [start]);
 
-  const startStrategy = useCallback(async (input: string, sourceKind = "input") => {
-    registerJob(await analyzeInput(input, sourceKind));
-  }, [registerJob]);
+  const startClusterBlog = useCallback(
+    (clusterId: number) => start(() => startClusterBlogJob(clusterId)),
+    [start]
+  );
 
-  const startDraft = useCallback(async (briefId: number) => {
-    registerJob(await generateDraft(briefId));
-  }, [registerJob]);
+  const startStrategy = useCallback(
+    (input: string, sourceKind = "input") => start(() => analyzeInput(input, sourceKind)),
+    [start]
+  );
+
+  const startDraft = useCallback((briefId: number) => start(() => generateDraft(briefId)), [start]);
 
   const dismiss = useCallback((id: number) => {
     setJobs((prev) => prev.filter((j) => j.id !== id));
@@ -133,7 +180,8 @@ export function JobsProvider({ children }: { children: ReactNode }) {
   return (
     <JobsContext.Provider
       value={{ jobs, startIdeation, startClusterBlog, startStrategy, startDraft,
-        startPlan, dismiss }}
+        startPlan, dismiss, starting, lastError,
+        clearError: () => setLastError(null) }}
     >
       {children}
     </JobsContext.Provider>

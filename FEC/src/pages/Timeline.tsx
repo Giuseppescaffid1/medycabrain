@@ -1,17 +1,38 @@
-import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { keepPreviousData, useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { fetchReels, type Scope } from "../api/endpoints";
-import type { ReelListItem } from "../api/types";
+import { fetchEngagementOverTime } from "../api/analytics";
 import { ReelCard } from "../components/reels/ReelCard";
 import { ReelDetailDrawer } from "../components/reels/ReelDetailDrawer";
-import { EmptyState, Skeleton } from "../components/ui/primitives";
+import { EmptyState, ErrorState, Skeleton } from "../components/ui/primitives";
+import { LoadMore } from "../components/ui/LoadMore";
 import { ScopeBadge } from "../components/ui/ScopeBadge";
 import { PageTransition } from "../components/ui/motion";
 
+/** The first/last instant of a YYYY-MM month, as the naive local date-time the
+ *  backend reads in its own timezone (the one TruncMonth buckets by). */
+function monthBounds(key: string): { posted_after: string; posted_before: string } {
+  const [y, m] = key.split("-").map(Number);
+  const last = new Date(y, m, 0).getDate();
+  return {
+    posted_after: `${key}-01T00:00:00`,
+    posted_before: `${key}-${String(last).padStart(2, "0")}T23:59:59`,
+  };
+}
+
+// Without a month: everything with a date, newest first. The bound also keeps
+// out reels with no date, which Postgres would otherwise sort first.
+const ALL_DATED = { posted_after: "2000-01-01T00:00:00" };
+
 /** A publication timeline: what was posted, and when. A month histogram you
- *  can click to see the reels of that month. */
+ *  can click to see the reels of that month.
+ *
+ *  The histogram comes from the analytics endpoint (one count per month, for
+ *  the whole scope); the grid below pages through the reels. The page used to
+ *  fetch 400 reels, got the 200 OLDEST (the API caps at 200) and drew the
+ *  histogram from them, so the recent months were missing. */
 export default function Timeline() {
   const { t } = useTranslation();
   const { scope: scopeParam } = useParams();
@@ -19,30 +40,31 @@ export default function Timeline() {
   const [selected, setSelected] = useState<string | null>(null);
   const [openReel, setOpenReel] = useState<number | null>(null);
 
-  const { data, isLoading } = useQuery({
-    queryKey: ["timeline", scope],
-    queryFn: () => fetchReels({ scope, ordering: "posted_at", page_size: 400 }),
+  // Same key as Analytics: one request serves both pages.
+  const monthsQuery = useQuery({
+    queryKey: ["an-time", scope],
+    queryFn: () => fetchEngagementOverTime(scope),
   });
+  const months = monthsQuery.data ?? [];
+  const totalPublished = months.reduce((n, m) => n + m.reels, 0);
+  const maxCount = Math.max(1, ...months.map((m) => m.reels));
 
-  const reels = useMemo(
-    () => (data?.results ?? []).filter((r) => r.posted_at),
-    [data]
-  );
-
-  // Group by month (YYYY-MM), chronological.
-  const months = useMemo(() => {
-    const map = new Map<string, ReelListItem[]>();
-    for (const r of reels) {
-      const key = r.posted_at!.slice(0, 7); // YYYY-MM
-      (map.get(key) ?? map.set(key, []).get(key)!).push(r);
-    }
-    return [...map.entries()].sort(([a], [b]) => a.localeCompare(b));
-  }, [reels]);
-
-  const maxCount = Math.max(1, ...months.map(([, rs]) => rs.length));
-  const shown = selected
-    ? reels.filter((r) => r.posted_at!.slice(0, 7) === selected)
-    : reels.slice().reverse(); // newest first when nothing selected
+  const grid = useInfiniteQuery({
+    queryKey: ["timeline", scope, selected],
+    queryFn: ({ pageParam }) =>
+      fetchReels({
+        scope,
+        ordering: "-posted_at",
+        page_size: 40,
+        page: pageParam,
+        ...(selected ? monthBounds(selected) : ALL_DATED),
+      }),
+    initialPageParam: 1,
+    getNextPageParam: (last, all) => (last.next ? all.length + 1 : undefined),
+    placeholderData: keepPreviousData,
+  });
+  const shown = grid.data?.pages.flatMap((p) => p.results) ?? [];
+  const shownTotal = grid.data?.pages[0]?.count ?? 0;
 
   return (
     <PageTransition>
@@ -54,9 +76,14 @@ export default function Timeline() {
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-4 sm:px-6 sm:py-5">
-        {isLoading ? (
+        {monthsQuery.isError ? (
+          <ErrorState
+            onRetry={() => void monthsQuery.refetch()}
+            retrying={monthsQuery.isFetching}
+          />
+        ) : monthsQuery.isLoading ? (
           <Skeleton className="h-44" />
-        ) : reels.length === 0 ? (
+        ) : months.length === 0 ? (
           <EmptyState message={t("timeline.empty")} />
         ) : (
           <>
@@ -67,22 +94,22 @@ export default function Timeline() {
                   {t("timeline.perMonth")}
                 </span>
                 <span className="text-xs text-muted">
-                  {reels.length} {t("timeline.published")} ·{" "}
-                  {fmtMonth(months[0]?.[0])} – {fmtMonth(months[months.length - 1]?.[0])}
+                  {totalPublished} {t("timeline.published")} ·{" "}
+                  {fmtMonth(months[0]?.month)} – {fmtMonth(months[months.length - 1]?.month)}
                 </span>
               </div>
               <div className="flex items-end gap-1.5 overflow-x-auto pb-1" style={{ minHeight: 140 }}>
-                {months.map(([key, rs]) => {
-                  const active = selected === key;
+                {months.map((m) => {
+                  const active = selected === m.month;
                   return (
                     <button
-                      key={key}
-                      onClick={() => setSelected(active ? null : key)}
+                      key={m.month}
+                      onClick={() => setSelected(active ? null : m.month)}
                       className="group flex min-w-[34px] flex-1 flex-col items-center gap-1"
-                      title={`${fmtMonth(key)}: ${rs.length}`}
+                      title={`${fmtMonth(m.month)}: ${m.reels}`}
                     >
                       <span className={"text-[10px] font-semibold " + (active ? "text-heading" : "text-muted")}>
-                        {rs.length}
+                        {m.reels}
                       </span>
                       <div
                         className={
@@ -91,10 +118,10 @@ export default function Timeline() {
                             ? "bg-secondary"
                             : "bg-secondary/40 group-hover:bg-secondary/70")
                         }
-                        style={{ height: Math.round((rs.length / maxCount) * 96) + 4 }}
+                        style={{ height: Math.round((m.reels / maxCount) * 96) + 4 }}
                       />
                       <span className={"text-[9px] " + (active ? "text-heading" : "text-muted/80")}>
-                        {fmtMonthShort(key)}
+                        {fmtMonthShort(m.month)}
                       </span>
                     </button>
                   );
@@ -113,13 +140,35 @@ export default function Timeline() {
                     {t("timeline.showAll")}
                   </button>
                 )}
-                <span className="text-xs text-muted/80">{shown.length}</span>
               </div>
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4 xl:grid-cols-5">
-                {shown.map((reel) => (
-                  <ReelCard key={reel.id} reel={reel} onClick={() => setOpenReel(reel.id)} />
-                ))}
-              </div>
+              {grid.isError && !grid.data ? (
+                <ErrorState
+                  compact
+                  onRetry={() => void grid.refetch()}
+                  retrying={grid.isFetching}
+                />
+              ) : grid.isLoading ? (
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4 xl:grid-cols-5">
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <Skeleton key={i} className="aspect-[9/16]" />
+                  ))}
+                </div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4 xl:grid-cols-5">
+                    {shown.map((reel) => (
+                      <ReelCard key={reel.id} reel={reel} onClick={() => setOpenReel(reel.id)} />
+                    ))}
+                  </div>
+                  <LoadMore
+                    shown={shown.length}
+                    total={shownTotal}
+                    hasMore={!!grid.hasNextPage}
+                    loading={grid.isFetchingNextPage}
+                    onMore={() => void grid.fetchNextPage()}
+                  />
+                </>
+              )}
             </div>
           </>
         )}

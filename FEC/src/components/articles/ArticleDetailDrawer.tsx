@@ -2,8 +2,9 @@ import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { AnimatePresence, motion } from "framer-motion";
+import { errorStatus } from "../../api/client";
 import { fetchKnowledgeDoc, type KnowledgeDocDetail } from "../../api/knowledge";
-import { Badge, Spinner } from "../ui/primitives";
+import { Badge, ErrorState, Spinner } from "../ui/primitives";
 import { AnswerBody } from "../knowledge/AnswerBody";
 import { formatDate } from "../../lib/utils";
 
@@ -23,7 +24,7 @@ export function ArticleDetailDrawer({
   onClose: () => void;
 }) {
   const { t } = useTranslation();
-  const { data: doc, isLoading } = useQuery({
+  const { data: doc, isLoading, isError, error, refetch, isFetching } = useQuery({
     queryKey: ["knowledge-doc", docId],
     queryFn: () => fetchKnowledgeDoc(docId!),
     enabled: docId != null,
@@ -65,7 +66,13 @@ export function ArticleDetailDrawer({
               </button>
             </div>
 
-            {isLoading || !doc ? (
+            {isError ? (
+              errorStatus(error) === 404 ? (
+                <ErrorState message={t("content.notFound")} />
+              ) : (
+                <ErrorState onRetry={() => void refetch()} retrying={isFetching} />
+              )
+            ) : isLoading || !doc ? (
               <Spinner label={t("common.loading")} />
             ) : (
               <Body doc={doc} />
@@ -85,9 +92,15 @@ function Body({ doc }: { doc: KnowledgeDocDetail }) {
     <div className="flex flex-col gap-5 p-5">
       <div>
         <div className="mb-2 flex flex-wrap items-center gap-2">
+          {/* Whose article it is comes from owner_type, never from the source:
+              14 competitor articles have no source, and the old fallback
+              labelled them "Medyca". */}
           <Badge className={comp ? "bg-warning/10 text-warning" : "bg-secondary/10 text-secondary"}>
-            {doc.source?.name || "Medyca"}
+            {comp ? t("scope.competitor") : t("scope.medyca")}
           </Badge>
+          {doc.source?.name && (
+            <Badge className="bg-white text-muted">{doc.source.name}</Badge>
+          )}
           {doc.primary_topic && (
             <Badge className="bg-surface text-heading">{doc.primary_topic}</Badge>
           )}

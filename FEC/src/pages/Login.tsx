@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { isAxiosError } from "axios";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../contexts/AuthContext";
 import { Button, fieldCls } from "../components/ui/primitives";
@@ -19,8 +20,13 @@ export default function Login() {
     setLoading(true);
     try {
       await login(username, password);
-    } catch {
-      setError(t("login.error"));
+    } catch (err) {
+      // "Credenziali non valide" for everything made a server that was down
+      // look like a mistyped password.
+      const status = isAxiosError(err) ? err.response?.status : undefined;
+      if (status === 400 || status === 401 || status === 403) setError(t("login.error"));
+      else if (!isAxiosError(err) || !err.response) setError(t("login.unreachable"));
+      else setError(t("login.serverError", { code: status }));
     } finally {
       setLoading(false);
     }

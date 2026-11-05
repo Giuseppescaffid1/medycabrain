@@ -121,7 +121,10 @@ export function AnswerBody({
         },
       }}
     >
-      {linkCitations(content)}
+      {/* [n] becomes a button only where something answers the click. In an
+          article or a draft there is no source list to jump to, and a button
+          that does nothing reads as broken. */}
+      {onCite ? linkCitations(content) : content}
     </ReactMarkdown>
   );
 }

@@ -144,6 +144,7 @@ class ReelDetailSerializer(serializers.ModelSerializer):
             "thumbnail_url", "audio_file", "audio_info", "instagram_url",
             "transcript", "enrichment", "annotation", "arguments",
             "media_status", "transcribe_status", "enrich_status", "argument_status",
+            "is_active",
         ]
 
     def get_arguments(self, obj):
@@ -156,17 +157,34 @@ class ReelDetailSerializer(serializers.ModelSerializer):
 
 
 class ClusterSerializer(serializers.ModelSerializer):
+    """One cluster card.
+
+    The list used to cost four queries per cluster (1230 for the 307 competitor
+    clusters, 3.2 s). Now the counts are annotated by the view and the
+    thumbnails arrive in one batch through the context; a cluster serialised
+    alone (retrieve) falls back to the per-object queries, which is one cluster.
+    """
+
     preview_thumbs = serializers.SerializerMethodField()
     has_blog = serializers.SerializerMethodField()
     reel_count = serializers.SerializerMethodField()
     doc_count = serializers.SerializerMethodField()
+    scope = serializers.SerializerMethodField()
 
     class Meta:
         model = models.TopicCluster
         fields = ["id", "label_it", "description_it", "size", "keywords", "position",
-                  "preview_thumbs", "has_blog", "reel_count", "doc_count"]
+                  "preview_thumbs", "has_blog", "reel_count", "doc_count", "scope"]
+
+    def get_scope(self, obj):
+        # "owned" is Medyca; anything else falls on the competitor side, never
+        # on Medyca's: an unexpected value must not leak into the owned view.
+        return "medyca" if obj.run.scope == "owned" else "competitor"
 
     def get_preview_thumbs(self, obj):
+        batch = self.context.get("preview_thumbs")
+        if batch is not None:
+            return batch.get(obj.id, [])
         thumbs = (
             models.Reel.objects.filter(cluster_assignments__cluster=obj)
             .exclude(thumbnail_file="")
@@ -175,12 +193,18 @@ class ClusterSerializer(serializers.ModelSerializer):
         return list(thumbs)
 
     def get_has_blog(self, obj):
+        if hasattr(obj, "has_blog_n"):
+            return obj.has_blog_n
         return obj.doc_assignments.filter(document__isnull=False).exists()
 
     def get_reel_count(self, obj):
+        if hasattr(obj, "reel_count_n"):
+            return obj.reel_count_n
         return obj.reel_assignments.count()
 
     def get_doc_count(self, obj):
+        if hasattr(obj, "doc_count_n"):
+            return obj.doc_count_n
         return obj.doc_assignments.count()
 
 
@@ -188,11 +212,10 @@ class BlogDraftSerializer(serializers.ModelSerializer):
     class Meta:
         model = models.BlogDraft
         fields = ["id", "mode", "cluster_label", "title", "content_md",
-                  "source_refs", "status", "created_at"
-            "llm_model",
+                  "source_refs", "status", "created_at", "llm_model",
         ]
         read_only_fields = ["mode", "cluster_label", "title", "content_md",
-                            "source_refs", "created_at"]
+                            "source_refs", "created_at", "llm_model"]
 
 
 class StrategyBriefSerializer(serializers.ModelSerializer):

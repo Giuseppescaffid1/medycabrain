@@ -128,10 +128,12 @@ link** (a doctor interview; a TV episode on YouTube or Vimeo kept as reference).
   **`media_status`, `transcribe_status`, `enrich_status`, `argument_status`**, plus
   `media_attempts`, `last_error`, `is_active`. These are what let the pipeline re-run: a stage
   only touches rows whose column is `pending`.
+- **Index `reels_caption_fts_gin`** — GIN on `SearchVector("caption", config="italian")` (migration `0023_search_indexes`). Expression index, no new column: the library search must use exactly the same expression (config included) or Postgres ignores it.
 
 **`Transcript`** — `transcripts`. **1:1** with `Reel`.
 - `text`, `language` (default `it`), `segments` (JSON `[{start,end,text}]`), `model_name`,
   `audio_duration_s`.
+- **Index `transcripts_text_fts_gin`** — GIN on `SearchVector("text", config="italian")` (migration `0023`). Before it, every search computed `to_tsvector` over 13 MB of text on the fly.
 
 **`Enrichment`** — `enrichments`. **1:1** with `Reel`. What the LLM extracted.
 - `summary_it`, `topics` (JSON list), `hook_text`, `hook_analysis_it`, `target_audience_it`,

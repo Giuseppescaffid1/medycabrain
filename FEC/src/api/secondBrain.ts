@@ -1,4 +1,4 @@
-import { apiClient } from "./client";
+import { apiClient, fetchAllPages } from "./client";
 import type { Job } from "./jobs";
 
 export interface SourceRef {
@@ -30,11 +30,9 @@ export interface ContentIdea {
 }
 
 export async function fetchIdeas(status?: string): Promise<ContentIdea[]> {
-  const { data } = await apiClient.get<ContentIdea[] | { results: ContentIdea[] }>(
-    "/second-brain/ideas/",
-    { params: { status } }
-  );
-  return Array.isArray(data) ? data : data.results;
+  // The page treats ideas as one list with optimistic updates, so it takes
+  // them all (an infinite scroll here would complicate for no gain).
+  return fetchAllPages<ContentIdea>("/second-brain/ideas/", { status });
 }
 
 export async function generateIdeas(n = 8): Promise<ContentIdea[]> {
@@ -64,14 +62,12 @@ export interface BlogDraft {
   content_md: string;
   source_refs: SourceRef[];
   status: "proposed" | "saved" | "dismissed";
+  llm_model?: string;
   created_at: string;
 }
 
 export async function fetchBlogDrafts(): Promise<BlogDraft[]> {
-  const { data } = await apiClient.get<BlogDraft[] | { results: BlogDraft[] }>(
-    "/second-brain/blog-drafts/"
-  );
-  return Array.isArray(data) ? data : data.results;
+  return fetchAllPages<BlogDraft>("/second-brain/blog-drafts/");
 }
 
 export async function updateBlogDraftStatus(
