@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { fetchReels, fetchTags, type ReelFilters } from "../api/endpoints";
 import { ReelCard } from "../components/reels/ReelCard";
 import { ReelDetailDrawer } from "../components/reels/ReelDetailDrawer";
-import { EmptyState, Skeleton } from "../components/ui/primitives";
+import { EmptyState, ErrorState, Skeleton } from "../components/ui/primitives";
+import { LoadMore } from "../components/ui/LoadMore";
 import { PageTransition } from "../components/ui/motion";
 
 type TabKey = "favorites" | "inspiration" | "tags";
@@ -19,16 +20,20 @@ export default function Workspace() {
 
   const filters: ReelFilters =
     tab === "favorites"
-      ? { favorite: true, page_size: 60 }
+      ? { favorite: true, page_size: 48 }
       : tab === "inspiration"
-        ? { inspiration: true, page_size: 60 }
-        : { tag: tagId, page_size: 60 };
+        ? { inspiration: true, page_size: 48 }
+        : { tag: tagId, page_size: 48 };
 
-  const { data, isLoading } = useQuery({
+  // Favourites can outgrow one page: page them, and say how many there are.
+  const reelsQuery = useInfiniteQuery({
     queryKey: ["workspace", tab, tagId],
-    queryFn: () => fetchReels(filters),
+    queryFn: ({ pageParam }) => fetchReels({ ...filters, page: pageParam }),
+    initialPageParam: 1,
+    getNextPageParam: (last, all) => (last.next ? all.length + 1 : undefined),
     enabled: tab !== "tags" || tagId != null,
   });
+  const reels = reelsQuery.data?.pages.flatMap((p) => p.results) ?? [];
 
   const tabs: { key: TabKey; label: string }[] = [
     { key: "favorites", label: t("workspace.favorites") },
@@ -81,20 +86,34 @@ export default function Workspace() {
       </div>
 
       <div className="flex-1 px-4 py-4 sm:px-6 sm:py-5">
-        {isLoading ? (
+        {reelsQuery.isError ? (
+          <ErrorState
+            onRetry={() => void reelsQuery.refetch()}
+            retrying={reelsQuery.isFetching}
+          />
+        ) : reelsQuery.isLoading ? (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4 xl:grid-cols-5">
             {Array.from({ length: 5 }).map((_, i) => (
               <Skeleton key={i} className="aspect-[9/16]" />
             ))}
           </div>
-        ) : !data || data.results.length === 0 ? (
+        ) : reels.length === 0 ? (
           <EmptyState message={t("workspace.empty")} />
         ) : (
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4 xl:grid-cols-5">
-            {data.results.map((reel) => (
-              <ReelCard key={reel.id} reel={reel} onClick={() => setOpenReel(reel.id)} />
-            ))}
-          </div>
+          <>
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 md:grid-cols-4 xl:grid-cols-5">
+              {reels.map((reel) => (
+                <ReelCard key={reel.id} reel={reel} onClick={() => setOpenReel(reel.id)} />
+              ))}
+            </div>
+            <LoadMore
+              shown={reels.length}
+              total={reelsQuery.data?.pages[0]?.count ?? 0}
+              hasMore={!!reelsQuery.hasNextPage}
+              loading={reelsQuery.isFetchingNextPage}
+              onMore={() => void reelsQuery.fetchNextPage()}
+            />
+          </>
         )}
       </div>
 

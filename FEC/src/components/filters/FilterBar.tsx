@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { fetchAccounts, fetchClusters, fetchTags, type Scope } from "../../api/endpoints";
 import type { ReelFilters } from "../../api/endpoints";
+import { formatLabel } from "../../lib/utils";
 
 const FORMATS = [
   "talking_head", "voiceover", "tutorial", "testimonianza",
@@ -55,7 +56,7 @@ export function FilterBar({
       >
         <option value="">{t("library.allFormats")}</option>
         {FORMATS.map((f) => (
-          <option key={f} value={f}>{t(`reel.${f}`, f)}</option>
+          <option key={f} value={f}>{formatLabel(f)}</option>
         ))}
       </select>
 
@@ -104,6 +105,15 @@ export function FilterBar({
         onClick={() => set({ inspiration: filters.inspiration ? undefined : true })}
       >
         💡 {t("library.onlyInspiration")}
+      </ChipToggle>
+
+      {/* An excluded reel leaves every list; this is the way back to it, to
+          restore it from its drawer. */}
+      <ChipToggle
+        active={!!filters.excluded}
+        onClick={() => set({ excluded: filters.excluded ? undefined : true })}
+      >
+        🚫 {t("library.showExcluded")}
       </ChipToggle>
 
       <button

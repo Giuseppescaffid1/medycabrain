@@ -30,8 +30,13 @@ export function ArticleCard({
         <Badge
           className={comp ? "bg-warning/10 text-warning" : "bg-secondary/10 text-secondary"}
         >
-          {doc.source?.name || (comp ? t("scope.competitor") : "Medyca")}
+          {comp ? t("scope.competitor") : t("scope.medyca")}
         </Badge>
+        {doc.source?.name && (
+          <span className="min-w-0 truncate text-[11px] font-semibold text-muted">
+            {doc.source.name}
+          </span>
+        )}
         {doc.language && doc.language !== "it" && (
           <Badge className="bg-surface text-muted uppercase">{doc.language}</Badge>
         )}

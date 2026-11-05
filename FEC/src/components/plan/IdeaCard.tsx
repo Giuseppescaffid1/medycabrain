@@ -203,7 +203,7 @@ export function IdeaCard({
 
 /** A control that says what it did. The label swaps on success and swaps
  *  back, so a click always produces something the eye can catch. */
-function ActionButton({
+export function ActionButton({
   onClick, state, label, doneLabel, errorLabel, icon, tone = "secondary", className,
 }: {
   onClick: () => void;
@@ -256,26 +256,26 @@ const stroke = {
   strokeLinecap: "round" as const, strokeLinejoin: "round" as const,
 };
 
-const IconCopy = () => (
+export const IconCopy = () => (
   <svg width="15" height="15" viewBox="0 0 24 24" {...stroke} aria-hidden>
     <rect x="9" y="9" width="12" height="12" rx="2" />
     <path d="M5 15V5a2 2 0 0 1 2-2h10" />
   </svg>
 );
 
-const IconCheck = () => (
+export const IconCheck = () => (
   <svg width="15" height="15" viewBox="0 0 24 24" {...stroke} aria-hidden>
     <path d="m4 12.5 5 5L20 6.5" />
   </svg>
 );
 
-const IconX = () => (
+export const IconX = () => (
   <svg width="15" height="15" viewBox="0 0 24 24" {...stroke} aria-hidden>
     <path d="M6 6l12 12M18 6L6 18" />
   </svg>
 );
 
-const IconStarSmall = ({ filled }: { filled?: boolean }) => (
+export const IconStarSmall = ({ filled }: { filled?: boolean }) => (
   <svg width="15" height="15" viewBox="0 0 24 24" {...stroke}
        fill={filled ? "currentColor" : "none"} aria-hidden>
     <path d="m12 3.6 2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z" />

@@ -16,7 +16,7 @@ from django.db.models import Avg, Count, Sum
 from django.db.models.functions import TruncMonth
 
 from core.models import ClusterRun, Reel, ReelClusterAssignment, TopicCluster
-from core.weighting import account_medians, normalized_engagement, raw_engagement
+from core.weighting import LIKE_BLEND, account_medians, normalized_engagement, raw_engagement
 
 SCOPE_MAP = {"medyca": "owned", "owned": "owned", "competitor": "competitor"}
 
@@ -70,7 +70,7 @@ def engagement_over_time(scope: str) -> list[dict]:
 
 def top_content(scope: str, limit: int = 8) -> list[dict]:
     medians = account_medians()
-    reels = list(_reels(scope).select_related("account", "enrichment")[:400])
+    reels = list(_reels(scope).select_related("account", "enrichment"))
     scored = sorted(reels, key=lambda r: normalized_engagement(r, medians), reverse=True)
     out = []
     for r in scored[:limit]:
@@ -95,22 +95,33 @@ def cluster_performance(scope: str) -> list[dict]:
     if not run:
         return []
     medians = account_medians()
+    # One query for the whole run, grouped here. It used to ask for the reels
+    # of each cluster in turn: 310 queries, 2.6 s, for 233 clusters.
+    rows = (
+        ReelClusterAssignment.objects
+        .filter(run=run, cluster__isnull=False, reel__is_active=True)
+        .values_list("cluster_id", "reel__account_id", "reel__view_count", "reel__like_count")
+    )
+    by_cluster: dict[int, list[tuple]] = {}
+    for cid, account_id, views, likes in rows:
+        by_cluster.setdefault(cid, []).append((account_id, views or 0, likes or 0))
     out = []
     for c in run.clusters.all().order_by("-size"):
-        reels = list(
-            Reel.objects.filter(cluster_assignments__cluster=c, is_active=True)
-            .select_related("account")
-        )
-        if not reels:
+        members = by_cluster.get(c.id)
+        if not members:
             continue
-        weights = [normalized_engagement(r, medians) for r in reels]
-        views = [r.view_count or 0 for r in reels]
+        weights = []
+        for account_id, views, likes in members:
+            med = medians.get(account_id, 0.0)
+            raw = float(views) + LIKE_BLEND * float(likes)
+            # same rule as weighting.normalized_engagement
+            weights.append(round(raw / med, 3) if med > 0 else 1.0)
         out.append({
             "id": c.id,
             "label": c.label_it,
-            "reels": len(reels),
+            "reels": len(members),
             "avg_weight": round(sum(weights) / len(weights), 2),
-            "avg_views": round(sum(views) / len(views)),
+            "avg_views": round(sum(m[1] for m in members) / len(members)),
         })
     out.sort(key=lambda x: x["avg_weight"], reverse=True)
     return out

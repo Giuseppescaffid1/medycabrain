@@ -16,12 +16,20 @@ type Scope = "medyca" | "competitor";
  *  where the pages already take it from, so navigation and page state cannot
  *  disagree. */
 function useScope(): [Scope, (s: Scope) => void] {
-  const { pathname } = useLocation();
+  const { pathname, search } = useLocation();
   const navigate = useNavigate();
   const current: Scope = pathname.startsWith("/competitor") ? "competitor" : "medyca";
   const set = (s: Scope) => {
-    const rest = pathname.match(/^\/(?:medyca|competitor)\/(.*)$/)?.[1];
-    navigate(rest ? `/${s}/${rest}` : `/${s}/library`);
+    // Keep the SECTION only, never what comes after it: `/competitor/clusters/123`
+    // must not become `/medyca/clusters/123` (a competitor cluster under
+    // Medyca's name). From a detail page the switch lands on the other side's
+    // list. The query string survives only on the library (`?type=article`).
+    const section = pathname.match(/^\/(?:medyca|competitor)\/([^/]+)/)?.[1];
+    navigate(
+      section
+        ? `/${s}/${section}${section === "library" ? search : ""}`
+        : `/${s}/library`
+    );
   };
   return [current, set];
 }

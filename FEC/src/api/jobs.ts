@@ -2,7 +2,10 @@ import { apiClient } from "./client";
 
 export interface Job {
   id: number;
-  kind: "ideation" | "pipeline" | "blog" | "strategy" | "strategy_draft" | "editorial";
+  kind:
+    | "ideation" | "pipeline" | "blog" | "strategy" | "strategy_draft" | "editorial"
+    // Started from the upload / blog-source panels, but they appear in the bar.
+    | "upload_transcribe" | "link_transcribe" | "blogsource_discover";
   status: "queued" | "running" | "done" | "failed";
   progress: number;
   message: string;
