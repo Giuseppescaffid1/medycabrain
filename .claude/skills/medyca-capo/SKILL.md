@@ -23,6 +23,13 @@ la vedrà.
 Anche facendolo diretto, il ramo e la PR restano obbligatori: `main` non si
 scrive mai a mano.
 
+## Quale modello
+
+Si pianifica con Fable, si esegue con Sonnet (`.claude/rules/modelli.md`).
+L'architetto ha già `model: fable`; tutti gli altri compagni hanno
+`model: sonnet`. Non sovrascrivere il modello quando li lanci, e non usare
+Fable per eseguire un disegno già approvato.
+
 ## La lavagna
 
 Un file per lavoro in `.claude/tasks/<AAAA-MM-GG>-<slug>.md`, dallo scheletro
