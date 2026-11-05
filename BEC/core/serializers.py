@@ -114,6 +114,11 @@ class BlogSourceSerializer(serializers.ModelSerializer):
             if found.removed_at is None:
                 raise serializers.ValidationError(
                     f"Questo blog è già tra le fonti: «{found.name}».")
+            if self.instance is not None:
+                # An edit cannot "restore" another row: the save would break
+                # the UNIQUE column and answer 500.
+                raise serializers.ValidationError(
+                    "Questa fonte esiste già tra le rimosse: ripristinala dal filtro «Rimossi».")
             self.restorable = found
         return value
 
@@ -185,6 +190,10 @@ class AccountSerializer(serializers.ModelSerializer):
         if found is not None:
             if found.removed_at is None:
                 raise serializers.ValidationError("Questo account è già monitorato.")
+            if self.instance is not None:
+                # Same as for blogs: an edit would hit the UNIQUE column (500).
+                raise serializers.ValidationError(
+                    "Questa fonte esiste già tra le rimosse: ripristinala dal filtro «Rimossi».")
             self.restorable = found
         return clean
 

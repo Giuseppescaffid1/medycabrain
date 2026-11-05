@@ -211,8 +211,9 @@ def snapshot() -> dict:
     """What is left to process, and how long it should take.
 
     `remaining` is the headline: distinct reels with at least one stage still
-    pending that an agent can reach; `blocked` counts the ones that cannot. Per stage, `waiting` carries the queue forward — a reel waiting to
-    be downloaded is also waiting, later, to be transcribed.
+    pending that an agent can reach; `blocked` counts the ones that cannot.
+    Per stage, `waiting` carries the queue forward — a reel waiting to be
+    downloaded is also waiting, later, to be transcribed.
     """
     from core.models import Reel
 

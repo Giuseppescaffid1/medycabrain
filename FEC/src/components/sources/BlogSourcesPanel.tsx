@@ -264,6 +264,7 @@ export function BlogSourcesPanel() {
             />
           ) : (
             <TableFrame
+              stacked
               minWidth={760}
               head={
                 <>
@@ -300,7 +301,7 @@ export function BlogSourcesPanel() {
                         </div>
                       )}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3" data-label={t("sources.owner")}>
                       <Badge
                         className={
                           comp ? "bg-warning/10 text-warning" : "bg-secondary/10 text-secondary"
@@ -309,11 +310,13 @@ export function BlogSourcesPanel() {
                         {comp ? t("scope.competitor") : t("scope.medyca")}
                       </Badge>
                     </td>
-                    <td className="px-4 py-3 text-right tabular-nums">{s.document_count ?? 0}</td>
-                    <td className="px-4 py-3 text-xs text-muted">
+                    <td className="px-4 py-3 text-right tabular-nums" data-label={t("sources.articles")}>
+                      {s.document_count ?? 0}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-muted" data-label={t("sources.lastCrawl")}>
                       {s.last_crawled_at ? formatDate(s.last_crawled_at) : t("accounts.never")}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3" data-label={t("accounts.status")}>
                       {showRemoved ? (
                         <Badge className="bg-surface text-muted">{t("manage.removed")}</Badge>
                       ) : failedOut ? (

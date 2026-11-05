@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { apiClient } from "../../api/client";
 import { Button } from "../ui/primitives";
 import { fmtDuration } from "./live";
+import { formatResumeDate } from "../../lib/utils";
 
 /**
  * How much is left to process, how long it should take, and the button that
@@ -276,12 +277,7 @@ function BudgetBar({ budget }: { budget: Budget }) {
   // Amber past two thirds, red at the ceiling — the ceiling is where
   // collection stops, so it must not arrive as a surprise.
   const tone = pct >= 100 ? "bg-danger" : pct >= 67 ? "bg-warning" : "bg-success";
-  const renews = budget.cycle_end
-    ? new Date(budget.cycle_end).toLocaleDateString("it-IT", {
-        day: "numeric",
-        month: "long",
-      })
-    : "";
+  const renews = formatResumeDate(budget.cycle_end);
 
   return (
     <div className="mt-3 rounded-xl border border-border bg-surface p-4 shadow-card">
@@ -306,7 +302,7 @@ function BudgetBar({ budget }: { budget: Budget }) {
       </div>
       <p className="mt-2 text-xs text-muted">
         {pct >= 100
-          ? t("queue.budgetStopped")
+          ? t("queue.budgetStopped", { renews })
           : t("queue.budgetLeft", {
               left: budget.available_usd.toFixed(2),
               renews,

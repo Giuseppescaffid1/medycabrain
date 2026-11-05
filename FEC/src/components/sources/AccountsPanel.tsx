@@ -31,7 +31,7 @@ import {
   apiErrorMessage,
   useNotice,
 } from "../manage/parts";
-import { formatCount, formatDate } from "../../lib/utils";
+import { formatCount, formatDate, formatResumeDate } from "../../lib/utils";
 
 /**
  * The Instagram profiles we collect reels from.
@@ -76,7 +76,7 @@ export function AccountsPanel() {
       else if (res.collection_paused_until)
         ok(
           t("accounts.addedBudgetPaused", {
-            date: formatDate(res.collection_paused_until),
+            date: formatResumeDate(res.collection_paused_until),
           })
         );
       else ok(t("accounts.added"));
@@ -224,6 +224,7 @@ export function AccountsPanel() {
             />
           ) : (
             <TableFrame
+              stacked
               minWidth={720}
               head={
                 <>
@@ -258,7 +259,7 @@ export function AccountsPanel() {
                         </div>
                       </div>
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3" data-label={t("sources.owner")}>
                       <Badge
                         className={
                           comp ? "bg-warning/10 text-warning" : "bg-secondary/10 text-secondary"
@@ -267,14 +268,16 @@ export function AccountsPanel() {
                         {comp ? t("scope.competitor") : t("scope.medyca")}
                       </Badge>
                     </td>
-                    <td className="px-4 py-3 text-right tabular-nums">{a.reel_count ?? 0}</td>
-                    <td className="px-4 py-3 text-right tabular-nums">
+                    <td className="px-4 py-3 text-right tabular-nums" data-label={t("accounts.reels")}>
+                      {a.reel_count ?? 0}
+                    </td>
+                    <td className="px-4 py-3 text-right tabular-nums" data-label={t("accounts.followers")}>
                       {formatCount(a.followers_count)}
                     </td>
-                    <td className="px-4 py-3 text-xs text-muted">
+                    <td className="px-4 py-3 text-xs text-muted" data-label={t("accounts.lastScraped")}>
                       {a.last_scraped_at ? formatDate(a.last_scraped_at) : t("accounts.never")}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3" data-label={t("accounts.status")}>
                       {showRemoved ? (
                         <Badge className="bg-surface text-muted">{t("manage.removed")}</Badge>
                       ) : (

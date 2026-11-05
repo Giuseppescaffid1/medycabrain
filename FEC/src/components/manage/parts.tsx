@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { ReactNode } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { cn } from "../../lib/utils";
 import { fieldCls } from "../ui/primitives";
@@ -254,18 +254,52 @@ export function ResultCount({ shown, total }: { shown: number; total: number }) 
 
 /* ── Table frame: one look for all three lists ─────────────────────────── */
 
+/**
+ * `stacked`: below `md` each row becomes a card (first cell on top, the
+ * others as small labelled pairs, the actions last) instead of a 700 px-wide
+ * table the client has to scroll sideways to reach «Rimuovi». The cells that
+ * need a caption carry `data-label`. Opt-in because other tables (uploads)
+ * have no labels yet.
+ */
 export function TableFrame({
   head,
   minWidth = 640,
+  stacked = false,
   children,
 }: {
   head: ReactNode;
   minWidth?: number;
+  stacked?: boolean;
   children: ReactNode;
 }) {
   return (
-    <div className="overflow-x-auto rounded-xl border border-border bg-white shadow-card">
-      <table className="w-full text-sm" style={{ minWidth }}>
+    <div
+      className={cn(
+        "rounded-xl border border-border bg-white shadow-card",
+        stacked ? "md:overflow-x-auto" : "overflow-x-auto"
+      )}
+    >
+      <table
+        className={cn(
+          "w-full text-sm",
+          stacked && [
+            "md:min-w-(--table-min)",
+            "max-md:[&_thead]:hidden",
+            "max-md:[&_tr]:grid max-md:[&_tr]:grid-cols-2 max-md:[&_tr]:gap-x-4 max-md:[&_tr]:gap-y-2 max-md:[&_tr]:p-4",
+            "max-md:[&_td]:block max-md:[&_td]:p-0 max-md:[&_td]:text-left",
+            "max-md:[&_td:first-child]:col-span-2 max-md:[&_td:last-child]:col-span-2",
+            "max-md:[&_td[data-label]]:before:mb-0.5 max-md:[&_td[data-label]]:before:block",
+            "max-md:[&_td[data-label]]:before:text-xs max-md:[&_td[data-label]]:before:font-bold",
+            "max-md:[&_td[data-label]]:before:text-muted",
+            "max-md:[&_td[data-label]]:before:content-[attr(data-label)]",
+          ]
+        )}
+        style={
+          stacked
+            ? ({ "--table-min": `${minWidth}px` } as CSSProperties)
+            : { minWidth }
+        }
+      >
         <thead className="bg-surface text-left text-xs font-bold uppercase tracking-wider text-muted">
           <tr>{head}</tr>
         </thead>

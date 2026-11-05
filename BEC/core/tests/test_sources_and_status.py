@@ -83,6 +83,15 @@ class BlogUrlTests(AuthedTestCase):
         self.assertTrue(doc.is_active)
         self.assertEqual(models.BlogSource.objects.filter(index_url__contains="example.it").count(), 1)
 
+    def test_editing_url_into_a_removed_one_is_400_not_500(self):
+        gone = self._add("https://example.it/gone").json()["id"]
+        self.client.delete(f"/api/v1/blog-sources/{gone}/")
+        keep = self._add("https://example.it/keep").json()["id"]
+        r = self.client.patch(f"/api/v1/blog-sources/{keep}/",
+                              {"index_url": "https://example.it/gone/"}, format="json")
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("tra le rimosse", str(r.json()))
+
     def test_restoring_with_another_owner_is_refused(self):
         row_id = self._add("https://example.it/blog", owner_type="competitor").json()["id"]
         self.client.delete(f"/api/v1/blog-sources/{row_id}/")
@@ -142,6 +151,14 @@ class AccountTests(AuthedTestCase):
         acc.refresh_from_db()
         self.assertTrue(acc.is_active)
         self.assertIsNone(acc.removed_at)
+
+    def test_editing_username_into_a_removed_one_is_400_not_500(self):
+        gone = self._add("vecchio").json()["id"]
+        self.client.delete(f"/api/v1/accounts/{gone}/")
+        keep = self._add("attuale").json()["id"]
+        r = self.client.patch(f"/api/v1/accounts/{keep}/", {"username": "Vecchio"}, format="json")
+        self.assertEqual(r.status_code, 400)
+        self.assertIn("tra le rimosse", str(r.json()))
 
     def test_restore_with_other_owner_is_refused(self):
         acc_id = self._add("prova", owner_type="competitor").json()["id"]

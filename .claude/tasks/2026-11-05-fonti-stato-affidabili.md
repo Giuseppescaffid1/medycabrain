@@ -235,8 +235,60 @@ Ramo `feat/fonti-stato-affidabili`, un commit. Disegno seguito per intero (D1-D1
 - `npm run build` in `FEC` (node_modules collegato temporaneamente dal checkout principale, poi scollegato) -> tsc + vite **built in 14.11s**, nessun errore di tipo.
 - Prima del merge servono: `manage.py migrate` (0023) e `npm run build` + riavvio backend, da fare al rilascio.
 
+**Secondo giro** (dopo revisione e collaudo, un secondo commit sul ramo)
+- `serializers.py`: un PATCH che porta `username` o `index_url` su una riga rimossa ora dà 400 «Questa fonte esiste già tra le rimosse: ripristinala dal filtro «Rimossi».» (prima 500 per il vincolo UNIQUE). 2 test nuovi (account e blog).
+- `mcp_bridge/server.py` `fonti_blog`: solo `removed_at__isnull=True` (nient'altro toccato); `04-mcp-connector.md` aggiornato; 1 test nuovo in `test_mcp_tools.py`.
+- Mobile: `TableFrame` ha l'opzione `stacked` (usata da account e blog): sotto 768 px ogni riga e' una scheda (prima cella in alto, le altre con didascalia `data-label`, azioni in fondo), niente scroll laterale. La tabella dei caricamenti NON e' convertita (e' del ramo upload). Verificato solo che il CSS generato contiene le regole; **non provato nel browser a 380px**: da guardare al collaudo.
+- `queue_eta.py`: docstring di `snapshot()` riportata sotto gli 80 caratteri.
+- Data del budget: `formatResumeDate` (`lib/utils.ts`) la scrive in Europe/Rome, «27 novembre»; testi «La raccolta riparte il 27 novembre» in avviso account, barra budget e tetto raggiunto. Coerente con la documentazione (ciclo 27 ago -> 26 set: ultimo giorno il 26, si riparte il 27). Aggiornati `05-rest-api.md` e `06-frontend.md`.
+- Esiti: `manage.py test core --noinput` -> **Ran 78 tests, OK** (75 + 3 nuovi); `npm run build` -> tsc + vite **built in 16.08s**. Symlink a `.env` e `node_modules` tolti. Produzione non toccata, nessun push.
+
 ## 4. Revisione          (revisore)
+
+**Verdetto: PASSA** (nessun rilievo bloccante). Letti il file di lavoro e `git diff origin/main...HEAD` (un commit, nessun commit su main).
+
+Invarianti: `owner_type` resta binario; il ripristino con `owner_type` diverso e' rifiutato (serializers.py `validate`, account e blog); il ripristino di un blog riattiva solo i documenti dello stesso blog (stesso owner). `failed` mai toccato (queue_eta conta `blocked` a parte, non cambia stati). Nessuna credenziale, nessun segreto nel diff. Migrazione 0023: due `AddField` nullable, nessun dato; `makemigrations --check` pulito; il DB reale e' a 0022 (33 fonti): sicura. 8 varianti URL (http/https x www x barra) corrette. Filtri `queue_eta` uguali a transcriber_agent.py:108-109 e enrich_agent.py:307,330. `ops.py` importa solo `STAGE_NAMES/STAGE_LABELS` da `pipeline.dag` (import leggero). Creazione tema atomica. Documentazione aggiornata (01, 02, 05, 06, pagina Documentazione); drawio non serve.
+Non verificato: i test nuovi non si sono potuti eseguire (il worktree non ha le credenziali DB).
+
+Rilievi non bloccanti, per gravita':
+1. `serializers.py` (`validate_index_url`, `validate_username`): su PATCH/PUT che cambia URL o username in uno gia' usato da una riga *rimossa*, `restorable` viene impostato ma ignorato dall'update; il salvataggio viola `unique` e rispondera' 500 (il `UniqueValidator` e' stato tolto). Il create e' coperto, l'update no. Poco probabile dalla UI.
+2. `mcp_bridge/server.py:487-504` (`fonti_blog`): elenca anche le fonti rimosse, con `attiva: false`, indistinguibili da quelle in pausa. Il cliente le rivede in Claude dopo averle tolte. Filtrare `removed_at__isnull=True` (e aggiornare `04-mcp-connector.md`).
+3. `queue_eta.py` docstring di `snapshot()`: riga troppo lunga dopo la modifica (solo forma).
 ## 5. Collaudo           (collaudatore)
+
+**Verdetto: PASSA** (con 3 osservazioni minori, nessuna blocca).
+
+**Comandi eseguiti (worktree, venv e .env del checkout principale; DB di test creato da Django)**
+- `makemigrations --check --dry-run` -> `No changes detected`
+- `manage.py check` -> `System check identified no issues (0 silenced).`
+- `manage.py test core --noinput` -> `Ran 75 tests in 9.733s` / `OK`
+- `npm run build` in FEC (node_modules via symlink temporaneo, tolto) -> `tsc -b` + vite: `built in 18.68s`, nessun errore di tipo.
+
+**Prova dal vivo (ramo, mai produzione)**
+- Backend del ramo su 127.0.0.1:8110 contro un DB temporaneo `collaudo_fonti`, copia (pg_dump, sola lettura) di quello vero, con `migrate` (0023) applicata solo alla copia. Frontend `vite preview` del ramo su 127.0.0.1:5199 con proxy verso 8110. Browser: Chromium headless (Playwright), 380px e 1280px. Il server :9093 non e stato toccato: nessun POST, nessun riavvio. Dopo il collaudo copia, server e symlink eliminati; produzione verificata: `0023` non applicata, 26 account.
+- Lista account: `GET /accounts/` (pagina da 24) -> count 28 (26 + 2 creati), 24 nel primo blocco; la UI mostra «28 di 28» e le 3 righe «In pausa» (menopausa_doc, faceboost, faceboost_). La UI chiede `page_size=100`: il ciclo su `next` non e stato esercitato dalla UI (una sola pagina).
+- Account: `Collaudo.Test` -> 201, salvato `collaudo.test`; di nuovo -> 400 `Questo account è già monitorato.`; URL `https://www.instagram.com/Collaudo.Due/` -> 201 `collaudo.due`; `a b!!` -> 400 `Scrivi solo lo username, per esempio medyca.menopausa.`; la 201 contiene `collection_paused_until: 2026-11-26T23:59:59.999Z`.
+- Rimuovi/ripristina account: DELETE -> 204; `?removed=1` -> la riga con `removed_at`; riaggiunta con owner `owned` -> 400 `Questo account era registrato come Competitor: ripristinalo dal filtro «Rimossi».`; riaggiunta con owner giusto -> 200 ripristinato; `POST /33/restore/` -> 200.
+- Blog: `https://www.lidialamarca.it/diario-della-salute/`, `https://lidialamarca.it/diario-della-salute`, `http://PAUSETIV.com/it/blog/` -> tutti 400 `Questo blog è già tra le fonti: «Lidia La Marca»` / `«Pausetiv»` (nessun 500). Host inesistente -> 400 `Nome host non risolvibile`. Nuovo blog con www e barra finale -> 201, salvato senza barra; variante senza www -> 400; DELETE -> 204; riaggiunta con owner diverso -> 400 italiano; con owner giusto -> ripristino; `restore/` -> 200.
+- B4: documenti di Pausetiv messi `is_active=False` a mano nella copia (stato «vecchia rimozione»), poi `PATCH is_active:true` -> `True 39 39` (documenti attivi 0 -> 39).
+- Temi: `Collaudo Tema` -> 201; `  collaudo   TEMA ` -> 400 `Questo tema esiste già («Collaudo Tema»).`
+- `n="abc"` su `ideas/generate/` e `ideas/plan/` -> 400 `Il numero di idee deve essere un numero intero.`
+- `/ops/status/`: `queue` = `remaining: 0, blocked: 7` con ragioni «senza audio da trascrivere» e «trascrizione non riuscita o mancante». `history` con il pipeline.log vero (copiato nella copia): 6 run, una per notte/orario, ognuna con la sequenza `scrape, download, transcribe, batch, enrich, embed, [blogscrape], knowledge, [cluster]` (prima: due run). `reanalysis: null`, `activity: []`, `schedules` in italiano («Aggiornamento completo», 03:30; «Aggiornamento di metà giornata…», 14:15), `last_pipeline_job` presente, tabella account senza rimossi.
+- UI mobile 380px / desktop 1280px: nessuno scroll orizzontale della pagina; Stato mostra «7 reel non lavorabili…», «Ultimo aggiornamento (12 set, 20:12)»; bottoni sotto i 36px: nessuno a 380px (a desktop solo i due filtri «Medyca/Competitor» a 28px). Gesti: Rimuovi account -> conferma italiana, avviso verde «Account rimosso. Lo trovi nel filtro «Rimossi».», la riga sparisce; filtro «Rimossi» -> riga con «Ripristina» -> avviso «Ripristinato.»; Aggiungi con `https://instagram.com/Collaudo.Tre/` -> avviso «Account aggiunto. La raccolta dei suoi reel partirà dal 27 nov 2026, quando si rinnova il budget.»; Blog: aggiungere `www.pausetiv.com/it/blog/` -> avviso `⚠ Questo blog è già tra le fonti: «Pausetiv».`
+- Stati di errore (richiesta bloccata con 500): `/stato` -> «Non riesco a leggere lo stato della pipeline. Controlla la connessione e riprova.» + «Riprova» (niente skeleton eterno); `/accounts` -> «Non riesco a caricare gli account. Non è vuoto: è un problema di collegamento.» + «Riprova».
+
+**Osservazioni (non bloccanti)**
+1. Data del budget: l'API dice `cycle_end 2026-11-26T23:59:59Z`, il disegno prometteva «dal 26 novembre»; la UI scrive «27 nov 2026» (converte in ora locale: 00:59 del 27). E coerente con la realta, ma non con il testo del disegno. Da guardare a occhio.
+2. Su 380px la tabella account e larga 1007px in un contenitore di 346px: la colonna «Rimuovi» e fuori schermo e si raggiunge scorrendo di lato. Il layout della tabella non e cambiato dal ramo (preesistente), ma il tap target ora c'e solo dopo lo scroll.
+3. Console: 403 dalle foto profilo `cdninstagram.com` (immagini scadute): preesistente, non legato al ramo.
+
+**Non provato**
+- `activity()` con una run avviata dalla UI (`run_job`): non ho avviato job reali; coperto solo dai test automatici. `/ops/status/` ha mostrato `activity: []`, corretto perche nulla girava.
+- Il ciclo `next` di `fetchAllPages` con piu pagine (la UI chiede page_size 100).
+- Scansione blog dopo aggiunta/ripristino (i job in coda sono finiti solo nella copia); il toggle di stato dalla UI per i blog (provato via API); sezione Temi dalla UI (provata via API); tap target di `CustomTopics`.
+- Il verde dei test non prova la correttezza di tutto: la rete di test e sottile.
+- La prova visiva da occhio umano (colori, spaziature): screenshot fatti ma guardati solo a campione. Giuseppe: dopo `migrate` + build, aprire `/accounts` e `/stato` a 380px.
+
 ## 6. Rilascio           (rilasciatore)
 ## Registro delle decisioni
 
