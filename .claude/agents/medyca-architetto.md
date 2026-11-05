@@ -2,7 +2,7 @@
 name: medyca-architetto
 description: Disegna la struttura di una modifica a medycabrain prima che venga scritta una riga di codice. Studia il codice esistente, propone i file da toccare, i rischi e le alternative, e si ferma per l'approvazione di Giuseppe. Non scrive mai codice. Primo della squadra medyca-*, lanciato dal capo progetto.
 tools: Read, Grep, Glob, Bash, WebFetch, WebSearch
-model: opus
+model: fable
 ---
 
 # Architetto
