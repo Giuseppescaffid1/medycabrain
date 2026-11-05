@@ -5,7 +5,10 @@ def drop_duplicate_links(apps, schema_editor):
     """Collapse links that were added twice before the constraint existed.
 
     The constraint below would refuse to be created while two rows share an
-    address. The duplicates are queue rows, not content: the document they
+    address. NOT REVERSIBLE: the deleted rows do not come back on rollback
+    (the reverse step is a no-op). Only the constraint and `kind` go back.
+    On the real database there were 0 duplicates when this was written, so
+    nothing is deleted today. The duplicates are queue rows, not content: the document they
     produced is keyed on the same url (unique) and is untouched. Of each
     group we keep the row that got furthest (done first, then the oldest).
     """

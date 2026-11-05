@@ -87,7 +87,7 @@ import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
-from urllib.parse import quote, urlparse, urlunparse
+from urllib.parse import parse_qsl, quote, urlencode, urlparse, urlunparse
 from urllib.request import Request as _Req
 from urllib.request import urlopen
 
@@ -146,6 +146,10 @@ _UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
 
 class LinkRefused(ValueError):
     """The link cannot be used, with a reason fit to show the client."""
+
+
+class ToolMissing(RuntimeError):
+    """A program the server needs is not installed; the message is for the client."""
 
 
 @dataclass(frozen=True)
@@ -364,6 +368,23 @@ def _host_matches(host: str, domains: tuple[str, ...]) -> bool:
     return any(host == d or host.endswith("." + d) for d in domains)
 
 
+_TRACKING_PARAMS = ("fbclid", "gclid")
+
+
+def _normalise_page_url(parts) -> str:
+    """The one spelling of a web page's address, for the "already there?" check.
+
+    Tracking parameters (utm_*, fbclid, gclid), the #fragment and a trailing
+    slash never change the page. Left in, the same article pasted from a
+    newsletter and from the browser bar became two rows and two documents.
+    Other query parameters stay: on many sites they pick the article.
+    """
+    query = [(k, v) for k, v in parse_qsl(parts.query, keep_blank_values=True)
+             if not k.lower().startswith("utm_") and k.lower() not in _TRACKING_PARAMS]
+    return urlunparse(parts._replace(
+        path=parts.path.rstrip("/"), query=urlencode(query), fragment=""))
+
+
 def scan_links(text: str) -> LinkScan:
     """Sort EVERY address in the text: video, article, or refused-with-reason.
 
@@ -381,9 +402,7 @@ def scan_links(text: str) -> LinkScan:
             continue  # a video, already in `videos`
         parts = urlparse(raw)
         host = (parts.hostname or "").lower()
-        # The fragment (#section) never changes the page, and keeping it would
-        # make one article two rows.
-        url = urlunparse(parts._replace(fragment=""))
+        url = _normalise_page_url(parts)
         if not host or "." not in host:
             continue
         reason = ""
@@ -500,6 +519,13 @@ def fetch_audio(url: str, dest_mp3: Path) -> None:
         try:
             proc = subprocess.run(cmd, capture_output=True, text=True,
                                   timeout=1800)
+        except FileNotFoundError as exc:
+            # Not a refusal by the video, so no reference card is worth saving
+            # for it; but the client must not read "errore imprevisto" for a
+            # server that lacks the tool. The path stays in the log.
+            logger.error("[link] yt-dlp non trovato: %s", exc)
+            raise ToolMissing(
+                "Lo strumento per scaricare i video non è installato sul server.") from exc
         except subprocess.TimeoutExpired as exc:
             # Not a LinkRefused by nature, but it has to behave like one: the
             # caller keeps a reference card only for refusals, and a download

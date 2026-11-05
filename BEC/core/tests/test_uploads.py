@@ -52,6 +52,17 @@ class ScanLinks(SimpleTestCase):
         scan = scan_links(f"{ARTICLE} {ARTICLE}#a")
         self.assertEqual(len(scan.articles), 1)
 
+    def test_tracking_noise_and_trailing_slash_do_not_make_a_second_article(self):
+        scan = scan_links(
+            f"{ARTICLE}/?utm_source=nl&utm_medium=mail&fbclid=abc "
+            f"{ARTICLE}?gclid=1#top {ARTICLE}")
+        self.assertEqual([a.url for a in scan.articles], [ARTICLE])
+
+    def test_a_query_that_picks_the_page_is_kept(self):
+        scan = scan_links("https://example.org/post?id=7&utm_source=x https://example.org/post?id=8")
+        self.assertEqual([a.url for a in scan.articles],
+                         ["https://example.org/post?id=7", "https://example.org/post?id=8"])
+
     def test_a_channel_page_is_not_mistaken_for_a_video(self):
         scan = scan_links("https://www.youtube.com/@TVRS/videos")
         self.assertEqual(scan.videos, [])
@@ -80,6 +91,34 @@ class FetchAudioFailures(SimpleTestCase):
             with self.assertRaises(LinkRefused) as ctx:
                 fetch_audio(YT, __import__("pathlib").Path("/tmp/x/a.mp3"))
         self.assertNotIn("/home/srv", str(ctx.exception))
+
+
+class MissingTool(SimpleTestCase):
+    def test_missing_yt_dlp_has_its_own_sentence_and_no_path(self):
+        err = FileNotFoundError(2, "No such file or directory", "/srv/venv/bin/yt-dlp")
+        with mock.patch("core.link_ingest.subprocess.run", side_effect=err):
+            with self.assertRaises(Exception) as ctx:
+                fetch_audio(YT, __import__("pathlib").Path("/tmp/x/a.mp3"))
+        msg = upload_workflow._client_message(ctx.exception)
+        self.assertEqual(
+            msg, "Lo strumento per scaricare i video non è installato sul server.")
+        self.assertNotIn("/srv", msg)
+
+
+class FailedJobMessage(TestCase):
+    def test_job_message_has_no_server_path_but_error_keeps_the_repr(self):
+        from django.core.management import call_command
+        from core.models import Job
+        job = Job.objects.create(kind="upload_transcribe", params={"upload_id": 0})
+        boom = RuntimeError("[Errno 2] No such file or directory: '/home/giuseppe/x.mp3'")
+        with mock.patch("core.management.commands.run_job.Command._dispatch",
+                        side_effect=boom):
+            with self.assertRaises(SystemExit):
+                call_command("run_job", job=job.id)
+        job.refresh_from_db()
+        self.assertEqual(job.status, "failed")
+        self.assertNotIn("/home/giuseppe", job.message)
+        self.assertIn("/home/giuseppe", job.error)
 
 
 class ClientMessages(SimpleTestCase):

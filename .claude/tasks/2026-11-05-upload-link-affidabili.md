@@ -390,8 +390,92 @@ Non toccati: `JobsContext.tsx`, `api/jobs.ts`, chiavi `jobs.*`, `BlogSourceSeria
 - Il «Riprova» sui file caricati funziona solo se il file originale c'è ancora (per i video viene cancellato a trascrizione finita; se la riga è fallita prima, c'è). Altrimenti 409 «caricalo di nuovo».
 - Il battito parte per ogni tipo di job (non solo upload): voluto, è innocuo.
 
+### Secondo giro
+Corretti i 4 rilievi non bloccanti di revisione e collaudo.
+- **Job.message** (`run_job.py`): usa `_client_message`, la stessa mappa dell'upload; il repr resta in `job.error` e nello stderr. Test: percorso assente dal messaggio, presente in `error`.
+- **Normalizzazione URL articoli** (`link_ingest._normalise_page_url`): via utm_*, fbclid, gclid, frammento e slash finale; gli altri parametri restano (spesso scelgono la pagina). Due test.
+- **Doc**: `05-rest-api.md` (`rifiutati` sempre vuoto, video privati = righe `failed`, normalizzazione URL); `01-data-model.md` e docstring migrazione 0023 (cancellazione doppioni non reversibile, 0 doppioni oggi).
+- **yt-dlp mancante**: `FileNotFoundError` in `fetch_audio` -> `ToolMissing` con «Lo strumento per scaricare i video non è installato sul server.» (non salva la scheda-riferimento: non e' un rifiuto del video). Test.
+- **Esiti reali**: `manage.py test core` -> 90 test OK (86 + 4 nuovi); `npm run build` -> `built in 16.55s`, nessun errore. Symlink temporanei a venv, `.env` e node_modules del checkout principale, rimossi. Produzione non toccata, nessun push.
+- Fuori: ffmpeg mancante resta sul messaggio generico; il rilievo 1 della revisione (blog_draft non copiato nel dedup) resta teorico, solo dichiarato.
+
 ## 4. Revisione          (revisore)
+
+**Verdetto: PASSA** (nessun rilievo bloccante). Letto il diff `origin/main...HEAD` (1 commit, ramo `feat/upload-link-affidabili`, niente su `main`). Nessun segreto nel diff.
+
+**Invarianti**
+- `owner_type` resta binario: `from_links` rifiuta con 400 ogni valore diverso da owned/competitor (views.py, `from_links`); `blog_agent.ingest` resta l'unico scrittore, e un incolla non riassegna mai un documento che appartiene a una fonte (`existing.source_id` -> "unchanged"). Nessun terzo valore.
+- I `failed` restano tali: gestore di segnale, mietitore e rete di sicurezza scrivono solo FAILED; il requeue avviene solo su gesto esplicito (Riprova / reincolla), con UPDATE condizionale (un solo vincitore).
+- Nessuna credenziale di terzi. Gli articoli passano da `safe_get` (anti-SSRF verificato in `external_ref._check_public`).
+- Documentazione nello stesso commit: 01, 02, 05, 06, drawio, pagina Documentazione.
+
+**Migrazione 0023 (verificata in sola lettura sul DB reale)**
+- `uploaded_media`: 14 righe, tutte con `source_url`; **0 doppioni** oggi, quindi la parte che cancella oggi non cancella nulla. Lunghezza massima URL 43.
+- Nessuna foreign key punta a `uploaded_media` (query su `pg_constraint`): nessuna cascata possibile. La FK e' da `UploadedMedia` verso `KnowledgeDocument`/`BlogDraft` con SET_NULL, quindi cancellare una riga di coda non tocca il documento ne' la bozza.
+- Reversibilita': la cancellazione e' `noop` all'indietro (le righe doppie non tornano); il vincolo e `kind` tornano indietro normalmente. E' dichiarato nel docstring della migrazione e in 01-data-model.
+- Il numero 0023 non collide con gli altri due worktree (nessuna migrazione nuova li').
+
+**Rilievi non bloccanti**
+1. `0023_uploadedmedia_unique_link.py` (dedup): tra due doppioni tiene la riga "piu' avanti" ma non copia `blog_draft` dalla riga cancellata; se la bozza era sull'altra riga, la riga tenuta la perde (la bozza resta in `BlogDraft`). Con 0 doppioni oggi e' teorico. Meglio dichiarare nel docstring che il rollback non e' possibile.
+2. `views.py` `from_links`: una pagina web gia' presente come documento attivo di una fonte crawled risponde "gia' presente" e non puo' essere marcata come ispirazione dal cliente. E' coerente con il disegno (non pagare due volte), ma va saputo.
+3. `rifiutati` e' sempre `[]` dopo lo spostamento di `probe` nel worker: contratto mantenuto, ma la doc 05 dovrebbe dirlo (i video privati ora sono righe `failed`). Controllare in collaudo.
+4. `scan_links`: gli URL articolo non vengono normalizzati (utm, slash finale): lo stesso articolo con parametri diversi diventa due righe/documenti. Limite noto da scrivere.
+
+**Probe nel worker / retry / mietitore: verificati**
+- `probe` e' fuori dal `try` interno di `fetch_audio` ma dentro il `try` esterno: un video privato diventa riga `failed` con la frase del `LinkRefused`; ripetuto solo se `channel` e' vuoto.
+- Retry: UPDATE condizionale `failed -> pending`, 409 altrimenti; grazia di 2 minuti in `_fail_orphan_uploads` copre il vuoto tra UPDATE e creazione del Job.
+- Mietitore: righe `pending` con Job stale o senza Job vivo -> `failed`; battito ogni 60 s evita la mietitura di una trascrizione lunga.
+
+**Da fare dal collaudatore (dal vivo)**: punto 13 (`semantic_search` su una scheda-riferimento), lettura reale di una pagina web, riavvio con un job in corso, stato delle 14 righe link; trascrizione da link non verificabile finche' i cookie sono scaduti.
 ## 5. Collaudo           (collaudatore)
+
+Collaudo del 2026-11-05, worktree `medycabrain-wt-upload-link-affidabili`, ramo `feat/upload-link-affidabili`. Produzione (:9093, DB `medycabrain`) NON toccata: nessuna migrazione, nessun riavvio, nessun POST al server live. Usato un database scratch `collaudo_upl` (creato, migrato fino a 0023, poi cancellato), backend del ramo su 127.0.0.1:8231, dist del ramo servito su 127.0.0.1:5274 con un piccolo proxy. Python/venv presi dal checkout principale (il worktree non ha venv: link simbolico temporaneo, rimosso).
+
+**Verdetto: PASSA**, con 3 note minori sotto e le parti NON VERIFICATE elencate.
+
+### Comandi (output reali)
+- `makemigrations --check --dry-run` -> `No changes detected`
+- `manage.py check` -> `System check identified no issues (0 silenced).`
+- `manage.py test core --noinput` (DB di test `test_collaudo_upl`; `test_medycabrain` esisteva già e non l'ho distrutto) -> `Ran 86 tests in 14.931s` / `OK`
+- `npm run build` in FEC -> `✓ built in 15.83s`, nessun errore di tipi (node_modules collegato e poi rimosso).
+
+### Prova con backend vero (test client su DB scratch, worker veri partiti da `_spawn_job`)
+- Incolla misto (YouTube, articolo OMS, Instagram, Drive, PDF, canale YT, owner=competitor): 202; `creati` = 2 (video + articolo), `non_riconosciuti` = 4 ciascuno con `motivo` in italiano. Niente sparisce.
+- `owner_type="boh"` -> 400 «owner_type deve essere «owned» o «competitor».»; testo senza link -> 400 «Non ho trovato nessun link in quel testo.»
+- Doppio incolla identico -> `creati: 0`, `gia_presenti` = 2 URL.
+- Articolo web vero (who.int): riga `done`, titolo letto «Menopause», documento creato (competitor, on_topic, ispirazione). L'analisi LLM non è arrivata in tempo: riga resta `done` con nota «Trascritto. L'analisi verrà completata nella prossima elaborazione notturna.», documento `enrich=pending` (punto 5 confermato).
+- YouTube (cookie scaduti, 14 set): `failed` con «YouTube ha bloccato il download da questo server. I cookie (YT_COOKIES_FILE) sono scaduti o mancanti… In alternativa carica il file video a mano.» e **scheda-riferimento salvata** (doc 2: `enrich=skipped`, `embed=done`, vettore 384).
+- Retry: `POST /uploads/1/retry/` su failed -> 202 pending; di nuovo subito -> 409 «Si può riprovare solo un elemento in errore.»; su riga `done` -> 409. Retry su file rotto -> 202.
+- Elimina articolo + reincolla -> documento `is_active=False`, poi `creati: 1` (non più «già presente»).
+- File `.pdf` caricato -> 400 «Formato non supportato (pdf)…»; senza file -> 400. File mp3 corrotto -> «Non riesco a leggere l'audio di questo file: potrebbe essere danneggiato o in un formato non supportato.» (nessun percorso). Tono 3 s con estensione .amr (accettata) -> «La trascrizione è risultata vuota o troppo breve.»
+- Riga pending senza job (vecchia di 10 min) e riga con job running fermo da 40 min: `GET /uploads/` le porta a `failed` con «Interrotto da un riavvio del server. Premi «Riprova».»; il job morto passa a `failed`.
+- Libreria: `/knowledge/documents/?scope=competitor&type=article` mostra la scheda-riferimento (id 2) e l'articolo (id 1); `?scope=medyca` vuoto (corretto: sono competitor). `/knowledge/documents/2/` -> 200.
+- **Punto 13**: `semantic_search("SALUTE METABOLICA cos'è e perché è importante")` con scope `all` e `competitor` -> `[(2, 'blog', "CANALE SALUTE: SALUTE METABOLICA…")]`. La scheda-riferimento è trovata. Punto 13 chiuso (su DB scratch, non sull'indice di produzione).
+
+### Prova da utente vero (Chrome headless, /accounts, tab «Interviste», desktop 1280px e 380px)
+- Incolla misto + «Aggiungi i video»: compare il riquadro «Cosa è successo ai link» sotto la textarea con gruppi (Rimessi in coda, Già presenti, ecc.) e URL abbreviati; screenshot letti a 1280 e 380 px, nessuno scroll orizzontale, nessun errore JS.
+- `.pdf` scelto -> ««note.pdf» non è un formato accettato.» (controllo lato client).
+- 413 simulato (route interceptata) -> «beep.mp3: File troppo grande: il massimo è 1 GB.»
+- 504 simulato -> «beep.mp3: Il server non ha risposto in tempo. Riprova tra poco.»
+- Rete interrotta simulata -> «beep.mp3: Connessione interrotta durante il caricamento. Riprova.»
+- Stesso esito a 380 px.
+
+### NON VERIFICATO (mai verde)
+- **Trascrizione da link YouTube/Vimeo**: cookie scaduti (yt 14 set, vimeo 15 set). Provati solo probe + scheda-riferimento. Resta a Giuseppe riesportare i cookie e riprovare.
+- Stato delle 14 righe link nel DB di produzione e conteggio 10/16 POST 400 da `access.log` (non accessibili/da non toccare).
+- Riavvio reale del backend con un job in corso: simulato con righe e job invecchiati, non con un vero riavvio.
+- Whisper su audio parlato vero (mancava un file con voce) e bozza blog per documenti `owned`.
+- Limite reale nginx 1 GB e 413 reale di nginx: provati solo con risposta simulata nel browser.
+- Caricamento multiplo con coda «File 2 di 3» e drop zone disabilitata durante l'upload: non esercitati a mano (solo lettura del codice: `aria-disabled={busy}`, `queueProgress`).
+- Pagina Documentazione, drawio e documentazione `documentation/` non riletti nel collaudo.
+- La rete di test resta sottile: 86 test verdi non provano la correttezza end-to-end.
+
+### Note minori (non bloccanti)
+1. `Job.message` del job fallito può contenere il testo grezzo dell'errore (visto: «Errore: [Errno 2] No such file or directory: '/home/giuseppe/projects/medycabrai…» con percorso del server). Non arriva in `last_error` della riga upload, ma può comparire dove la UI mostra il messaggio del job (barra globale, ramo `navigazione-errori`). In `run_job.py`.
+2. Mobile 380px: la barra delle schede di Gestione fonti taglia a sinistra «Account Instagram» (non è codice di questo ramo, non verificato se preesistente).
+3. Con yt-dlp assente (`venv/bin/yt-dlp` mancante) il cliente vede «Errore imprevisto durante la lavorazione.»: accettabile, ma poco utile.
+
+Pulizia: server 8231/5274 fermati, DB `collaudo_upl` cancellato, link venv e node_modules rimossi, `BEC/media` di prova rimosso; `git status` mostra solo questo file.
 ## 6. Rilascio           (rilasciatore)
 ## Registro delle decisioni
 

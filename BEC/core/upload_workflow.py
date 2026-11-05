@@ -53,9 +53,9 @@ def _client_message(exc: Exception) -> str:
     the server's media path in it; showing that is both useless to him and
     information we do not hand out.
     """
-    from core.link_ingest import LinkRefused
+    from core.link_ingest import LinkRefused, ToolMissing
 
-    if isinstance(exc, (LinkRefused, ClientError)):
+    if isinstance(exc, (LinkRefused, ToolMissing, ClientError)):
         return str(exc)
     if isinstance(exc, subprocess.CalledProcessError):
         return ("Non riesco a leggere l'audio di questo file: potrebbe essere "

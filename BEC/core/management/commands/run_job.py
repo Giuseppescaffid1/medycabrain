@@ -100,7 +100,11 @@ class Command(BaseCommand):
         except Exception as exc:  # noqa: BLE001
             job.status = "failed"
             job.error = repr(exc)[:2000]
-            job.message = f"Errore: {str(exc)[:200]}"
+            # The repr (with server paths) stays in job.error and the log; the
+            # message is what the UI shows, so it is the same sentence the
+            # client reads on an upload row.
+            from core.upload_workflow import _client_message
+            job.message = f"Errore: {_client_message(exc)}"[:200]
             job.finished_at = timezone.now()
             job.save(update_fields=["status", "error", "message", "finished_at", "updated_at"])
             fail_upload_row(job)

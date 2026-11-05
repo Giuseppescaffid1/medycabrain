@@ -105,7 +105,7 @@ link** (a doctor interview; a TV episode on YouTube or Vimeo kept as reference).
   (migration `0023`). Two pastes arriving together both passed the "already there?" check and
   created the same link twice; only the database settles a race. Files keep `""` and are left out.
   The migration first collapses existing duplicates (keeps the row that got furthest, deletes the
-  other queue rows; the document, keyed on the same unique url, is untouched). `from_links` reads
+  other queue rows — **not reversible**: a rollback restores the constraint's absence but not the deleted rows; there were 0 duplicates when it was written; the document, keyed on the same unique url, is untouched). `from_links` reads
   the `IntegrityError` as "già presente".
 - Two independent flags, deliberately not one: **`owner_type`** (`owned`/`competitor` — WHOSE it
   is, which decides whether it counts as Medyca's coverage in the gap engine) and
