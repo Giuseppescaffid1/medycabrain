@@ -261,11 +261,31 @@ class UploadedMediaViewSet(viewsets.ModelViewSet):
     parser_classes = [MultiPartParser, FormParser]
     http_method_names = ["get", "post", "delete", "head", "options"]
 
-    _AUDIO_EXT = {"mp3", "m4a", "wav", "aac", "ogg", "flac", "opus"}
-    _VIDEO_EXT = {"mp4", "mov", "m4v", "webm", "mkv", "avi"}
+    # The picker in the UI (`UPLOAD_EXTENSIONS` in UploadPanel.tsx) must list
+    # exactly these. All of them pass through ffmpeg before whisper, so the
+    # list is only "what ffmpeg reads and we have seen work".
+    _AUDIO_EXT = {"mp3", "m4a", "wav", "aac", "ogg", "flac", "opus",
+                  "amr", "wma", "aiff", "aif", "caf"}
+    _VIDEO_EXT = {"mp4", "mov", "m4v", "webm", "mkv", "avi", "3gp"}
 
     def get_queryset(self):
         return models.UploadedMedia.objects.all()
+
+    def list(self, request, *args, **kwargs):
+        # A GET that writes, on purpose. The UI polls THIS endpoint every 4 s
+        # while anything is pending, and not /jobs/, so this is the only place
+        # that runs often enough to notice a worker that died. Without it a
+        # backend restart left rows "in trascrizione" for ever.
+        _reap_stale_jobs()
+        _fail_orphan_uploads()
+        return super().list(request, *args, **kwargs)
+
+    def get_serializer_context(self):
+        ctx = super().get_serializer_context()
+        if self.action == "list":
+            # One query for the progress of every pending row, not one per row.
+            ctx["job_map"] = _upload_job_map()
+        return ctx
 
     def create(self, request, *args, **kwargs):
         f = request.FILES.get("file")
@@ -288,11 +308,54 @@ class UploadedMediaViewSet(viewsets.ModelViewSet):
             title=(request.data.get("title") or "")[:300],
             size_bytes=getattr(f, "size", 0) or 0,
         )
+        job = self._queue(up, "upload_transcribe", f"trascrizione di {up.original_name}")
+        data = self.get_serializer(up).data
+        data["job_id"] = job.id
+        return Response(data, status=status.HTTP_202_ACCEPTED)
+
+    @staticmethod
+    def _queue(up, kind: str, label: str):
         job = models.Job.objects.create(
-            kind="upload_transcribe", params={"upload_id": up.id},
-            message=f"In coda: trascrizione di {up.original_name}",
+            kind=kind, params={"upload_id": up.id},
+            message=f"In coda: {label[:80]}",
         )
         _spawn_job(job.id)
+        return job
+
+    @staticmethod
+    def _requeue_failed(up_id: int) -> bool:
+        """failed → pending, atomically. True only for the caller that won.
+
+        One conditional UPDATE instead of read-then-write: two clicks, or a
+        click and a re-paste, must start ONE job, not two that transcribe the
+        same video twice. `updated_at` is set by hand because `.update()` does
+        not run auto_now, and the orphan check relies on it as a grace period.
+        """
+        from django.utils import timezone
+        return bool(models.UploadedMedia.objects.filter(
+            id=up_id, transcribe_status=models.FAILED
+        ).update(transcribe_status=models.PENDING, last_error="",
+                 updated_at=timezone.now()))
+
+    @action(detail=True, methods=["post"], url_path="retry")
+    def retry(self, request, pk=None):
+        """Put a FAILED item back in the queue, on the client's request.
+
+        Explicit by design: failures stay failed until a person asks (this
+        button, or pasting the link again). Nothing retries by itself.
+        """
+        up = self.get_object()
+        if not up.source_url and not (up.file and Path(up.file.path).exists()):
+            # A file row needs its original; once that is gone there is
+            # nothing to rerun, and queueing would only fail a second time.
+            return Response({"detail": "Il file originale non c'è più: caricalo di nuovo."},
+                            status=status.HTTP_409_CONFLICT)
+        if not self._requeue_failed(up.id):
+            return Response({"detail": "Si può riprovare solo un elemento in errore."},
+                            status=status.HTTP_409_CONFLICT)
+        up.refresh_from_db()
+        job = self._queue(up, "link_transcribe" if up.source_url else "upload_transcribe",
+                          up.title or up.original_name or "elemento")
         data = self.get_serializer(up).data
         data["job_id"] = job.id
         return Response(data, status=status.HTTP_202_ACCEPTED)
@@ -300,58 +363,90 @@ class UploadedMediaViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=["post"], url_path="from-links",
             parser_classes=[JSONParser])
     def from_links(self, request):
-        """Paste a blob of text; every video link in it becomes a row.
+        """Paste a blob of text; every link in it becomes a row — or is
+        answered for, with its reason.
 
         The client sends his notes, not a clean list — "Parte I: <url>", dates,
-        names in brackets. `extract_links` pulls the videos out, whatever the
-        host (YouTube, Vimeo), and collapses the spellings of the same video
-        (youtu.be, &t=365s, Vimeo's ?fl=pl and #t=) onto one canonical
-        address, so pasting the same list twice adds nothing.
+        names in brackets. `scan_links` sorts EVERY address in it:
+
+        * YouTube / Vimeo videos → transcribed (`link_transcribe`),
+        * any other web page → read as an article,
+        * the rest (Instagram, Drive, PDF…) → `non_riconosciuti`, with a reason.
+
+        Nothing is dropped silently, and nothing touches the network here: the
+        title is read by the worker, so the request returns in milliseconds
+        however many links there are.
+
+        Answer: `creati`, `gia_presenti` (urls), `riprovati` (a failed or
+        removed link pasted again restarts, by the client's own gesture),
+        `rifiutati` / `non_riconosciuti` (`{url, motivo}`).
 
         JSONParser is declared explicitly: this ViewSet is set to multipart for
         the file upload, and without it a JSON body would be rejected here.
         """
-        from core.link_ingest import LinkRefused, extract_links, probe
+        from django.db import IntegrityError, transaction
+
+        from core.link_ingest import scan_links
 
         text = request.data.get("text") or ""
-        owner = request.data.get("owner_type")
-        owner = owner if owner in ("owned", "competitor") else "owned"
+        # A wrong value is a client bug, and quietly turning it into "owned"
+        # would inflate Medyca's own coverage with someone else's content.
+        owner = request.data.get("owner_type", "owned")
+        if owner not in ("owned", "competitor"):
+            return Response(
+                {"detail": "owner_type deve essere «owned» o «competitor»."},
+                status=400)
         inspiration = bool(request.data.get("is_inspiration", True))
 
-        refs = extract_links(text)
-        if not refs:
+        scan = scan_links(text)
+        if not (scan.videos or scan.articles or scan.unknown):
             return Response(
-                {"detail": "Non ho trovato nessun link a un video in quel testo."},
+                {"detail": "Non ho trovato nessun link in quel testo."},
                 status=400)
 
-        created, skipped, refused = [], [], []
-        for ref in refs:
-            url = ref.url
-            # Already in, as a row or as a document: adding it twice would
-            # pay for the same transcription twice.
-            if (models.UploadedMedia.objects.filter(source_url=url).exists()
-                    or models.KnowledgeDocument.objects.filter(source_url=url).exists()):
+        items = ([(r.url, "video") for r in scan.videos]
+                 + [(r.url, "article") for r in scan.articles])
+        created, skipped, retried = [], [], []
+        for url, kind in items:
+            existing = models.UploadedMedia.objects.filter(source_url=url).first()
+            if existing is not None:
+                if (existing.transcribe_status == models.FAILED
+                        and self._requeue_failed(existing.id)):
+                    # Pasted again after a failure: the client's own gesture,
+                    # so it restarts — with the choices he made this time.
+                    models.UploadedMedia.objects.filter(id=existing.id).update(
+                        owner_type=owner, is_inspiration=inspiration)
+                    existing.refresh_from_db()
+                    self._queue(existing, "link_transcribe",
+                                existing.title or url)
+                    retried.append(url)
+                else:
+                    skipped.append(url)
+                continue
+            # A live document under this address (a crawled blog, an earlier
+            # import) means paying again for something already in. An INACTIVE
+            # one (the client removed it) does not: it is revived by the worker.
+            if models.KnowledgeDocument.objects.filter(
+                    source_url=url, is_active=True).exists():
                 skipped.append(url)
                 continue
             try:
-                meta = probe(url)
-            except LinkRefused as exc:
-                refused.append({"url": url, "motivo": str(exc)})
+                with transaction.atomic():
+                    up = models.UploadedMedia.objects.create(
+                        kind=kind, source_url=url, title=url[:300],
+                        original_name=url[:300],
+                        owner_type=owner, is_inspiration=inspiration,
+                    )
+            except IntegrityError:
+                # Lost the race against an identical paste: it is "already in".
+                skipped.append(url)
                 continue
-            up = models.UploadedMedia.objects.create(
-                kind="video", source_url=url, channel=meta["channel"],
-                title=meta["title"], original_name=meta["title"][:300],
-                owner_type=owner, is_inspiration=inspiration,
-            )
-            job = models.Job.objects.create(
-                kind="link_transcribe", params={"upload_id": up.id},
-                message=f"In coda: {up.title[:80]}",
-            )
-            _spawn_job(job.id)
+            self._queue(up, "link_transcribe", url)
             created.append(self.get_serializer(up).data)
 
         return Response(
-            {"creati": created, "gia_presenti": skipped, "rifiutati": refused},
+            {"creati": created, "gia_presenti": skipped, "riprovati": retried,
+             "rifiutati": [], "non_riconosciuti": scan.unknown},
             status=status.HTTP_202_ACCEPTED)
 
     def perform_destroy(self, instance):
@@ -648,7 +743,10 @@ class KnowledgeDocumentViewSet(viewsets.ReadOnlyModelViewSet):
         # (cookie walls, install pages, recipes): a card that summarises a
         # cookie banner is noise dressed as an article. The rows stay in the
         # DB and reachable by id — the verdict is reviewable, not a delete.
-        qs = qs.filter(is_on_topic=True)
+        # …except what the client added on purpose (`is_inspiration`): the
+        # model's verdict must not delete a human's choice. Same rule as the
+        # chat index (knowledge.py), or "Vedi in Libreria" opens an empty list.
+        qs = qs.filter(Q(is_on_topic=True) | Q(is_inspiration=True))
         # A cluster filter implies its own scope — the cluster was built from
         # one side's material, so the owner filter would only fight it.
         cluster = self.request.query_params.get("cluster")
@@ -813,18 +911,71 @@ ACTIVE = ("queued", "running")
 STALE_AFTER = 25 * 60  # a job with no progress for 25 min is dead, not slow
 
 
+_UPLOAD_KINDS = ("upload_transcribe", "link_transcribe")
+_INTERRUPTED = "Interrotto da un riavvio del server. Premi «Riprova»."
+
+
 def _reap_stale_jobs():
     """Fail jobs whose worker died, so the UI never shows a bar that can no
     longer move. A worker killed by a signal (a backend restart kills the whole
-    cgroup) never gets to write its own failure, so someone has to."""
+    cgroup) never gets to write its own failure, so someone has to.
+
+    A running worker is not reaped just for being slow: run_job's heartbeat
+    touches `updated_at` every minute."""
     from django.utils import timezone
     cutoff = timezone.now() - timezone.timedelta(seconds=STALE_AFTER)
-    models.Job.objects.filter(status__in=ACTIVE, updated_at__lt=cutoff).update(
+    stale = models.Job.objects.filter(status__in=ACTIVE, updated_at__lt=cutoff)
+    # The upload list reads the UploadedMedia row, not the Job: failing only
+    # the job would leave "in trascrizione" on screen for ever.
+    upload_ids = [j.params.get("upload_id")
+                  for j in stale.filter(kind__in=_UPLOAD_KINDS)
+                  if isinstance(j.params, dict)]
+    if upload_ids:
+        models.UploadedMedia.objects.filter(
+            id__in=[i for i in upload_ids if i],
+            transcribe_status=models.PENDING,
+        ).update(transcribe_status=models.FAILED, last_error=_INTERRUPTED)
+    stale.update(
         status="failed",
         message="Interrotto: nessun avanzamento",
         error="il processo è morto senza segnalare l'errore (riavvio o kill)",
         finished_at=timezone.now(),
     )
+
+
+def _fail_orphan_uploads():
+    """Pending upload rows with no live job behind them → FAILED.
+
+    Covers a process that never started or died before it could say so. The
+    2-minute grace is for the gap between creating the row and creating its
+    job (and between a retry's UPDATE and its new job).
+    """
+    from django.utils import timezone
+    grace = timezone.now() - timezone.timedelta(minutes=2)
+    pending = list(models.UploadedMedia.objects.filter(
+        transcribe_status=models.PENDING, updated_at__lt=grace
+    ).values_list("id", flat=True))
+    if not pending:
+        return
+    alive = {j.params.get("upload_id")
+             for j in models.Job.objects.filter(kind__in=_UPLOAD_KINDS,
+                                                status__in=ACTIVE)
+             if isinstance(j.params, dict)}
+    dead = [i for i in pending if i not in alive]
+    if dead:
+        models.UploadedMedia.objects.filter(
+            id__in=dead, transcribe_status=models.PENDING
+        ).update(transcribe_status=models.FAILED, last_error=_INTERRUPTED)
+
+
+def _upload_job_map() -> dict:
+    """{upload_id: (progress, message)} of the live job of each pending row."""
+    out = {}
+    for j in models.Job.objects.filter(kind__in=_UPLOAD_KINDS,
+                                       status__in=ACTIVE).order_by("id"):
+        if isinstance(j.params, dict) and j.params.get("upload_id"):
+            out[j.params["upload_id"]] = (j.progress, j.message)
+    return out
 
 
 def _existing_job(kind: str, params: dict):

@@ -103,7 +103,8 @@ account (deliberately *not* a shared base class).
 
 **`UploadedMedia`** — `uploaded_media`. Media the client brought in himself, **by file or by
 link** (a doctor interview; a TV episode on YouTube or Vimeo kept as reference).
-- Key fields: `file` (→ `uploads/{uuid}.{ext}`, **blank for a link**), `kind` (`audio`/`video`),
+- Key fields: `file` (→ `uploads/{uuid}.{ext}`, **blank for a link**), `kind` (`audio`/`video`/**`article`** — a pasted web page: no audio,
+  the blog reader fetches its text),
   `original_name`, `title`, `size_bytes`, `duration_s`, `audio_file` (derived mp3),
   `transcribe_status`.
 - Link fields: **`source_url`** (the public page, in the canonical form `link_ingest` produces,
@@ -111,6 +112,12 @@ link** (a doctor interview; a TV episode on YouTube or Vimeo kept as reference).
   oEmbed — e.g. `YouTVRS` on YouTube, `TVRS SRL` on Vimeo). The **host is read back from
   `source_url`** (`link_ingest.provider_for`): there is deliberately no provider column, because
   it would be a migration for information already in the string.
+- **Unique constraint `uploaded_media_source_url_uniq`** on `source_url` where `source_url <> ''`
+  (migration `0024`). Two pastes arriving together both passed the "already there?" check and
+  created the same link twice; only the database settles a race. Files keep `""` and are left out.
+  The migration first collapses existing duplicates (keeps the row that got furthest, deletes the
+  other queue rows — **not reversible**: a rollback restores the constraint's absence but not the deleted rows; there were 0 duplicates when it was written; the document, keyed on the same unique url, is untouched). `from_links` reads
+  the `IntegrityError` as "già presente".
 - Two independent flags, deliberately not one: **`owner_type`** (`owned`/`competitor` — WHOSE it
   is, which decides whether it counts as Medyca's coverage in the gap engine) and
   **`is_inspiration`** (WHY it is here — reference material the client added on purpose). A
@@ -253,7 +260,7 @@ Three assignment tables tie content to a cluster *within a run*:
   batch is bookkeeping about a payment, not part of the content graph.
 
 **`Job`** — `jobs`. A background job (there is no queue; the API polls these rows).
-- `kind` (`ideation|pipeline|blog|strategy|strategy_draft|editorial|blogsource_discover|upload_transcribe`),
+- `kind` (`ideation|pipeline|blog|strategy|strategy_draft|editorial|blogsource_discover|upload_transcribe|link_transcribe`),
   `status` (`queued|running|done|failed`), `progress` (0–100), `message`, `params`/`result`
   (JSON), `error`, `finished_at`; helper `set_progress()`.
 

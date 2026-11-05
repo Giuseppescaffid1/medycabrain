@@ -4,7 +4,7 @@ import { apiClient } from "./client";
  *  got to. `source_url` empty means it was an uploaded file. */
 export interface Upload {
   id: number;
-  kind: "audio" | "video";
+  kind: "audio" | "video" | "article";
   original_name: string;
   title: string;
   size_bytes: number;
@@ -22,12 +22,35 @@ export interface Upload {
   owner_type: "owned" | "competitor";
   /** Why it is here: reference material the client added on purpose. */
   is_inspiration: boolean;
+  /** Progress (0-100) and message of the live job; null/"" when none runs. */
+  job_progress: number | null;
+  job_message: string;
 }
+
+/** The file types the server accepts. Must match `_AUDIO_EXT`/`_VIDEO_EXT` in
+ *  BEC/core/views.py (UploadedMediaViewSet) — one list per side, so the
+ *  picker never offers what the server then refuses. */
+export const AUDIO_EXTENSIONS = [
+  "mp3", "m4a", "wav", "aac", "ogg", "flac", "opus", "amr", "wma", "aiff", "aif", "caf",
+];
+export const VIDEO_EXTENSIONS = ["mp4", "mov", "m4v", "webm", "mkv", "avi", "3gp"];
+export const UPLOAD_ACCEPT = [...AUDIO_EXTENSIONS, ...VIDEO_EXTENSIONS]
+  .map((e) => `.${e}`)
+  .join(",");
+
+/** Largest file the server takes: nginx `client_max_body_size 1G` on the
+ *  /api/v1/uploads/ location (deploy config, medycabrain-port). Past it the
+ *  client would upload for minutes and then get a bare 413. */
+export const MAX_UPLOAD_BYTES = 1024 * 1024 * 1024;
 
 export interface LinkImport {
   creati: Upload[];
   gia_presenti: string[];
+  /** A failed/removed link pasted again: it restarted. */
+  riprovati: string[];
   rifiutati: { url: string; motivo: string }[];
+  /** Addresses found but not readable (Instagram, Drive, PDF…), with why. */
+  non_riconosciuti: { url: string; motivo: string }[];
 }
 
 export async function listUploads(): Promise<Upload[]> {
@@ -74,4 +97,9 @@ export async function importLinks(
 
 export async function deleteUpload(id: number): Promise<void> {
   await apiClient.delete(`/uploads/${id}/`);
+}
+
+/** Put a failed item back in the queue (the client's explicit gesture). */
+export async function retryUpload(id: number): Promise<void> {
+  await apiClient.post(`/uploads/${id}/retry/`);
 }

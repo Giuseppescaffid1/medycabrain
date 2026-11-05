@@ -53,3 +53,7 @@ mirrors the "failures stay `failed`, retry is explicit" rule — the app never q
 pipeline state.
 
 Next: [the frontend](06-frontend.md).
+
+**`knowledge/documents` list filter.** Hides documents the model judged off-topic **unless** the
+client added them on purpose (`is_inspiration=True`) — the same rule as the chat index — so
+"Vedi in Libreria" on an imported link never opens an empty list. Detail by id is unrestricted.

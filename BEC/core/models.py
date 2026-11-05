@@ -747,7 +747,11 @@ class UploadedMedia(models.Model):
     item processes asynchronously (a Job), and the UI polls this.
     """
 
-    KIND_CHOICES = [("audio", "Audio"), ("video", "Video")]
+    # "article" is a pasted web page: no audio, nothing to transcribe — the
+    # blog reader fetches its text. It lives in this table so that links of
+    # every kind share one list, one status and one retry.
+    KIND_CHOICES = [("audio", "Audio"), ("video", "Video"),
+                    ("article", "Articolo")]
 
     # Empty for a link-sourced item: there is no uploaded file to store.
     file = models.FileField(upload_to=_upload_path, blank=True)
@@ -786,6 +790,14 @@ class UploadedMedia(models.Model):
     class Meta:
         db_table = "uploaded_media"
         ordering = ["-created_at"]
+        constraints = [
+            # Two pastes arriving together both passed the "already there?"
+            # check and created the same link twice. Only the database can
+            # settle a race; files keep source_url="" and are left out.
+            models.UniqueConstraint(
+                fields=["source_url"], condition=~models.Q(source_url=""),
+                name="uploaded_media_source_url_uniq"),
+        ]
 
     def __str__(self):
         return self.title or self.original_name or f"upload {self.pk}"

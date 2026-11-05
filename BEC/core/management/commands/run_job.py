@@ -8,13 +8,39 @@ UI can poll and the global status bar can show progress.
     python manage.py run_job --job <id>
 
 Dispatched by Job.kind: ideation, pipeline, blog, strategy, strategy_draft,
-editorial, blogsource_discover, upload_transcribe.
+editorial, blogsource_discover, upload_transcribe, link_transcribe.
 """
+
+import threading
 
 from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
 
 from core.models import Job
+
+# How often a running job proves it is alive. The reaper (views._reap_stale_jobs)
+# declares dead any job untouched for 25 minutes; a single long whisper call
+# reports nothing for longer than that, and was reaped while it worked.
+HEARTBEAT_SECONDS = 60
+
+UPLOAD_KINDS = ("upload_transcribe", "link_transcribe")
+INTERRUPTED_NOTE = "Interrotto da un riavvio del server. Premi «Riprova»."
+
+
+def fail_upload_row(job) -> None:
+    """Mark the UploadedMedia a dying upload/link job was working on.
+
+    The Job row is not what the client looks at: the upload list reads the
+    UploadedMedia row, and left alone it stays "in trascrizione" for ever.
+    Written as FAILED, never PENDING — the client retries by pressing a
+    button, nothing here reruns by itself.
+    """
+    if job.kind not in UPLOAD_KINDS:
+        return
+    from core.models import FAILED, PENDING, UploadedMedia
+    UploadedMedia.objects.filter(
+        id=(job.params or {}).get("upload_id"), transcribe_status=PENDING
+    ).update(transcribe_status=FAILED, last_error=INTERRUPTED_NOTE)
 
 
 class Command(BaseCommand):
@@ -36,6 +62,7 @@ class Command(BaseCommand):
             job.error = f"terminato dal segnale {signum}"
             job.finished_at = timezone.now()
             job.save(update_fields=["status", "message", "error", "finished_at"])
+            fail_upload_row(job)
             raise SystemExit(1)
 
         for sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
@@ -56,6 +83,10 @@ class Command(BaseCommand):
         job.progress = 1
         job.save(update_fields=["status", "message", "progress", "updated_at"])
 
+        stop = threading.Event()
+        threading.Thread(target=self._heartbeat, args=(job.id, stop),
+                         daemon=True).start()
+
         try:
             result = self._dispatch(job)
             job.status = "done"
@@ -69,11 +100,34 @@ class Command(BaseCommand):
         except Exception as exc:  # noqa: BLE001
             job.status = "failed"
             job.error = repr(exc)[:2000]
-            job.message = f"Errore: {str(exc)[:200]}"
+            # The repr (with server paths) stays in job.error and the log; the
+            # message is what the UI shows, so it is the same sentence the
+            # client reads on an upload row.
+            from core.upload_workflow import _client_message
+            job.message = f"Errore: {_client_message(exc)}"[:200]
             job.finished_at = timezone.now()
             job.save(update_fields=["status", "error", "message", "finished_at", "updated_at"])
+            fail_upload_row(job)
             self.stderr.write(self.style.ERROR(f"job {job.id} failed: {exc!r}"))
             raise SystemExit(1)
+        finally:
+            stop.set()
+
+    @staticmethod
+    def _heartbeat(job_id: int, stop: threading.Event) -> None:
+        """Touch `updated_at` while the job runs, so "no progress for 25
+        minutes" means dead and not merely slow. `.update()` does not run
+        auto_now, hence the explicit timestamp."""
+        from django.db import connection
+        try:
+            while not stop.wait(HEARTBEAT_SECONDS):
+                try:
+                    Job.objects.filter(id=job_id, status="running").update(
+                        updated_at=timezone.now())
+                except Exception:  # noqa: BLE001 — a missed beat is not fatal
+                    connection.close()
+        finally:
+            connection.close()
 
     def _dispatch(self, job: Job) -> dict:
         if job.kind == "ideation":
