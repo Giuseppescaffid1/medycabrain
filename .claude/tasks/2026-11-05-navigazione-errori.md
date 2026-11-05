@@ -1,7 +1,7 @@
 ---
 id: 2026-11-05-navigazione-errori
 titolo: Pagine di consultazione: niente schermi bianchi, liste complete, scope separati
-stato: revisione
+stato: pronto
 ramo: feat/navigazione-errori
 pr: ""
 ticket: ""
@@ -531,6 +531,29 @@ migrate (solo sulla copia)        -> Applying core.0023_search_indexes... OK
 - Nota del reel (autosalvataggio/Esc), `[n]` non cliccabili negli articoli, messaggio 504 della chat, badge «Medyca» di un articolo senza fonte (nella copia il doc 843 ha una fonte), etichette formato in `FilterBar`, messaggi di Login (3 casi): non provati a mano.
 - Il test `AnalyticsTests` che gira due volte è dichiarato dallo sviluppatore; non verificato. Il timeout nginx a 300 s non è provabile qui (file live non cambiato).
 - Un verde dei 72 test non prova che le funzioni siano giuste: la copertura è sottile; i gesti sopra sono la prova vera.
+
+**Secondo giro (2026-11-05, ramo a 2a876b0). Verdetto: PASSA** (con una riserva visiva per Giuseppe).
+Stesso metodo del primo giro: copia del DB (`collaudo_nav2`, 0023 applicata solo li), gunicorn del ramo su :9193, `FEC/dist` ricostruito e servito su :9194, Chromium headless 380x800 (touch) e 1366x850. Produzione non toccata (:9093 risponde 200, nessun POST). Copia, processi e link a `node_modules` rimossi.
+
+```
+makemigrations --check --dry-run -> No changes detected
+manage.py check                  -> System check identified no issues (0 silenced).
+manage.py test core --noinput    -> Ran 73 tests in 9.305s  OK
+npm run build (tsc -b + vite)    -> built in 14.11s
+```
+(Il DB di test standard `test_medycabrain` era occupato da un'altra sessione: ho lanciato i test con `DATABASE_URL` sulla copia, quindi `test_collaudo_nav2`.)
+
+1. **Grafo, tempi** (`/second-brain/graph/`, 8 chiamate): 1.47, 3.55 (a freddo), 0.85, 0.48, 0.46, 0.46, 1.12, 0.53 s. Caldo 0.5-1.1 s, contro i 5.2-6.4 s del primo giro. La mappa nel browser ha ricevuto il grafo in 1.2-1.3 s. Riserva 1 del primo giro: chiusa.
+2. **Mappa a 380 px** (`/brain-map`): nessun overflow (`scrollWidth 380`), nessun errore JS. Vedo: all'apertura la vista e zoomata sull'hub Medyca, senza archi rossi; in basso una pillola «Vista ridotta per il telefono: tocca un tema per aprirlo, un punto rosso per leggerne il nome. Le frecce delle opportunita si vedono su uno schermo piu largo». Dopo «Ricentra» si vede tutta la mappa: i tre hub, gli archi grigio-azzurri sottili, i punti rossi delle opportunita su anelli ordinati, i temi competitor in alto a destra. **Il ciuffo di archi rossi non c'e piu.** Toccando un punto rosso si apre il pannello con nome («Alimentazione e infiammazione stagionale»), tipo, «3 reel competitor» e i collegamenti. Limite: a vista intera i ~300 temi competitor hanno etichette minuscole sovrapposte (illeggibili) e i punti sono piccoli: si lavora zoomando o toccando.
+3. **Mappa a 1366 px**: le etichette dei punti rossi a riposo non ci sono piu; al passaggio del mouse su un punto rosso compare il nome («Collegiare verita ed efficacia»). Gli hub e i temi Medyca hanno etichetta leggibile. **Ma** a vista intera il ventaglio di archi tratteggiati rosso/azzurro dagli hub verso le opportunita e ancora fitto (a desktop gli archi restano per decisione), e le etichette dei temi competitor si sovrappongono come a mobile. Meglio del primo giro (anelli ordinati, niente nuvola), non pulito. **Giudizio visivo a Giuseppe**: aprire `http://81.17.96.27:9093/brain-map` dopo il rilascio a 1366 px, premere «Ricentra», poi passare il mouse su un punto rosso; a telefono toccare un punto rosso.
+4. **Ricerca reel dalla UI** (Libreria, campo di ricerca, tempo da digitazione a risposta, incluso il ritardo di digitazione ~0.5 s; HTTP 200, nessun errore JS, 24 schede mostrate):
+   - «tibolone dosaggio», competitor: **25 risultati**, 0.59 s (desktop e 380 px). Medyca: 0 (corretto, il tibolone e solo nei competitor).
+   - «menopausa terapia ormonale», competitor: **246 risultati**, 0.54-0.58 s; Medyca: **27**, 0.65 s. Somma 273 = numero dichiarato dallo sviluppatore. «tibolone dosaggio» 25 = 25 dichiarato.
+   Primo giro: 7.5 s per tasto. Ora circa 0.5 s, quasi tutto il ritardo di digitazione.
+5. Miniature dei reel rotte nella copia (i file `/media` non sono nel DB clonato): non e un difetto del ramo.
+
+**Non provato**: gli stessi punti «non provati» del primo giro (link MCP in chat, job in corso, nota reel, messaggi di Login, ecc.); il secondo giro non li ha toccati. Il verde dei test non prova che le funzioni siano giuste: la prova vera sono i gesti sopra.
+
 ## 6. Rilascio           (rilasciatore)
 ## Registro delle decisioni
 
@@ -543,3 +566,5 @@ migrate (solo sulla copia)        -> Applying core.0023_search_indexes... OK
   - Q6: anche gli altri due rami aggiungono una migrazione in `core` (unicità `source_url` upload; `removed_at` fonti). Ognuno parte da main. Ordine di merge previsto: fonti → upload → navigazione; chi arriva dopo aggiunge una migrazione di merge (`makemigrations --merge`) con un commit nuovo, mai rebase.
   - Q7: sì, ma verifica nel codice i nomi reali delle chiavi di cache (`uploads`, `blog-sources`) prima di usarli.
   - Q8: sì, uno scope imprevisto cade dal lato competitor.
+
+- 2026-11-05 (capo): revisione PASSA, collaudo PASSA (due giri, mobile e desktop). Secondo giro (2a876b0, 73 test OK): ricerca a più parole come prima, grafo 0.5-1.1 s, mappa ridotta su telefono. Resta a giudizio di Giuseppe: la mappa a desktop a vista intera è ancora fitta. stato: pronto.
