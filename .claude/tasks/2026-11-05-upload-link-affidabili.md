@@ -1,7 +1,7 @@
 ---
 id: 2026-11-05-upload-link-affidabili
 titolo: Caricare link e file senza errori nascosti
-stato: revisione
+stato: pronto
 ramo: feat/upload-link-affidabili
 pr: ""
 ticket: ""
@@ -487,3 +487,5 @@ Pulizia: server 8231/5274 fermati, DB `collaudo_upl` cancellato, link venv e nod
   - Q5: età dei cookie nella pagina Stato: fuori da questo ramo (non fatto).
   - Q6: cookie YouTube/Vimeo da riesportare: **lo fa Giuseppe**; il collaudo segnala come «non verificabile» la trascrizione da link se i cookie sono scaduti, senza dichiararla verde.
   - Q7: più file trascinati = coda automatica.
+
+- 2026-11-05 (capo): revisione PASSA, collaudo PASSA con parti NON VERIFICATE (trascrizione da link YouTube/Vimeo: cookie scaduti). Secondo giro sui rilievi minori fatto (630171c, 90 test OK). stato: pronto.
