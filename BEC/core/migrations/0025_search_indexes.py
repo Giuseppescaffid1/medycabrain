@@ -8,7 +8,7 @@ from django.db import migrations
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('core', '0022_link_media'),
+        ('core', '0024_uploadedmedia_unique_link'),
     ]
 
     operations = [

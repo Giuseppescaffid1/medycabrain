@@ -485,7 +485,7 @@ class ReelViewSet(viewsets.ReadOnlyModelViewSet):
             # index can serve that expression, and the join to transcripts
             # made Postgres compute it for every row (3 s; 6.6 s with the
             # paginator's count). Each side is its own subquery, matching its
-            # own GIN index (migration 0023), OR-ed on the reel id. A plain OR
+            # own GIN index (migration 0025), OR-ed on the reel id. A plain OR
             # of the two conditions after a join does NOT use the indexes: the
             # OR spans two tables.
             # Several words keep the old meaning (all of them, each anywhere

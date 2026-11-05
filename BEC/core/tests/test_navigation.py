@@ -72,7 +72,7 @@ class ReelSearchTests(NavigationBase):
         self.assertEqual(ids, sorted([a.id, b.id]))
 
     def test_search_words_may_sit_in_different_fields(self):
-        # Before 0023 the vector was caption+transcript, so «tibolone dosaggio»
+        # Before 0025 the vector was caption+transcript, so «tibolone dosaggio»
         # found a reel with one word in the caption and the other in the audio.
         a = self.reel(self.comp, "W1", caption="Tibolone e menopausa")
         models.Transcript.objects.create(reel=a, text="il dosaggio dipende dalla donna")
