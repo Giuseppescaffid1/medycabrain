@@ -489,3 +489,5 @@ Pulizia: server 8231/5274 fermati, DB `collaudo_upl` cancellato, link venv e nod
   - Q7: più file trascinati = coda automatica.
 
 - 2026-11-05 (capo): revisione PASSA, collaudo PASSA con parti NON VERIFICATE (trascrizione da link YouTube/Vimeo: cookie scaduti). Secondo giro sui rilievi minori fatto (630171c, 90 test OK). stato: pronto.
+
+- 2026-11-05 (capo): #11 fuso in main con `0023_removed_at`. La migrazione di questo ramo rinumerata a `0024_uploadedmedia_unique_link`, dipende da `0023_removed_at` (niente merge/rebase: regola git-flow). Sul ramo da solo la catena è incompleta; la CI gira sul merge della PR, dove è lineare.

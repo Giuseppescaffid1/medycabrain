@@ -32,7 +32,7 @@ def drop_duplicate_links(apps, schema_editor):
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('core', '0022_link_media'),
+        ('core', '0023_removed_at'),
     ]
 
     operations = [
