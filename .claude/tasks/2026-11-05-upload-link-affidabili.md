@@ -3,7 +3,7 @@ id: 2026-11-05-upload-link-affidabili
 titolo: Caricare link e file senza errori nascosti
 stato: pronto
 ramo: feat/upload-link-affidabili
-pr: ""
+pr: "https://github.com/Giuseppescaffid1/medycabrain/pull/12"
 ticket: ""
 ---
 
