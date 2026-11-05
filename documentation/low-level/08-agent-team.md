@@ -49,10 +49,10 @@ the agent list.
 
 | Agent | Model | Writes? | Job |
 |---|---|---|---|
-| `medyca-architetto` | opus | no — read-only | Studies the existing code, proposes the structure, names the files to touch and the risks. **Stops for Giuseppe's approval.** |
-| `medyca-sviluppatore` | opus | yes | Implements the approved design on `feat/<slug>`, updates the documentation in the same change, commits to the branch. |
-| `medyca-revisore` | opus | no — read-only | Reads `git diff main...HEAD`. Checks project invariants and secrets, not style. Explicit verdict. |
-| `medyca-collaudatore` | opus | no (runs commands) | Runs the tests, the build, and the real-user gesture on `:9093`. Pastes real output. |
+| `medyca-architetto` | fable | no — read-only | Studies the existing code, proposes the structure, names the files to touch and the risks. **Stops for Giuseppe's approval.** |
+| `medyca-sviluppatore` | sonnet | yes | Implements the approved design on `feat/<slug>`, updates the documentation in the same change, commits to the branch. |
+| `medyca-revisore` | sonnet | no — read-only | Reads `git diff main...HEAD`. Checks project invariants and secrets, not style. Explicit verdict. |
+| `medyca-collaudatore` | sonnet | no (runs commands) | Runs the tests, the build, and the real-user gesture on `:9093`. Pastes real output. |
 | `medyca-rilasciatore` | sonnet | yes, after confirmation | Migrations, static files, frontend build, systemd restart. **Asks before every write or restart.** |
 
 ## The shared task list
@@ -130,7 +130,11 @@ The two jobs:
   call.
 - **The ruleset binds GitHub, not this machine.** Locally `main` stays writable;
   the refusal happens at push time.
-- **A full cycle is five model sessions, mostly Opus.** For a one-line fix that
+- **Plan with Fable, execute with Sonnet** (`.claude/rules/modelli.md`). Only
+  the architect runs on Fable; once Giuseppe approves the design, every
+  executing teammate runs on Sonnet. Change a `model:` field and this table in
+  the same commit.
+- **A full cycle is five model sessions, one on Fable and four on Sonnet.** For a one-line fix that
   is disproportionate — the lead is explicitly allowed to do small work directly,
   though still on a branch and still through a PR.
 - **Plane stays out of sync.** `TICKETS.md` is generated read-only by

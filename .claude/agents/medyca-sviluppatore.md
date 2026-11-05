@@ -2,7 +2,7 @@
 name: medyca-sviluppatore
 description: Scrive il codice di medycabrain seguendo un disegno gia approvato, sul ramo di lavoro e mai su main. Aggiorna la documentazione nella stessa modifica e committa sul ramo. Secondo della squadra medyca-*, lanciato dal capo progetto dopo l'OK al disegno.
 tools: Read, Write, Edit, Bash, Glob, Grep, Skill
-model: opus
+model: sonnet
 ---
 
 # Sviluppatore
