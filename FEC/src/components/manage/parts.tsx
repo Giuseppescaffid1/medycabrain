@@ -1,4 +1,5 @@
-import type { ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { CSSProperties, ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { cn } from "../../lib/utils";
 import { fieldCls } from "../ui/primitives";
@@ -103,6 +104,91 @@ export function FormError({ message }: { message: string }) {
   );
 }
 
+/* ── Feedback: every action answers, a failed list is not an empty one ─── */
+
+/**
+ * The sentence to show for a failed request: the server's own Italian
+ * `detail`, else the first field error, else `fallback`. Both panels had a
+ * private copy of this that showed the first field of whatever came back.
+ */
+export function apiErrorMessage(e: unknown, fallback: string): string {
+  const res = (e as { response?: { data?: unknown } })?.response;
+  if (!res) return fallback;
+  const data = res.data;
+  const pick = (v: unknown): string | null => {
+    if (typeof v === "string") return v;
+    if (Array.isArray(v) && typeof v[0] === "string") return v[0];
+    return null;
+  };
+  if (data && typeof data === "object") {
+    const d = data as Record<string, unknown>;
+    const detail = pick(d.detail);
+    if (detail) return detail;
+    for (const v of Object.values(d)) {
+      const found = pick(v);
+      if (found) return found;
+    }
+  }
+  return fallback;
+}
+
+export type NoticeState = { tone: "ok" | "error"; message: string } | null;
+
+/** One short message under the toolbar that goes away by itself (~5 s). */
+export function useNotice() {
+  const [notice, setNotice] = useState<NoticeState>(null);
+  const timer = useRef<number | undefined>(undefined);
+  const show = useCallback((tone: "ok" | "error", message: string) => {
+    window.clearTimeout(timer.current);
+    setNotice({ tone, message });
+    timer.current = window.setTimeout(() => setNotice(null), tone === "error" ? 8000 : 5000);
+  }, []);
+  useEffect(() => () => window.clearTimeout(timer.current), []);
+  return {
+    notice,
+    ok: useCallback((m: string) => show("ok", m), [show]),
+    fail: useCallback((m: string) => show("error", m), [show]),
+  };
+}
+
+export function Notice({ notice }: { notice: NoticeState }) {
+  if (!notice) return null;
+  const error = notice.tone === "error";
+  return (
+    <p
+      role={error ? "alert" : "status"}
+      className={cn(
+        "mb-3 flex items-start gap-2 rounded-xl px-4 py-3 text-sm font-semibold",
+        error ? "bg-danger/10 text-danger" : "bg-success/10 text-success"
+      )}
+    >
+      <span aria-hidden>{error ? "⚠" : "✓"}</span>
+      <span>{notice.message}</span>
+    </p>
+  );
+}
+
+/** The list could not be loaded. Never `PanelEmpty`: "empty" is a claim. */
+export function PanelError({ message, onRetry }: { message: string; onRetry?: () => void }) {
+  const { t } = useTranslation();
+  return (
+    <div
+      role="alert"
+      className="flex flex-col items-center gap-3 rounded-xl border border-danger/30 bg-danger/5 px-6 py-10 text-center"
+    >
+      <p className="max-w-[46ch] text-sm font-semibold text-danger">{message}</p>
+      {onRetry && (
+        <button
+          onClick={onRetry}
+          className="min-h-10 rounded-full border border-danger/40 px-4 text-sm font-semibold text-danger outline-none transition duration-200 hover:bg-danger/10 focus-visible:ring-2 focus-visible:ring-secondary"
+        >
+          {t("manage.retry")}
+        </button>
+      )}
+    </div>
+  );
+}
+
 /* ── Toolbar: search + filters, above every list ───────────────────────── */
 
 export function Toolbar({ children }: { children: ReactNode }) {
@@ -168,18 +254,52 @@ export function ResultCount({ shown, total }: { shown: number; total: number }) 
 
 /* ── Table frame: one look for all three lists ─────────────────────────── */
 
+/**
+ * `stacked`: below `md` each row becomes a card (first cell on top, the
+ * others as small labelled pairs, the actions last) instead of a 700 px-wide
+ * table the client has to scroll sideways to reach «Rimuovi». The cells that
+ * need a caption carry `data-label`. Opt-in because other tables (uploads)
+ * have no labels yet.
+ */
 export function TableFrame({
   head,
   minWidth = 640,
+  stacked = false,
   children,
 }: {
   head: ReactNode;
   minWidth?: number;
+  stacked?: boolean;
   children: ReactNode;
 }) {
   return (
-    <div className="overflow-x-auto rounded-xl border border-border bg-white shadow-card">
-      <table className="w-full text-sm" style={{ minWidth }}>
+    <div
+      className={cn(
+        "rounded-xl border border-border bg-white shadow-card",
+        stacked ? "md:overflow-x-auto" : "overflow-x-auto"
+      )}
+    >
+      <table
+        className={cn(
+          "w-full text-sm",
+          stacked && [
+            "md:min-w-(--table-min)",
+            "max-md:[&_thead]:hidden",
+            "max-md:[&_tr]:grid max-md:[&_tr]:grid-cols-2 max-md:[&_tr]:gap-x-4 max-md:[&_tr]:gap-y-2 max-md:[&_tr]:p-4",
+            "max-md:[&_td]:block max-md:[&_td]:p-0 max-md:[&_td]:text-left",
+            "max-md:[&_td:first-child]:col-span-2 max-md:[&_td:last-child]:col-span-2",
+            "max-md:[&_td[data-label]]:before:mb-0.5 max-md:[&_td[data-label]]:before:block",
+            "max-md:[&_td[data-label]]:before:text-xs max-md:[&_td[data-label]]:before:font-bold",
+            "max-md:[&_td[data-label]]:before:text-muted",
+            "max-md:[&_td[data-label]]:before:content-[attr(data-label)]",
+          ]
+        )}
+        style={
+          stacked
+            ? ({ "--table-min": `${minWidth}px` } as CSSProperties)
+            : { minWidth }
+        }
+      >
         <thead className="bg-surface text-left text-xs font-bold uppercase tracking-wider text-muted">
           <tr>{head}</tr>
         </thead>
@@ -215,7 +335,7 @@ export function PanelEmpty({ message, action }: { message: string; action?: Reac
 
 /** Row actions, always right-aligned and in the same order across lists. */
 export function RowActions({ children }: { children: ReactNode }) {
-  return <div className="flex items-center justify-end gap-3">{children}</div>;
+  return <div className="flex items-center justify-end gap-1">{children}</div>;
 }
 
 export function RowAction({
@@ -234,7 +354,7 @@ export function RowAction({
       onClick={onClick}
       disabled={disabled}
       className={cn(
-        "rounded-full px-1 text-xs font-semibold transition duration-200",
+        "inline-flex min-h-10 items-center rounded-full px-3 text-xs font-semibold transition duration-200",
         "outline-none focus-visible:ring-2 focus-visible:ring-secondary disabled:opacity-50",
         tone === "danger" && "text-muted hover:text-danger",
         tone === "action" && "text-secondary hover:text-heading",
@@ -260,7 +380,7 @@ export function StatusToggle({
     <button
       onClick={onClick}
       title={title}
-      className="rounded-full outline-none transition duration-200 hover:opacity-80 focus-visible:ring-2 focus-visible:ring-secondary"
+      className="inline-flex min-h-10 items-center rounded-full outline-none transition duration-200 hover:opacity-80 focus-visible:ring-2 focus-visible:ring-secondary"
     >
       {children}
     </button>

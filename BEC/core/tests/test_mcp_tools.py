@@ -342,6 +342,16 @@ class MCPToolsGate(TestCase):
         self.assertEqual(by_name["Blog Medyca"]["di"], "Medyca")
         self.assertEqual(by_name["Blog Competitor"]["di"], "competitor")
 
+    def test_fonti_blog_leaves_out_removed_sources(self):
+        from django.utils import timezone
+
+        from core.models import BlogSource
+        BlogSource.objects.filter(name="Blog Competitor").update(
+            removed_at=timezone.now(), is_active=False)
+        names = {b["nome"] for b in server.fonti_blog()}
+        self.assertNotIn("Blog Competitor", names)
+        self.assertIn("Blog Medyca", names)
+
     def test_temi_returns_the_current_competitor_cluster(self):
         temi = server.temi(scope="competitor")
         self.assertTrue(temi)

@@ -49,6 +49,11 @@ ORM). Dettaglio completo in `documentation/` e riassunto in
   possono parlarsi: si passano il contesto **solo** attraverso il file di
   lavoro in `.claude/tasks/`. Si parte con `/feature`, la lavagna è `/bacheca`.
   Dettaglio in `documentation/low-level/08-agent-team.md`.
+- **Si pianifica con Fable, si esegue con Sonnet.** Regola completa:
+  `.claude/rules/modelli.md`. Il disegno (`medyca-architetto`) gira su Fable;
+  dopo l'OK di Giuseppe, sviluppo, revisione, collaudo e rilascio girano su
+  Sonnet. Mai Fable per eseguire un piano già approvato. Il percorso della
+  squadra `medyca-*` non cambia.
 - **UI**: seguire `.claude/skills/ui-design/` (token del brand Medyca, mobile
   first, stati vuoti/caricamento/errore sempre previsti).
 - **Testare da utente reale prima di consegnare**: gesto vero sulla UI live,

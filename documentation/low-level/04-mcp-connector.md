@@ -203,7 +203,7 @@ see below). The tool description says so, and `leggi_articolo` returns
 it cannot read.
 
 ### `fonti_blog(scope="all")` — which written sources back an answer
-`BlogSource` annotated with its active document count, ordered by size. Returns `{nome, di, url,
+`BlogSource` (sources the client removed, `removed_at` set, are left out) annotated with its active document count, ordered by size. Returns `{nome, di, url,
 articoli, attiva, ultima_lettura, problema}` per source.
 
 Its real job is telling Claude **what is not covered**: a question about a clinic whose blog is

@@ -8,6 +8,18 @@ anything changes, and then reassures the reader about a job that no longer
 exists. Everything here is read live: the crontab as installed, systemd's own
 view of each service, and the last completion of each pipeline stage taken
 from the log the agents write.
+
+Three things this page used to get wrong, and the rule that fixes each:
+
+- **One run, one bar.** Stages come from `pipeline.dag` (names, order, labels),
+  not from a copy: the copy lacked `batch`, so `enrich` looked like "going
+  backwards" and every nightly run was split into two.
+- **A run started from the interface is a run.** It is the process
+  `manage.py run_job --job N`, not `run_pipeline`; `activity()` reads the `Job`
+  row to say what it is.
+- **No bar for work that is not happening.** `reanalysis()` answers only while
+  a `reprocess` process really runs; counting rows by model produced a
+  "406/1593 in progress" that had been dead for months.
 """
 
 from __future__ import annotations
@@ -21,6 +33,9 @@ from pathlib import Path
 
 from django.conf import settings
 
+# Light import on purpose: dag.py defers the heavy agent imports to build_steps().
+from pipeline.dag import STAGE_LABELS, STAGE_NAMES
+
 logger = logging.getLogger(__name__)
 
 # Only these units are ever queried: a fixed list, so nothing a request says
@@ -32,15 +47,17 @@ SERVICES = [
     ("ollama", "Modello locale di riserva"),
 ]
 
-STAGE_LABELS = {
-    "scrape": "Raccolta da Instagram",
-    "download": "Download dei video",
-    "transcribe": "Trascrizione audio",
-    "enrich": "Analisi dei contenuti",
-    "embed": "Indicizzazione per la ricerca",
-    "blogscrape": "Scoperta articoli blog",
-    "knowledge": "Analisi degli articoli",
-    "cluster": "Raggruppamento per tema",
+# What a background Job is called on screen (Job.kind is a code, not a word).
+JOB_KIND_LABELS = {
+    "ideation": "Ideazione di contenuti",
+    "pipeline": "Pipeline completa",
+    "blog": "Import del blog",
+    "strategy": "Analisi strategica",
+    "strategy_draft": "Bozza strategica",
+    "editorial": "Piano editoriale",
+    "blogsource_discover": "Scansione di un blog",
+    "upload_transcribe": "Trascrizione di un file caricato",
+    "link_transcribe": "Trascrizione di un link",
 }
 
 _CRON_HUMAN = {
@@ -84,11 +101,9 @@ def schedules() -> list[dict]:
     """The crontab as installed, not as remembered."""
     out = []
     raw = _run(["crontab", "-l"], timeout=8)
-    comment = ""
     for line in raw.splitlines():
         line = line.strip()
         if line.startswith("#"):
-            comment = line.lstrip("# ").strip()
             continue
         if not line or "medycabrain" not in line:
             continue
@@ -96,20 +111,29 @@ def schedules() -> list[dict]:
         if len(parts) < 6:
             continue
         minute, hour, _dom, _mon, dow, cmd = parts
+        # The words come from the command, not from the crontab comment: the
+        # comment is written for whoever edits the crontab, in English.
         stage = "pipeline completa"
+        what = "Aggiornamento completo"
         if "--only" in cmd:
             stage = cmd.split("--only", 1)[1].split()[0]
-        elif "--skip-cluster" in cmd:
-            stage = "pipeline senza clustering"
+            what = "Solo: " + ", ".join(
+                STAGE_LABELS.get(x, x) for x in stage.split(","))
+        elif "run_pipeline" in cmd and "--skip-" in cmd:
+            skipped = {"cluster": "senza raggruppamento", "blogscrape": "senza blog"}
+            parts_ = [skipped.get(w.removeprefix("--skip-"), "senza " + w.removeprefix("--skip-"))
+                      for w in cmd.split() if w.startswith("--skip-")]
+            stage = "pipeline parziale"
+            what = f"Aggiornamento di metà giornata ({' e '.join(parts_)})"
         elif "ingest_blog" in cmd:
             stage = "blog"
+            what = "Import del blog"
         out.append({
-            "what": comment or stage,
+            "what": what,
             "stage": stage,
             "when": _describe(minute, hour, dow),
             "niced": cmd.strip().startswith("nice") or " nice " in cmd,
         })
-        comment = ""
     return out
 
 
@@ -144,7 +168,7 @@ def last_runs(limit_lines: int = 4000) -> list[dict]:
             "seconds": round(float(m.group("secs"))),
             "result": m.group("payload")[:160],
         }
-    order = list(STAGE_LABELS)
+    order = list(STAGE_NAMES)
     return sorted(seen.values(), key=lambda r: order.index(r["stage"]) if r["stage"] in order else 99)
 
 
@@ -172,7 +196,7 @@ def run_history(limit_runs: int = 6, limit_lines: int = 12000) -> list[dict]:
     runs: list[dict] = []
     current: dict | None = None
     pending: dict[str, str] = {}
-    order = list(STAGE_LABELS)
+    order = list(STAGE_NAMES)
     last_pos = len(order)  # forces the first start to open a run
 
     def _ts(raw: str) -> datetime | None:
@@ -291,12 +315,25 @@ def _running_stage(history: list[dict]) -> str:
     return ""
 
 
+def _job_of(tokens: list[str]):
+    """The `Job` row behind a `manage.py run_job --job N` process, or None."""
+    from core.models import Job
+
+    try:
+        pk = int(tokens[tokens.index("--job") + 1])
+    except (ValueError, IndexError):
+        return None
+    return Job.objects.filter(pk=pk, status__in=("queued", "running")).first()
+
+
 def activity(history: list[dict] | None = None) -> list[dict]:
     """The project's own commands executing right now, with what they just did.
 
     Read from the process table rather than from a job record: a command
     started by hand or by cron leaves no row in the database, and those are
-    exactly the long runs someone watches this page to follow.
+    exactly the long runs someone watches this page to follow. A run started
+    from the interface is the exception that has a row (`run_job --job N`):
+    the process only says "run_job", so the row says what it is doing.
     """
     out = []
     history = run_history(limit_runs=1) if history is None else history
@@ -317,6 +354,20 @@ def activity(history: list[dict] | None = None) -> list[dict]:
             cmd = tokens[tokens.index("manage.py") + 1]
         except (ValueError, IndexError):
             continue
+        if cmd == "run_job":
+            row = _job_of(tokens)
+            if row is None:
+                continue
+            is_pipeline = row.kind == "pipeline"
+            out.append({
+                "job": f"run_job:{row.kind}",
+                "label": JOB_KIND_LABELS.get(row.kind, row.kind),
+                "pid": int(pid) if pid.isdigit() else 0,
+                "seconds": int(etimes) if etimes.isdigit() else 0,
+                "stage": _running_stage(history) if is_pipeline else "",
+                "detail": row.message[:180],
+            })
+            continue
         if cmd not in JOBS:
             continue
         label, log = JOBS[cmd]
@@ -331,13 +382,22 @@ def activity(history: list[dict] | None = None) -> list[dict]:
     return sorted(out, key=lambda j: -j["seconds"])
 
 
-def reanalysis() -> dict | None:
-    """How far the switch to the current analysis model has got.
+def reanalysis(running: list[dict] | None = None) -> dict | None:
+    """How far an analysis re-run has got — only while one is really running.
 
     The stage counters cannot show this: these reels were already analysed, so
     "analizzati" does not move while every one of them is being redone. What
     moves is which model produced the analysis.
+
+    Without the process check the bar was a ghost: it compared rows against
+    the CURRENT model's name, and after a switch to a better model (opus) the
+    older rows' share looked like an unfinished job, 406/1593, with nothing
+    running for months.
     """
+    running = activity() if running is None else running
+    if not any(j["job"] == "reprocess" for j in running):
+        return None
+
     from core import models as m
     from llm import client
 
@@ -408,14 +468,15 @@ def snapshot() -> dict:
     # Read once and share: this endpoint is polled every five seconds per open
     # tab, and each call would otherwise re-read the whole pipeline log.
     history = run_history()
+    running = activity(history)
     return {
         "services": services(),
         "schedules": schedules(),
         "last_runs": last_runs(),
         "history": history,
-        "activity": activity(history),
+        "activity": running,
         "evals": evals(),
-        "reanalysis": reanalysis(),
+        "reanalysis": reanalysis(running),
         "now": _now().isoformat(),
         "models": models(),
         "provider": settings.FAST_LLM_BASE_URL,

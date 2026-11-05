@@ -445,7 +445,9 @@ def fonti_blog(scope: str = "all") -> list[dict]:
 
     from core.models import BlogSource
 
-    qs = BlogSource.objects.annotate(
+    # Sources the client removed are hidden, not deleted: leave them out, or
+    # Claude would list them as «in pausa».
+    qs = BlogSource.objects.filter(removed_at__isnull=True).annotate(
         n=Count("documents", filter=Q(documents__is_active=True)))
     if scope in ("medyca", "owned"):
         qs = qs.filter(owner_type="owned")

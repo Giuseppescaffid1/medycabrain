@@ -8,6 +8,8 @@ export interface Account {
   followers_count: number | null;
   owner_type: "owned" | "competitor";
   is_active: boolean;
+  /** Set when the client removed it: hidden from the list, restorable. */
+  removed_at?: string | null;
   notes: string;
   last_scraped_at: string | null;
   reel_count?: number;

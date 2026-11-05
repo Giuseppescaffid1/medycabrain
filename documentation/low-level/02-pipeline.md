@@ -535,7 +535,16 @@ whether the remainder is ten minutes or ten hours.
 agent selects from — carried forward: a reel waiting to be downloaded will also
 have to be transcribed and analysed, so it counts once per stage it has still to
 cross. `remaining` (the headline number) is distinct reels with at least one
-stage pending.
+stage pending **that an agent can reach**. A reel pending for a stage nobody will
+ever run is `blocked`, a separate number: transcription needs `media_status=done`
+and an audio file (or a download still to come); analysis needs a transcription
+`done`/`skipped` (or one still reachable); claim extraction needs the analysis
+`done` (or reachable). These are the agents' own filters
+(`transcriber_agent.run`, `enrich_agent.run`). Measured on 2026-11-05: the old
+«7 rimanenti» were 6 reels with `media_status=skipped` + `transcribe_status=pending`
+and one with a failed transcription — stuck, not queued, so the number never went
+down. Now `remaining` is 0 for them and `blocked` is 7. Nothing is retried or
+re-marked by the status page.
 
 **How long.** Seconds per item, read from the `✓ <stage> done in <n>s — {…}`
 lines the DAG writes into `logs/pipeline.log`, over the **last 5 runs that
@@ -572,10 +581,45 @@ arriving at `enrich` therefore becomes two items, not one.
   is slightly pessimistic, which is the right direction to be wrong in.
 - **Failed rows are not work.** They stay `failed` by design and are not
   auto-retried, so they are reported next to each stage but never inside the ETA.
+- **Blocked rows are not work either.** They are shown as «reel non lavorabili»
+  with the reason (senza audio / trascrizione non riuscita). Fixing their states
+  (e.g. `transcribe_status=skipped` for reels with no audio) is agent work, not
+  done by this page.
 - **Only reels.** Blog articles and uploaded interviews are not in this queue.
 - **No history, no measurement.** Until the log holds a productive run for a
   stage, a documented default is used and the panel says the number is a
   starting estimate, not a measurement (`measured: false`).
+
+## What the status page reads, and how it stays honest
+
+`core/ops.py` builds the «Stato» page from the machine, not from memory:
+
+- **One run, one bar.** Stage names, order and labels are imported from
+  `pipeline/dag.py` (`STAGE_NAMES`, `STAGE_LABELS`). `ops.py` used to keep its own
+  copy without `batch`; `run_history()` detects a new run when a stage starts
+  *earlier* in the order than the previous one, so `enrich` (position 3 in the
+  copy) after `batch` (unknown, position 8) looked like a backward step and every
+  nightly run was drawn twice (visible in `pipeline.log` from 2026-11-03, when
+  `batch` joined the DAG).
+- **A run started from the interface is seen.** `activity()` reads the process
+  table; a UI run is `manage.py run_job --job N`, so it looks the `Job` up
+  (`kind`, `message`) and reports it with an Italian label (`JOB_KIND_LABELS`).
+  Before, the page said «Nessuna elaborazione in corso» while one was running.
+- **No bar for work that is not happening.** `reanalysis()` answers only while a
+  `reprocess` process runs. It used to compare rows against the current model's
+  name: after the switch to `claude-opus-5`, 947 of 1593 analyses were by a
+  different (better) model and the page showed «406/1593» for months, with
+  `reprocess.log` untouched since 27 July.
+- **Schedules in the client's words.** The text comes from the command
+  (`--skip-cluster --skip-blogscrape` → «senza raggruppamento e senza blog»),
+  not from the crontab comment, which is English and written for whoever edits cron.
+- **The last result stays.** `/ops/status/` returns `last_pipeline_job`, so a
+  finished or failed UI run is still on the page after it stops being «in corso».
+
+Blog `last_error` (written by `blogscrape_agent`) is a sentence, not a Python
+repr: `_human_error()` maps timeout / connection / HTTP errors to Italian
+(«il sito non ha risposto in tempo», «sito non raggiungibile», «il sito ha
+risposto con errore 503»); the repr stays in the log line.
 
 ## The idempotency contract
 

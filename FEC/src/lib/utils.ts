@@ -11,6 +11,26 @@ export function formatCount(n: number | null | undefined): string {
   return String(n);
 }
 
+/**
+ * The day collection starts again: «27 novembre», in the client's own time zone.
+ *
+ * `cycle_end` is the last instant of the Apify cycle (26 Nov 23:59:59 UTC),
+ * so collection resumes the next day. Reading it in the browser's zone would
+ * give a different day to anyone abroad; Europe/Rome is where the client is.
+ */
+export function formatResumeDate(iso: string | null | undefined): string {
+  if (!iso) return "";
+  try {
+    return new Date(iso).toLocaleDateString("it-IT", {
+      day: "numeric",
+      month: "long",
+      timeZone: "Europe/Rome",
+    });
+  } catch {
+    return "";
+  }
+}
+
 export function formatDate(iso: string | null | undefined): string {
   if (!iso) return "—";
   try {

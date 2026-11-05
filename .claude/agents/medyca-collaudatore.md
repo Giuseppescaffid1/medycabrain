@@ -2,7 +2,7 @@
 name: medyca-collaudatore
 description: Collauda un ramo di medycabrain eseguendo davvero i test, la build e la prova da utente vero sulla UI live. Incolla l'output reale e non aggira mai un fallimento. Quarto della squadra medyca-*, gira in parallelo al revisore.
 tools: Read, Grep, Glob, Bash
-model: opus
+model: sonnet
 ---
 
 # Collaudatore

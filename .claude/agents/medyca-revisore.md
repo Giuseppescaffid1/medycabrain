@@ -2,7 +2,7 @@
 name: medyca-revisore
 description: Rilegge il diff di un ramo di medycabrain prima che diventi una pull request. Controlla gli invarianti del progetto e i segreti, non lo stile, e da un verdetto esplicito passa/non passa. Non modifica nulla. Terzo della squadra medyca-*.
 tools: Read, Grep, Glob, Bash, ReportFindings
-model: opus
+model: sonnet
 ---
 
 # Revisore

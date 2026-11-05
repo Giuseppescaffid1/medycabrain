@@ -6,7 +6,9 @@ import {
   crawlBlogSource,
   deleteBlogSource,
   fetchBlogSources,
+  fetchRemovedBlogSources,
   reactivateBlogSource,
+  restoreBlogSource,
   updateBlogSource,
 } from "../../api/blogSources";
 import { Badge, Button, Skeleton, fieldCls } from "../ui/primitives";
@@ -14,7 +16,9 @@ import {
   AddForm,
   FilterSelect,
   FormError,
+  Notice,
   PanelEmpty,
+  PanelError,
   PanelHeader,
   ResultCount,
   RowAction,
@@ -24,6 +28,8 @@ import {
   TableFrame,
   Th,
   Toolbar,
+  apiErrorMessage,
+  useNotice,
 } from "../manage/parts";
 import { formatDate } from "../../lib/utils";
 
@@ -50,39 +56,79 @@ export function BlogSourcesPanel() {
   const [q, setQ] = useState("");
   const [status, setStatus] = useState("all");
 
-  const { data, isLoading } = useQuery({
+  const { notice, ok, fail } = useNotice();
+
+  const showRemoved = status === "removed";
+  const live = useQuery({
     queryKey: ["blog-sources"],
     queryFn: fetchBlogSources,
     // Crawls run in the background: keep the row counts moving while the
     // user watches the source they just added fill up.
     refetchInterval: 15000,
   });
+  // Only fetched when "Rimossi" is chosen: the common case pays nothing.
+  const gone = useQuery({
+    queryKey: ["blog-sources", "removed"],
+    queryFn: fetchRemovedBlogSources,
+    enabled: showRemoved,
+  });
+  const { data, isLoading, isError, refetch } = showRemoved ? gone : live;
   const invalidate = () => qc.invalidateQueries({ queryKey: ["blog-sources"] });
+  const onFail = (e: unknown) => fail(apiErrorMessage(e, t("manage.actionFailed")));
 
   const add = useMutation({
     mutationFn: addBlogSource,
-    onSuccess: () => {
+    onSuccess: (res) => {
       setName("");
       setUrl("");
       setError("");
       setAdding(false);
       invalidate();
+      ok(res.restored ? t("sources.restoredOnAdd", { name: res.name }) : t("sources.added"));
     },
-    onError: (e: unknown) => {
-      const detail = (e as { response?: { data?: Record<string, string[]> } })
-        ?.response?.data;
-      const first = detail && Object.values(detail)[0];
-      setError(Array.isArray(first) ? first[0] : t("common.error"));
-    },
+    onError: (e: unknown) => setError(apiErrorMessage(e, t("common.error"))),
   });
   const toggle = useMutation({
     mutationFn: (v: { id: number; is_active: boolean }) =>
       updateBlogSource(v.id, { is_active: v.is_active }),
-    onSuccess: invalidate,
+    onSuccess: (_r, v) => {
+      invalidate();
+      ok(v.is_active ? t("sources.resumed") : t("sources.paused"));
+    },
+    onError: onFail,
   });
-  const remove = useMutation({ mutationFn: deleteBlogSource, onSuccess: invalidate });
-  const crawl = useMutation({ mutationFn: crawlBlogSource, onSuccess: invalidate });
-  const reactivate = useMutation({ mutationFn: reactivateBlogSource, onSuccess: invalidate });
+  const remove = useMutation({
+    mutationFn: deleteBlogSource,
+    onSuccess: () => {
+      invalidate();
+      ok(t("sources.removedOk"));
+    },
+    onError: onFail,
+  });
+  const restore = useMutation({
+    mutationFn: restoreBlogSource,
+    onSuccess: () => {
+      invalidate();
+      ok(t("sources.restoredOk"));
+    },
+    onError: onFail,
+  });
+  const crawl = useMutation({
+    mutationFn: crawlBlogSource,
+    onSuccess: () => {
+      invalidate();
+      ok(t("sources.crawlStarted"));
+    },
+    onError: onFail,
+  });
+  const reactivate = useMutation({
+    mutationFn: reactivateBlogSource,
+    onSuccess: () => {
+      invalidate();
+      ok(t("sources.reactivated"));
+    },
+    onError: onFail,
+  });
 
   const rows = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -115,6 +161,7 @@ export function BlogSourcesPanel() {
   return (
     <section aria-labelledby="tab-blogs" id="panel-blogs" role="tabpanel">
       <PanelHeader description={t("sources.subtitle")} action={addButton} />
+      <Notice notice={notice} />
 
       <AddForm open={adding}>
         <form
@@ -186,7 +233,9 @@ export function BlogSourcesPanel() {
 
       {isLoading ? (
         <Skeleton className="h-40" />
-      ) : !data?.length ? (
+      ) : isError ? (
+        <PanelError message={t("sources.loadError")} onRetry={() => refetch()} />
+      ) : !data?.length && !showRemoved ? (
         <PanelEmpty message={t("sources.empty")} />
       ) : (
         <>
@@ -201,17 +250,21 @@ export function BlogSourcesPanel() {
                 { value: "active", label: t("accounts.active") },
                 { value: "inactive", label: t("accounts.inactive") },
                 { value: "failed", label: t("sources.failed") },
+                { value: "removed", label: t("manage.removed") },
                 { value: "owned", label: t("scope.medyca") },
                 { value: "competitor", label: t("scope.competitor") },
               ]}
             />
-            <ResultCount shown={rows.length} total={data.length} />
+            <ResultCount shown={rows.length} total={data?.length ?? 0} />
           </Toolbar>
 
           {!rows.length ? (
-            <PanelEmpty message={t("manage.noResults")} />
+            <PanelEmpty
+              message={showRemoved && !data?.length ? t("manage.noneRemoved") : t("manage.noResults")}
+            />
           ) : (
             <TableFrame
+              stacked
               minWidth={760}
               head={
                 <>
@@ -248,7 +301,7 @@ export function BlogSourcesPanel() {
                         </div>
                       )}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3" data-label={t("sources.owner")}>
                       <Badge
                         className={
                           comp ? "bg-warning/10 text-warning" : "bg-secondary/10 text-secondary"
@@ -257,12 +310,16 @@ export function BlogSourcesPanel() {
                         {comp ? t("scope.competitor") : t("scope.medyca")}
                       </Badge>
                     </td>
-                    <td className="px-4 py-3 text-right tabular-nums">{s.document_count ?? 0}</td>
-                    <td className="px-4 py-3 text-xs text-muted">
+                    <td className="px-4 py-3 text-right tabular-nums" data-label={t("sources.articles")}>
+                      {s.document_count ?? 0}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-muted" data-label={t("sources.lastCrawl")}>
                       {s.last_crawled_at ? formatDate(s.last_crawled_at) : t("accounts.never")}
                     </td>
-                    <td className="px-4 py-3">
-                      {failedOut ? (
+                    <td className="px-4 py-3" data-label={t("accounts.status")}>
+                      {showRemoved ? (
+                        <Badge className="bg-surface text-muted">{t("manage.removed")}</Badge>
+                      ) : failedOut ? (
                         <StatusToggle
                           onClick={() => reactivate.mutate(s.id)}
                           title={t("sources.reactivateHint")}
@@ -286,21 +343,33 @@ export function BlogSourcesPanel() {
                     </td>
                     <td className="px-4 py-3 text-right">
                       <RowActions>
-                        <RowAction
-                          tone="action"
-                          onClick={() => crawl.mutate(s.id)}
-                          disabled={crawl.isPending || !s.is_active}
-                        >
-                          {t("sources.crawlNow")}
-                        </RowAction>
-                        <RowAction
-                          tone="danger"
-                          onClick={() => {
-                            if (confirm(t("sources.confirmRemove"))) remove.mutate(s.id);
-                          }}
-                        >
-                          {t("accounts.remove")}
-                        </RowAction>
+                        {showRemoved ? (
+                          <RowAction
+                            tone="action"
+                            disabled={restore.isPending}
+                            onClick={() => restore.mutate(s.id)}
+                          >
+                            {t("manage.restore")}
+                          </RowAction>
+                        ) : (
+                          <>
+                            <RowAction
+                              tone="action"
+                              onClick={() => crawl.mutate(s.id)}
+                              disabled={crawl.isPending || !s.is_active}
+                            >
+                              {t("sources.crawlNow")}
+                            </RowAction>
+                            <RowAction
+                              tone="danger"
+                              onClick={() => {
+                                if (confirm(t("sources.confirmRemove"))) remove.mutate(s.id);
+                              }}
+                            >
+                              {t("accounts.remove")}
+                            </RowAction>
+                          </>
+                        )}
                       </RowActions>
                     </td>
                   </tr>
