@@ -19,7 +19,7 @@ The web app talks to the backend through this API. The MCP connector does **not*
 |---|---|---|---|
 | `accounts` | `AccountViewSet` | ModelViewSet | Tracked IG accounts (CRUD). `POST` takes `username` and `owner_type` (`owned` \| `competitor`) — the management screen sends it, so a profile lands on the right side from the start. `DELETE` is a soft delete: the account is deactivated and its reels stay. |
 | `blog-sources` | `BlogSourceViewSet` | ModelViewSet | Blogs. Actions: `crawl/`, `reactivate/` (the explicit human retry for a source that auto-deactivated). |
-| `uploads` | `UploadedMediaViewSet` | ModelViewSet | Client audio/video uploads; creating one spawns an `upload_transcribe` `Job`. |
+| `uploads` | `UploadedMediaViewSet` | ModelViewSet | Client uploads and links. `POST` (multipart `file`, optional `title`) spawns an `upload_transcribe` `Job`; refuses extensions outside the list in `02-pipeline.md`. `GET` list also reaps dead workers (see pipeline doc) and adds `job_progress` (0–100) / `job_message` of the live job to each row. **`POST from-links/`** (JSON `{text, owner_type, is_inspiration}`; `owner_type` other than `owned`/`competitor` → **400**, no silent default): sorts every link in the text, no network, returns `202 {creati, gia_presenti, riprovati, rifiutati, non_riconosciuti}` — `creati` are rows, the others urls, `non_riconosciuti`/`rifiutati` are `{url, motivo}`. Only a text with no http(s) address at all is a 400. Videos and web pages (`kind=article`) both spawn a `link_transcribe` `Job`; titles are read by the worker (a private video is a `failed` row). **`POST <id>/retry/`** → 202 for a `failed` item, 409 otherwise or when a file row has lost its original. |
 | `reels` | `ReelViewSet` | **ReadOnly** | `ReelListSerializer`/`ReelDetailSerializer`. Postgres full-text search over caption + transcript (`SearchVector`, italian config). Actions: `exclude/`, `restore/` (toggle `is_active`), `annotation/` (PATCH favorite/inspiration/note), `tags/` (add/remove). Injects current cluster labels via `_current_cluster_labels()`. |
 | `tags` | `TagViewSet` | ModelViewSet | Ordered by usage. |
 | `clusters` | `ClusterViewSet` | **ReadOnly** | Serves only the `is_current` run for `?scope=`. Actions: `arguments/` (deduped merged reel+article claims), `blog/` (spawn a cluster-driven `BlogDraft` `Job`). |
@@ -53,3 +53,7 @@ mirrors the "failures stay `failed`, retry is explicit" rule — the app never q
 pipeline state.
 
 Next: [the frontend](06-frontend.md).
+
+**`knowledge/documents` list filter.** Hides documents the model judged off-topic **unless** the
+client added them on purpose (`is_inspiration=True`) — the same rule as the chat index — so
+"Vedi in Libreria" on an imported link never opens an empty list. Detail by id is unrestricted.

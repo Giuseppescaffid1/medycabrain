@@ -253,6 +253,22 @@ class KnowledgeDocDetailSerializer(serializers.ModelSerializer):
 class UploadedMediaSerializer(serializers.ModelSerializer):
     document = serializers.PrimaryKeyRelatedField(read_only=True)
     blog_draft = serializers.PrimaryKeyRelatedField(read_only=True)
+    # Progress of the live job, filled by the list view in ONE query (see
+    # UploadedMediaViewSet.get_serializer_context); null elsewhere and when
+    # nothing is running.
+    job_progress = serializers.SerializerMethodField()
+    job_message = serializers.SerializerMethodField()
+
+    def _job(self, obj):
+        return self.context.get("job_map", {}).get(obj.id)
+
+    def get_job_progress(self, obj):
+        job = self._job(obj)
+        return job[0] if job else None
+
+    def get_job_message(self, obj):
+        job = self._job(obj)
+        return job[1] if job else ""
 
     class Meta:
         model = models.UploadedMedia
@@ -260,7 +276,8 @@ class UploadedMediaSerializer(serializers.ModelSerializer):
                   "duration_s", "transcribe_status", "document",
                   "blog_draft", "last_error", "created_at",
                   # Link-sourced items: the reference itself.
-                  "source_url", "channel", "owner_type", "is_inspiration"]
+                  "source_url", "channel", "owner_type", "is_inspiration",
+                  "job_progress", "job_message"]
         read_only_fields = ["kind", "size_bytes", "duration_s",
                             "transcribe_status", "document", "blog_draft",
                             "last_error", "created_at", "source_url", "channel"]

@@ -27,6 +27,12 @@ The provider is derived from the address. There is no column for it anywhere:
 `source_url` already says who it is, and a real field would cost a migration
 plus a serializer plus documentation for information already in the string.
 
+Beyond the two video hosts, `scan_links` also sorts every OTHER address in
+the paste: a plain web page becomes an *article* (read by the blog reader,
+no transcription), and what we cannot read at all (Instagram, Drive, PDF…)
+comes back with a reason, so the client sees what became of EACH link instead
+of having the unknown ones vanish from a mixed paste.
+
 Three jobs, in order of how much they can go wrong:
 
 1. `extract_links(text)` — pure string work, **no network**. Reduces every
@@ -81,7 +87,7 @@ import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
-from urllib.parse import quote
+from urllib.parse import quote, urlparse, urlunparse
 from urllib.request import Request as _Req
 from urllib.request import urlopen
 
@@ -307,6 +313,104 @@ def extract_links(text: str) -> list[VideoRef]:
     return list(seen.values())
 
 
+# Any http(s) address in a blob. `,` and `;` end it, as in the Vimeo pattern:
+# the client joins links with them and a greedy class swallows the next one.
+# Trailing punctuation from the client's notes
+# ("…ecco il link.", "(…)", "…;") is trimmed afterwards: it is never part of it.
+_ANY_URL = re.compile(r"https?://[^\s\"'<>,;]+", re.I)
+_TRAILING = ".,;:!?)]}»\u201d\u2019"
+
+# Hosts we know we cannot read, with the sentence the client gets. Matched on
+# the registrable tail of the host, so `m.facebook.com` and `facebook.com`
+# both hit. Instagram is here on purpose: a reel needs its own path (a
+# `Reel` row with metrics), not an article reader pointed at a login wall.
+_UNSUPPORTED_HOSTS: tuple[tuple[tuple[str, ...], str], ...] = (
+    (("instagram.com",),
+     "I reel di Instagram per ora non si possono incollare qui: "
+     "li raccoglie la pipeline dagli account che segui."),
+    (("facebook.com", "fb.watch", "tiktok.com", "x.com", "twitter.com",
+      "linkedin.com"),
+     "Questo social non è supportato: leggo solo video YouTube e Vimeo "
+     "e pagine web (articoli)."),
+    (("drive.google.com", "docs.google.com", "dropbox.com", "onedrive.live.com",
+      "1drv.ms", "wetransfer.com", "we.tl", "icloud.com"),
+     "Le cartelle e i file su Drive, Dropbox e simili chiedono un accesso: "
+     "scarica il file e caricalo qui sopra."),
+)
+_DOC_EXT = (".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
+            ".zip", ".rar", ".odt", ".txt", ".csv")
+_MEDIA_EXT = (".mp3", ".m4a", ".wav", ".mp4", ".mov", ".webm", ".mkv", ".avi")
+_URL_MAX = 500  # UploadedMedia.source_url / KnowledgeDocument.source_url
+
+
+@dataclass(frozen=True)
+class WebRef:
+    """A plain web page found in the paste, to be read as an article."""
+
+    url: str
+
+
+@dataclass(frozen=True)
+class LinkScan:
+    """Everything an http(s) address in the paste turned into."""
+
+    videos: list[VideoRef]
+    articles: list[WebRef]
+    # [{"url", "motivo"}] — found, but not something we can work with.
+    unknown: list[dict]
+
+
+def _host_matches(host: str, domains: tuple[str, ...]) -> bool:
+    return any(host == d or host.endswith("." + d) for d in domains)
+
+
+def scan_links(text: str) -> LinkScan:
+    """Sort EVERY address in the text: video, article, or refused-with-reason.
+
+    Pure string work like `extract_links` (no network): whether a page is
+    really readable, or points at a private address, is decided by the worker
+    through `safe_get`, not here. The point of this function is that nothing
+    in a paste disappears without a trace.
+    """
+    videos = extract_links(text)
+    articles: dict[str, WebRef] = {}
+    unknown: dict[str, dict] = {}
+    for m in _ANY_URL.finditer(text or ""):
+        raw = m.group(0).rstrip(_TRAILING)
+        if not raw or any(p.pattern.search(raw) for p in PROVIDERS):
+            continue  # a video, already in `videos`
+        parts = urlparse(raw)
+        host = (parts.hostname or "").lower()
+        # The fragment (#section) never changes the page, and keeping it would
+        # make one article two rows.
+        url = urlunparse(parts._replace(fragment=""))
+        if not host or "." not in host:
+            continue
+        reason = ""
+        if len(url) > _URL_MAX:
+            reason = "Indirizzo troppo lungo."
+        elif _host_matches(host, ("youtube.com", "youtu.be", "vimeo.com")):
+            reason = ("Questo non è il link di un singolo video "
+                      "(canale, playlist o pagina): incolla il link del video.")
+        else:
+            for domains, message in _UNSUPPORTED_HOSTS:
+                if _host_matches(host, domains):
+                    reason = message
+                    break
+        if not reason and parts.path.lower().endswith(_DOC_EXT):
+            reason = ("I documenti (PDF, Word…) per ora non si possono "
+                      "incollare come link: leggo solo pagine web.")
+        if not reason and parts.path.lower().endswith(_MEDIA_EXT):
+            reason = ("Questo è un file audio o video: scaricalo e "
+                      "caricalo nel riquadro qui sopra.")
+        if reason:
+            unknown.setdefault(url, {"url": url[:_URL_MAX], "motivo": reason})
+        else:
+            articles.setdefault(url, WebRef(url=url))
+    return LinkScan(videos=videos, articles=list(articles.values()),
+                    unknown=list(unknown.values()))
+
+
 def canonical_url(video_id: str, provider: str = "youtube",
                   unlisted_hash: str = "") -> str:
     """The one address for a video id. `extract_links` already returns it.
@@ -393,14 +497,29 @@ def fetch_audio(url: str, dest_mp3: Path) -> None:
             *_cookies_args(prov),
             "-o", str(out), url,
         ]
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=1800)
+        try:
+            proc = subprocess.run(cmd, capture_output=True, text=True,
+                                  timeout=1800)
+        except subprocess.TimeoutExpired as exc:
+            # Not a LinkRefused by nature, but it has to behave like one: the
+            # caller keeps a reference card only for refusals, and a download
+            # that hung for 30 minutes is exactly a link whose audio we could
+            # not get.
+            raise LinkRefused(
+                "Il download ha superato i 30 minuti e l'ho interrotto. "
+                "Riprova più tardi, oppure carica il file a mano.") from exc
         err = (proc.stderr or "")[-800:]
         if proc.returncode != 0:
             lowered = err.lower()
             for needles, message in (*prov.errors, *_COMMON_ERRORS):
                 if any(n.lower() in lowered for n in needles):
                     raise LinkRefused(message)
-            raise LinkRefused(f"Download non riuscito: {err.strip()[-200:]}")
+            # The raw stderr stays in the log: it can carry server paths and
+            # English tracebacks that the client can neither read nor act on.
+            logger.warning("[link] yt-dlp fallito per %s: %s", url, err.strip())
+            raise LinkRefused(
+                "Non sono riuscito a scaricare l'audio di questo video. "
+                "Riprova più tardi, oppure carica il file a mano.")
         made = sorted(Path(tmp).glob("a.*"))
         mp3 = next((p for p in made if p.suffix == ".mp3"), None)
         if mp3 is None:

@@ -95,12 +95,23 @@ Adding a third host is one more row.
    is canonicalised onto a real Vimeo video the client never pasted. The cost of anchoring is that
    the accepted subdomains have to be spelled out — `www.`, `m.`, `music.` for YouTube, `www.`,
    `player.` for Vimeo — so a subdomain outside that list is not recognised.
+   **`scan_links(text)`** is the wider net used by `from-links`: it returns `LinkScan(videos,
+   articles, unknown)`. Every other `http(s)` address is sorted — a plain web page becomes an
+   **article** (`WebRef`), and what we cannot read comes back with a reason in `unknown`:
+   Instagram, other social networks, Drive/Dropbox/OneDrive/WeTransfer, PDF/Word/Excel/zip,
+   audio/video files, a YouTube/Vimeo address that is not a single video (channel, playlist),
+   an address over 500 characters. Pure string work, no network. Before this a link of any
+   other kind was not even seen, so in a mixed paste it vanished without a trace.
 2. `probe(url)` reads the host's public **oEmbed** endpoint for the title, channel and thumbnail.
    No key, no cookies — this is what keeps a link worth saving even when the audio is refused.
    YouTube: `youtube.com/oembed?url=…`. Vimeo: `vimeo.com/api/oembed.json?url=…`, which also
    returns duration and accepts the dirty pasted address as-is (so the cleaning above is for our
    deduplication, not for Vimeo). A non-existent Vimeo id answers 404 → `LinkRefused`, the same
-   path a private or removed video already took.
+   path a private or removed video already took. **`probe` runs in the worker**
+   (`run_upload_transcribe`, before `fetch_audio`), not in the HTTP request: 15 slow oEmbed calls
+   in series (20 s timeout each) outlasted the 300 s gunicorn/nginx limit and the client got a 504
+   for a perfectly good paste. The request creates rows titled with the url and returns in
+   milliseconds; a private or removed video becomes a `failed` row with the reason.
 3. `fetch_audio(url, dest)` runs **yt-dlp** (`-x --audio-format mp3`, 16 kHz mono), then the item
    rejoins `run_upload_transcribe` and is transcribed, analysed, embedded and drafted exactly
    like an uploaded file — **on both hosts**. **One code path**: a second transcription pipeline
@@ -174,7 +185,54 @@ remedy shown for a Vimeo link would send the reader hunting for a bug that is no
 file to re-export, and `_save_reference_only` keeps the title, channel and link as a citable
 reference. Nothing retries on its own.
 
+### Articles (web pages) from a link
+
+An address that is not a video and not refused becomes an `UploadedMedia(kind="article")` and
+a `link_transcribe` job. The worker (`upload_workflow._run_article`) calls
+`blog_agent.ingest(url, source_type="other", owner_type=…, is_inspiration=…)`: the page is
+fetched through `safe_get` (anti-SSRF, redirects checked hop by hop), the text extracted by
+trafilatura, the document stored. `ingest` stays the only writer of `owner_type`; the value is the
+one the client chose in the form. A document that belongs to a crawled source is never re-owned by
+a paste. Enrichment/embedding run inline (`_analyse`); **no blog draft** (it is somebody's text).
+Pages behind a login or paywall, or with under 120 characters of text, fail with a sentence.
+
+### Retry, restarts and dead workers
+
+- **Pasting a `failed` link again restarts it** (reported as `riprovati`, with the owner and
+  inspiration the client picked this time), and `POST /uploads/<id>/retry/` does the same from
+  a button. Both go through one conditional `UPDATE failed→pending`, so two clicks start ONE job.
+  A link the client removed leaves an inactive document; pasting it again creates a new row and
+  the worker revives the document (`is_active=True`). Nothing retries by itself: failed stays failed.
+- **A restart used to leave rows "in trascrizione" for ever.** Now: (1) `run_job`'s signal
+  handler also marks the `UploadedMedia` row `failed` ("Interrotto da un riavvio del server.
+  Premi «Riprova»."), only if still pending; (2) `_reap_stale_jobs` does the same for jobs it
+  reaps; (3) `GET /uploads/` (the 4-second poll) calls the reaper and fails pending rows with
+  no live job behind them (2-minute grace for the gap between row and job). This is a write in
+  a GET, on purpose: it is the only endpoint polled often enough to notice.
+- **Heartbeat.** `run_job` touches `Job.updated_at` every 60 s from a daemon thread, so the
+  25-minute "no progress" rule means *dead*, not *slow*. A single whisper call on a long file
+  reports nothing for more than 25 minutes and used to be reaped while working.
+- **Analysis errors do not fail an upload.** `_enrich_one`/arguments/embed run in their own
+  `try` (`_analyse`): the row stays `done`, the document stays `enrich_status=pending` (the
+  nightly `knowledge` stage selects by status), `last_error` carries an informative note, the job
+  result says `analysis: "deferred"`.
+- **Messages for the client.** `last_error` is always a sentence from `_client_message`
+  (ffmpeg → "Non riesco a leggere l'audio…", timeout → "…tempo massimo (30 minuti)", anything
+  unknown → "Errore imprevisto…"). The repr goes to the log and `Job.error` only; yt-dlp's stderr
+  too. A yt-dlp `TimeoutExpired` is now a `LinkRefused`, so the reference card is saved.
+  If the card cannot be embedded it is marked `embed_status=failed` instead of staying pending.
+- Accepted files: audio `mp3 m4a wav aac ogg flac opus amr wma aiff aif caf`, video
+  `mp4 mov m4v webm mkv avi 3gp` (all through ffmpeg). The UI list is identical
+  (`api/uploads.ts`). Size limit 1 GB, measured on nginx (`client_max_body_size 1G` on
+  `/api/v1/uploads/`); the UI checks it before uploading.
+
 ### Known limits of the link path
+
+- **Not supported**: Instagram reels from a link, PDF/Word documents, Drive/Dropbox/OneDrive
+  (they ask for an account). They are listed back with a reason. Planned in a separate task.
+- **YouTube/Vimeo cookies** (`~/.config/medycabrain/*_cookies.txt`) were last written 14–15
+  Sep 2026: transcription from a link fails with the "cookie scaduti" sentence until they are
+  re-exported. Operational, not code; the reference card is still saved.
 
 - **An unlisted Vimeo video pasted twice, once with its hash and once without, stays two rows.**
   Telling them apart would need a network call inside `extract_links`, which is deliberately
@@ -185,9 +243,9 @@ reference. Nothing retries on its own.
   and `music.` on YouTube, `www.` and `player.` on Vimeo. Anything else (a regional or future
   subdomain) is not read as a link at all — it fails closed, and the client sees the paste find
   nothing rather than a wrong video.
-- Deduplication is a `filter(...).exists()` before the `create` in `views.from_links`, so two
-  simultaneous requests could still race into the `unique=True` constraint. Pre-existing, not
-  made worse by the second host, not addressed here.
+- Deduplication is a `filter(...).first()` before the `create` in `views.from_links`, now backed by
+  the database constraint on `UploadedMedia.source_url`: the losing request gets an
+  `IntegrityError`, reported as "già presente".
 
 ### Known limit: a TV recording opens with its sponsors
 

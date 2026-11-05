@@ -114,8 +114,9 @@ def _detect_language(html: str, text: str) -> str:
     return "it" if it_n >= en_n else "en"
 
 
-def ingest(url: str, *, source=None,
-           source_type: str = "blog") -> tuple[KnowledgeDocument | None, str]:
+def ingest(url: str, *, source=None, source_type: str = "blog",
+           owner_type: str | None = None,
+           is_inspiration: bool = False) -> tuple[KnowledgeDocument | None, str]:
     """Fetch + store one article. Returns (doc, action):
     'created' | 'updated' | 'unchanged' | 'failed'.
 
@@ -128,6 +129,12 @@ def ingest(url: str, *, source=None,
 
     `source` sets provenance AND owner_type — this function and the seed
     migration are the only writers of owner_type, by rule.
+
+    A page the CLIENT pasted has no source, so he names the owner himself
+    (`owner_type`, `is_inspiration`) — and only then is a deactivated
+    document brought back, because pasting it again is the human decision a
+    crawler's recrawl is not. Without `owner_type` a sourceless ingest keeps
+    its old meaning: Medyca's own page.
     """
     import hashlib
 
@@ -141,15 +148,25 @@ def ingest(url: str, *, source=None,
         return None, "failed"
 
     new_hash = hashlib.sha256(art["markdown"].encode()).hexdigest()
-    owner = source.owner_type if source is not None else "owned"
+    manual = source is None and owner_type is not None
+    owner = source.owner_type if source is not None else (owner_type or "owned")
 
     existing = KnowledgeDocument.objects.filter(source_url=url).first()
+    if manual and existing and existing.source_id:
+        # Already part of a crawled source: a paste must not re-own it or cut
+        # it loose from its source (that would move a competitor's article
+        # into Medyca's side, or the reverse).
+        return existing, "unchanged"
     if existing and existing.content_hash == new_hash:
         # Same body: touch nothing, not even updated_at.
         changed = []
         if source is not None and existing.source_id != source.id:
             existing.source, existing.owner_type = source, owner
             changed += ["source", "owner_type"]
+        if manual:
+            existing.owner_type, existing.is_inspiration = owner, is_inspiration
+            existing.is_active = True
+            changed += ["owner_type", "is_inspiration", "is_active"]
         if changed:
             existing.save(update_fields=changed)
         return existing, "unchanged"
@@ -168,6 +185,7 @@ def ingest(url: str, *, source=None,
             "author": art["author"],
             "published_at": art["published_at"],
             "is_active": True,
+            **({"is_inspiration": is_inspiration} if manual else {}),
             # New text means the old analysis no longer describes it. The
             # stale summary stays visible until re-enrichment lands — a stale
             # summary beats an empty card while the queue drains — but the
