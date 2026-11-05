@@ -141,7 +141,7 @@ _VIMEO_ID = re.compile(
 # TVRS's own video pages: `tvrs.it/programmi/canale-salute/?v=1238425507`. The
 # page embeds a whole playlist of players, so the first embed in its HTML is
 # NOT the video the client meant; the `v` parameter is the Vimeo id of the one
-# he pasted. Without a numeric `v` it is an ordinary page and stays an article.
+# they pasted. Without a numeric `v` it is an ordinary page and stays an article.
 # It lives outside PROVIDERS (it has no cookies, errors or oEmbed of its own:
 # it IS Vimeo) and is canonicalised onto the vimeo.com address, so a link
 # pasted in both spellings is one row.
