@@ -412,7 +412,7 @@ verificate, Q8 scope inatteso = competitor).
 - `views.py`: `ReelViewSet` filtra `is_active` solo su `list`; ricerca = due sottoquery in OR (`id IN caption` OR `id IN transcript`); `ClusterViewSet` con sottoquery annotate + miniature in batch; `SecondBrainGraphView` in blocco.
 - `analytics.py`: `cluster_performance` in una query; `top_content` senza tetto 400.
 - `models.py` + `migrations/0023_search_indexes.py`: due `GinIndex(SearchVector(..., config="italian"))`. **Non applicata alla produzione.**
-- Test: `test_endpoints_smoke.py` crea una riga di `BlogDraft`/`ContentIdea`/`StrategyBrief`; nuovo `test_navigation.py` (14 test: reel escluso 200/lista/404/restore, ricerca stessi id e senza duplicati, scope del cluster incl. valore strano, conteggi annotati = conteggi riga per riga, miniature max 3 senza vuote, costo query costante all'aumentare dei cluster per lista e grafo, grafo, cluster_performance, top_content oltre i 400).
+- Test: `test_endpoints_smoke.py` crea una riga di `BlogDraft`/`ContentIdea`/`StrategyBrief`; nuovo `test_navigation.py` (reel escluso 200/lista/404/restore, ricerca stessi id e senza duplicati, scope del cluster incl. valore strano, conteggi annotati = conteggi riga per riga, miniature max 3 senza vuote, costo query costante all'aumentare dei cluster per lista e grafo, grafo, cluster_performance, top_content oltre i 400).
 - `deploy/nginx-medycabrain.conf`: `location = /api/v1/knowledge/ask/` a 300 s. Il file live lo copia il rilasciatore (+ `nginx -t` e reload).
 
 **Frontend** (`FEC/src/`)
@@ -431,7 +431,7 @@ Il disegno 2.3 punto 5 («due condizioni in OR sul join») è stato quindi cambi
 Query contate nei test: lista cluster e grafo hanno costo costante al crescere dei cluster (assert nei test); i numeri 1230/1221/310 → ~4/~8/2 sono quelli attesi dal disegno, non rimisurati sul DB vivo (non ho toccato i servizi).
 
 **Comandi eseguiti**
-- `manage.py test core --noinput` (DB di test separato `test_medycabrain_nav`, perché `test_medycabrain` esisteva già, probabilmente di un altro ramo): **72 test OK** (erano 58 prima + 14 nuovi).
+- `manage.py test core --noinput` (DB di test separato `test_medycabrain_nav`, perché `test_medycabrain` esisteva già, probabilmente di un altro ramo): **72 test OK** (test nuovi in `test_navigation.py`; `AnalyticsTests` eredita i test di `ClusterScopeTests` per riusare i dati, quindi quelli girano due volte).
 - `manage.py makemigrations --check --dry-run`: nessuna deriva. `manage.py check`: nessun problema.
 - `npm run build` in `FEC` (usa `node_modules` della copia principale tramite link temporaneo, rimosso prima del commit): `tsc -b` e `vite build` OK.
 - `makemigrations core -n search_indexes` per generare la 0023. **Mai eseguito `migrate`**, nessun servizio riavviato, nessun push.
