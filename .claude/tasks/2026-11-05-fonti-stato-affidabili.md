@@ -1,7 +1,7 @@
 ---
 id: 2026-11-05-fonti-stato-affidabili
 titolo: Fonti, account e pagina Stato che dicono la verità
-stato: revisione
+stato: pronto
 ramo: feat/fonti-stato-affidabili
 pr: ""
 ticket: ""
@@ -289,6 +289,15 @@ Rilievi non bloccanti, per gravita':
 - Il verde dei test non prova la correttezza di tutto: la rete di test e sottile.
 - La prova visiva da occhio umano (colori, spaziature): screenshot fatti ma guardati solo a campione. Giuseppe: dopo `migrate` + build, aprire `/accounts` e `/stato` a 380px.
 
+**Secondo giro** (collaudatore) - **Verdetto: PASSA** (nessun problema bloccante).
+- Ambiente: copia temporanea del DB di produzione con `migrate` (0023 solo sulla copia), backend del ramo su 127.0.0.1:8110, `vite preview` del ramo su 5199 (proxy verso 8110), Chromium headless. Nessun POST su :9093; copia, server e symlink eliminati; produzione ancora a `0022_link_media`, :9093 risponde 200.
+- (1) Mobile. A 380px `/accounts` (account e Blog): `scrollWidth 380 = clientWidth 380`, tabella 346px in contenitore 346px (nessuno scroll laterale), ogni riga e' una scheda (prima cella in alto, didascalie Proprieta'/Reel/Follower/Stato, azioni in fondo). «Rimuovi» visibile, box 68x40 px; cliccato davvero su account (27 -> 26 bottoni) e su blog (35 -> 34). A 1280px restano tabelle (righe `table-row`).
+- (2) PATCH su riga rimossa: account `PATCH {"username":"coll.uno"}` -> `{"username":["Questa fonte esiste già tra le rimosse: ripristinala dal filtro «Rimossi»."]} [400]`; blog `PATCH {"index_url":"https://example.com/blog-a"}` -> stesso messaggio su `index_url` [400], e anche la variante `https://www.example.com/blog-a/` -> 400. PATCH valido (`coll.tre`) -> 200. Nessun `Traceback` nel log del backend.
+- (3) Testo: aggiungendo un account dalla UI, avviso «Account aggiunto. La raccolta dei suoi reel riparte il 27 novembre, quando si rinnova il budget.» (380 e 1280px); `/stato` mostra «La raccolta riparte il 27 novembre» (380 e 1280px, nessuno scroll laterale).
+- (4) `manage.py test core --noinput` -> `Ran 78 tests in 11.488s` / `OK`. `npm run build` -> `✓ built in 16.16s` (tsc + vite, nessun errore).
+- Osservazione (preesistente, non bloccante): a 1280px la tabella account e' larga 1007px in un contenitore di 974px, quindi «Rimuovi» e' tagliato sul bordo destro e si raggiunge scorrendo dentro la tabella; la pagina in se' non scorre. Screenshot letti: account 380/1280, blog 380, stato 380.
+- Non provato: la tabella dei caricamenti (fuori ramo), `fonti_blog` MCP (solo test automatico), ciclo `next` con piu' pagine.
+
 ## 6. Rilascio           (rilasciatore)
 ## Registro delle decisioni
 
@@ -301,3 +310,5 @@ Rilievi non bloccanti, per gravita':
   - Q6: ri-aggiungere una fonte rimossa con `owner_type` diverso viene **rifiutato** con messaggio italiano (invariante owned/competitor).
   - Q7: confermato: account rimosso tiene i reel, blog rimosso toglie gli articoli.
   - Q8: sì, «Inattivo» → «In pausa».
+
+- 2026-11-05 (capo): revisione PASSA, collaudo PASSA (due giri, mobile 380px verificato). Secondo giro sui rilievi (20679aa, 78 test OK). Resta fuori: a 1280px la tabella account è 1007px in 974px (preesistente, «Rimuovi» si raggiunge scorrendo dentro la tabella). stato: pronto.
