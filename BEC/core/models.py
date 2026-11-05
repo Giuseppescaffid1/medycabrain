@@ -9,6 +9,8 @@ pipeline: each agent selects rows in its `pending` state, processes them,
 and marks them `done` / `failed` / `skipped`.
 """
 
+from django.contrib.postgres.indexes import GinIndex
+from django.contrib.postgres.search import SearchVector
 from django.db import models
 
 # Status choices shared by the pipeline stage columns
@@ -124,6 +126,10 @@ class Reel(models.Model):
             models.Index(fields=["enrich_status"]),
             models.Index(fields=["argument_status"]),
             models.Index(fields=["-posted_at"]),
+            # Serves the library search (ReelViewSet): the query must use the
+            # very same expression, config included, or Postgres ignores it.
+            GinIndex(SearchVector("caption", config="italian"),
+                     name="reels_caption_fts_gin"),
         ]
 
     def __str__(self):
@@ -141,6 +147,10 @@ class Transcript(models.Model):
 
     class Meta:
         db_table = "transcripts"
+        indexes = [
+            GinIndex(SearchVector("text", config="italian"),
+                     name="transcripts_text_fts_gin"),
+        ]
 
     def __str__(self):
         return f"transcript:{self.reel.shortcode}"

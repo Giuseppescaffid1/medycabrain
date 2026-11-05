@@ -4,7 +4,8 @@ from pathlib import Path
 
 from django.contrib.auth import authenticate
 from django.contrib.postgres.search import SearchQuery, SearchVector
-from django.db.models import Count, Q
+from django.db.models import Count, Exists, OuterRef, Q, Subquery
+from django.db.models.functions import Coalesce
 from rest_framework import status, viewsets
 from rest_framework.authtoken.models import Token
 from rest_framework.decorators import action, api_view, permission_classes
@@ -468,6 +469,11 @@ class ReelViewSet(viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         qs = models.Reel.objects.select_related("account", "enrichment", "annotation")
+        # Only the list hides excluded reels. Detail, annotation and tags work
+        # by id, like clusters and documents: an excluded reel must open (404
+        # made "Ripristina" unreachable) and declare itself through is_active.
+        if self.action != "list":
+            return qs
         # ?excluded=1 shows what the client removed, so it can be restored.
         if self.request.query_params.get("excluded") in ("1", "true"):
             qs = qs.filter(is_active=False)
@@ -475,11 +481,47 @@ class ReelViewSet(viewsets.ReadOnlyModelViewSet):
             qs = qs.filter(is_active=True)
         search = self.request.query_params.get("search", "").strip()
         if search:
-            vector = SearchVector("caption", config="italian") + SearchVector(
-                "transcript__text", config="italian"
-            )
-            qs = qs.annotate(sv=vector).filter(sv=SearchQuery(search, config="italian"))
+            # Not one concatenated vector (`caption + transcript__text`): no
+            # index can serve that expression, and the join to transcripts
+            # made Postgres compute it for every row (3 s; 6.6 s with the
+            # paginator's count). Each side is its own subquery, matching its
+            # own GIN index (migration 0025), OR-ed on the reel id. A plain OR
+            # of the two conditions after a join does NOT use the indexes: the
+            # OR spans two tables.
+            # Several words keep the old meaning (all of them, each anywhere
+            # in caption+transcript): one `id IN caption OR id IN transcript`
+            # per word, AND-ed. One SearchQuery over both words would need
+            # them in the SAME field.
+            terms = self._search_terms(search)
+            for term in terms:
+                query = SearchQuery(term, config="italian")
+                by_caption = (models.Reel.objects
+                              .annotate(sv=SearchVector("caption", config="italian"))
+                              .filter(sv=query).values("id"))
+                by_transcript = (models.Transcript.objects
+                                 .annotate(sv=SearchVector("text", config="italian"))
+                                 .filter(sv=query).values("reel_id"))
+                qs = qs.filter(Q(id__in=by_caption) | Q(id__in=by_transcript))
+            if not terms:  # only stop words: as before, nothing matches
+                qs = qs.none()
         return qs
+
+    @staticmethod
+    def _search_terms(search):
+        """Words of the search that the Italian config does not discard.
+
+        A stop word ("di", "per") makes its own query empty, which matches
+        nothing; inside one query Postgres just drops it. Dropping it here
+        gives the same result as before for a multi-word search.
+        """
+        words = search.split()
+        if not words:
+            return []
+        from django.db import connection
+        with connection.cursor() as cur:
+            cur.execute("SELECT w, numnode(plainto_tsquery('italian', w)) "
+                        "FROM unnest(%s::text[]) AS w", [words])
+            return [w for w, n in cur.fetchall() if n]
 
     def get_serializer_class(self):
         if self.action == "retrieve":
@@ -587,16 +629,50 @@ class ClusterViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [IsAuthenticated]
     pagination_class = None
 
+    @staticmethod
+    def _annotated(qs):
+        # Counts as subqueries: two joined Counts would multiply rows
+        # (reels x articles) before collapsing them.
+        reels = (models.ReelClusterAssignment.objects.filter(cluster=OuterRef("pk"))
+                 .order_by().values("cluster").annotate(n=Count("id")).values("n"))
+        docs = (models.DocClusterAssignment.objects.filter(cluster=OuterRef("pk"))
+                .order_by().values("cluster").annotate(n=Count("id")).values("n"))
+        return qs.select_related("run").annotate(
+            reel_count_n=Coalesce(Subquery(reels), 0),
+            doc_count_n=Coalesce(Subquery(docs), 0),
+            has_blog_n=Exists(models.DocClusterAssignment.objects
+                              .filter(cluster=OuterRef("pk"))),
+        )
+
     def get_queryset(self):
-        # Detail fetch is by id — don't scope-restrict it.
-        if self.action == "retrieve":
-            return models.TopicCluster.objects.all()
+        # Detail fetch is by id — don't scope-restrict it. The serializer
+        # reports the cluster's real scope, so the page can redirect a link
+        # pasted under the wrong side.
+        if self.action != "list":
+            return self._annotated(models.TopicCluster.objects.all())
         scope = SCOPE_MAP.get(self.request.query_params.get("scope", "competitor").lower(),
                               "competitor")
         current = models.ClusterRun.objects.filter(scope=scope, is_current=True).first()
         if not current:
             return models.TopicCluster.objects.none()
-        return current.clusters.all().order_by("-size")
+        return self._annotated(current.clusters.all().order_by("-size"))
+
+    def get_serializer_context(self):
+        ctx = super().get_serializer_context()
+        if self.action == "list":
+            # Three thumbnails per cluster in ONE query instead of one each.
+            ids = list(self.get_queryset().values_list("id", flat=True))
+            thumbs = {}
+            rows = (models.ReelClusterAssignment.objects
+                    .filter(cluster_id__in=ids).exclude(reel__thumbnail_file="")
+                    .order_by("-reel__view_count")
+                    .values_list("cluster_id", "reel__thumbnail_file"))
+            for cid, f in rows:
+                bucket = thumbs.setdefault(cid, [])
+                if len(bucket) < 3:
+                    bucket.append(f)
+            ctx["preview_thumbs"] = thumbs
+        return ctx
 
     @action(detail=True, methods=["get"], url_path="arguments")
     def arguments(self, request, pk=None):
@@ -1365,16 +1441,44 @@ class SecondBrainGraphView(APIView):
             run = models.ClusterRun.objects.filter(scope=scope, is_current=True).first()
             if not run:
                 return []
-            clusters = list(run.clusters.all().order_by("-size"))
+            # In bulk: this view cost 1221 queries (8.9 s) when it asked for
+            # the counts, reels and articles one cluster at a time.
+            # .only(): the heavy JSON columns (embedding, chunk_vectors,
+            # raw_response, keywords...) are not drawn on the map. Decoding
+            # them for ~9700 rows was half of the 5.5 s this view took.
+            clusters = list(run.clusters.all().order_by("-size").only(
+                "run", "label_it", "description_it", "centroid", "size").annotate(
+                n_reels=Count("reel_assignments", distinct=True)))
+            ids = [c.id for c in clusters]
+            top_reels, top_docs = {}, {}
+            for a in (models.ReelClusterAssignment.objects
+                      .filter(cluster_id__in=ids, reel__is_active=True)
+                      .select_related("reel", "reel__account", "reel__enrichment")
+                      .only("cluster_id", "reel__shortcode", "reel__caption",
+                            "reel__view_count", "reel__account__username",
+                            "reel__account__owner_type",
+                            "reel__enrichment__primary_topic",
+                            "reel__enrichment__summary_it")
+                      .order_by("cluster_id", "-reel__view_count")):
+                bucket = top_reels.setdefault(a.cluster_id, [])
+                if len(bucket) < 5:
+                    bucket.append(a.reel)
+            for a in (models.DocClusterAssignment.objects
+                      .filter(cluster_id__in=ids)
+                      .select_related("document", "document__source")
+                      .only("cluster_id", "document__title", "document__summary_it",
+                            "document__source_url", "document__owner_type",
+                            "document__source__name")
+                      .order_by("cluster_id", "id")):
+                bucket = top_docs.setdefault(a.cluster_id, [])
+                if len(bucket) < 3:
+                    bucket.append(a.document)
             for c in clusters:
                 cid = f"{scope}:cluster:{c.id}"
-                add(cid, "theme", c.label_it, f"{c.reel_assignments.count()} reel",
+                add(cid, "theme", c.label_it, f"{c.n_reels} reel",
                     parent=root_id, owner=scope, detail=c.description_it or "")
                 link(root_id, cid, "", "structure")
-                for r in (models.Reel.objects
-                          .filter(cluster_assignments__cluster=c, is_active=True)
-                          .select_related("account", "enrichment")
-                          .order_by("-view_count")[:5]):
+                for r in top_reels.get(c.id, []):
                     enr = getattr(r, "enrichment", None)
                     rid = f"reel:{r.shortcode}"
                     add(rid, "reel",
@@ -1384,9 +1488,7 @@ class SecondBrainGraphView(APIView):
                         detail=(enr.summary_it if enr else "") or "",
                         url=f"https://www.instagram.com/reel/{r.shortcode}/")
                     link(cid, rid, "", "structure")
-                for a in (models.DocClusterAssignment.objects.filter(cluster=c)
-                          .select_related("document", "document__source")[:3]):
-                    d = a.document
+                for d in top_docs.get(c.id, []):
                     site = d.source.name if d.source else ""
                     add(f"doc:{d.id}", "blog", d.title.replace(" — Medyca", ""),
                         f"articolo blog{' · ' + site if site else ''}",
@@ -1410,7 +1512,7 @@ class SecondBrainGraphView(APIView):
                 continue
             oid = f"opp:{c.id}"
             add(oid, "opportunity", c.label_it,
-                f"{c.reel_assignments.count()} reel competitor",
+                f"{c.n_reels} reel competitor",
                 parent="root:opportunity", owner="opportunity")
             link("root:opportunity", oid, "", "structure")
             # the flow the client reads: seen out there -> a gap -> something

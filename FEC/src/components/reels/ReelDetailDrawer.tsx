@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { AnimatePresence, motion } from "framer-motion";
@@ -11,7 +11,9 @@ import {
   restoreReel,
 } from "../../api/endpoints";
 import type { ReelDetail } from "../../api/types";
-import { Badge, Button, Spinner } from "../ui/primitives";
+import { errorStatus } from "../../api/client";
+import { invalidateReelViews } from "../../lib/queryKeys";
+import { Badge, Button, ErrorState, Spinner } from "../ui/primitives";
 import { formatCount, formatLabel, mediaUrl } from "../../lib/utils";
 
 export function ReelDetailDrawer({
@@ -23,7 +25,7 @@ export function ReelDetailDrawer({
 }) {
   const { t } = useTranslation();
   const qc = useQueryClient();
-  const { data: reel, isLoading } = useQuery({
+  const { data: reel, isLoading, isError, error, refetch, isFetching } = useQuery({
     queryKey: ["reel", reelId],
     queryFn: () => fetchReel(reelId!),
     enabled: reelId != null,
@@ -35,10 +37,9 @@ export function ReelDetailDrawer({
     return () => window.removeEventListener("keydown", onEsc);
   }, [onClose]);
 
-  const invalidate = () => {
-    qc.invalidateQueries({ queryKey: ["reel", reelId] });
-    qc.invalidateQueries({ queryKey: ["reels"] });
-  };
+  // Every view that shows a reel, not just the library: the Workspace, the
+  // Timeline and the cluster page kept the old star until a reload.
+  const invalidate = () => invalidateReelViews(qc, reelId);
 
   return (
     <AnimatePresence>
@@ -70,10 +71,16 @@ export function ReelDetailDrawer({
               </button>
             </div>
 
-            {isLoading || !reel ? (
+            {isError ? (
+              errorStatus(error) === 404 ? (
+                <ErrorState message={t("content.notFound")} />
+              ) : (
+                <ErrorState onRetry={() => void refetch()} retrying={isFetching} />
+              )
+            ) : isLoading || !reel ? (
               <Spinner label={t("common.loading")} />
             ) : (
-              <DrawerBody reel={reel} onChange={invalidate} />
+              <DrawerBody key={reel.id} reel={reel} onChange={invalidate} />
             )}
           </motion.div>
         </>
@@ -285,6 +292,31 @@ function AnnotationPanel({ reel, onChange }: { reel: ReelDetail; onChange: () =>
   const [note, setNote] = useState(ann?.note ?? "");
   const [newTag, setNewTag] = useState("");
 
+  // The note used to be saved only on blur. Esc (or the close button) unmounts
+  // the drawer before the blur fires, and the text was lost. Now it saves
+  // after a pause in typing, and once more on the way out.
+  const noteRef = useRef(note);
+  const savedRef = useRef<string | null>(ann?.note ?? "");
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+  noteRef.current = note;
+  const saveNote = useCallback(() => {
+    if (noteRef.current === savedRef.current) return;
+    const value = noteRef.current;
+    savedRef.current = value;
+    patchAnnotation(reel.id, { note: value }).then(
+      () => onChangeRef.current(),
+      () => {
+        savedRef.current = null; // not saved: the next change tries again
+      }
+    );
+  }, [reel.id]);
+  useEffect(() => {
+    const id = window.setTimeout(saveNote, 800);
+    return () => window.clearTimeout(id);
+  }, [note, saveNote]);
+  useEffect(() => saveNote, [saveNote]);
+
   const mutate = useMutation({
     mutationFn: (payload: Record<string, unknown>) => patchAnnotation(reel.id, payload),
     onSuccess: onChange,
@@ -321,7 +353,7 @@ function AnnotationPanel({ reel, onChange }: { reel: ReelDetail; onChange: () =>
           <textarea
             value={note}
             onChange={(e) => setNote(e.target.value)}
-            onBlur={() => note !== (ann?.note ?? "") && mutate.mutate({ note })}
+            onBlur={saveNote}
             placeholder={t("reel.notePlaceholder")}
             rows={2}
             className="w-full resize-none rounded-xl border border-border bg-white px-3 py-2 text-sm text-navy outline-none transition focus:border-secondary"

@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { useTranslation } from "react-i18next";
 import { cn } from "../../lib/utils";
 
 /* Shared pill-input classes (search fields, selects, form inputs). */
@@ -120,6 +121,68 @@ export function EmptyState({ message }: { message: string }) {
     <div className="flex flex-col items-center justify-center py-20 text-center text-muted">
       <div className="mb-3 text-4xl">🗂️</div>
       <p className="max-w-md text-sm">{message}</p>
+    </div>
+  );
+}
+
+/**
+ * A failed load, said plainly. The rule on every page is: loading -> Skeleton,
+ * error -> ErrorState, nothing to show -> EmptyState. An error must never wear
+ * the face of an empty list ("nessun reel") or of a spinner that never ends:
+ * the client reads both as "the platform lost my data".
+ *
+ * The brand red is also the error red, so the message carries an icon and
+ * words, never colour alone.
+ */
+export function ErrorState({
+  message,
+  onRetry,
+  retrying,
+  compact,
+  children,
+}: {
+  message?: string;
+  onRetry?: () => void;
+  retrying?: boolean;
+  /** Inline version for one card of a dashboard: a broken chart must not
+   *  take the whole page with it. */
+  compact?: boolean;
+  /** Secondary action, next to "Riprova". */
+  children?: ReactNode;
+}) {
+  const { t } = useTranslation();
+  return (
+    <div
+      role="alert"
+      className={cn(
+        "flex flex-col items-center justify-center text-center text-muted",
+        compact ? "gap-2 py-8" : "gap-3 py-20"
+      )}
+    >
+      <svg
+        width={compact ? 28 : 40}
+        height={compact ? 28 : 40}
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className="text-danger"
+        aria-hidden
+      >
+        <path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" />
+        <path d="M12 9v4M12 17h.01" />
+      </svg>
+      <p className="max-w-md text-sm font-semibold text-navy">{message ?? t("common.loadError")}</p>
+      <div className="flex flex-wrap items-center justify-center gap-2">
+        {onRetry && (
+          <Button variant="secondary" onClick={onRetry} loading={retrying}>
+            {t("common.retry")}
+          </Button>
+        )}
+        {children}
+      </div>
     </div>
   );
 }

@@ -23,6 +23,9 @@ export interface ReelFilters {
   favorite?: boolean;
   inspiration?: boolean;
   ordering?: string;
+  /** ISO date-time bounds on posted_at (the Timeline asks one month at a time). */
+  posted_after?: string;
+  posted_before?: string;
   page?: number;
   page_size?: number;
   excluded?: boolean;

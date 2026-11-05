@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
@@ -21,11 +22,12 @@ import {
   fetchTopContent,
 } from "../api/analytics";
 import type { Scope } from "../api/endpoints";
-import { Skeleton } from "../components/ui/primitives";
+import { ErrorState, Skeleton } from "../components/ui/primitives";
 import { ScopeBadge } from "../components/ui/ScopeBadge";
 import { PageTransition, useCountUp } from "../components/ui/motion";
 import { formatCount, mediaUrl } from "../lib/utils";
 
+const CLUSTERS_SHOWN = 20;
 const SERIES = "#4A6FAC";   // secondary — area line, default bars
 const POSITIVE = "#1E7E4A"; // success — above-median weight
 const SERIES2 = "#346FAA";  // heading blue — Medyca in benchmark
@@ -43,6 +45,14 @@ export default function Analytics() {
   const top = useQuery({ queryKey: ["an-top", scope], queryFn: () => fetchTopContent(scope) });
   const clusters = useQuery({ queryKey: ["an-clusters", scope], queryFn: () => fetchClusterPerformance(scope) });
   const bench = useQuery({ queryKey: ["an-bench", scope], queryFn: () => fetchBenchmark(scope) });
+  // 233 themes drew a 7.9k px chart: show the 20 that weigh most, the rest on request.
+  const [allClusters, setAllClusters] = useState(false);
+  const clusterRows = clusters.data ?? [];
+  const shownClusters = allClusters ? clusterRows : clusterRows.slice(0, CLUSTERS_SHOWN);
+  const retry = (q: { refetch: () => unknown; isFetching: boolean }) => ({
+    onRetry: () => void q.refetch(),
+    retrying: q.isFetching,
+  });
 
   return (
     <PageTransition>
@@ -55,16 +65,20 @@ export default function Analytics() {
 
       <div className="flex-1 space-y-6 overflow-y-auto px-4 py-4 sm:px-6 sm:py-5">
         {/* KPI row */}
+        {overview.isError ? (
+          <ErrorState compact {...retry(overview)} />
+        ) : (
         <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
           <Kpi label={t("analytics.reels")} value={overview.data?.reels} />
           <Kpi label={t("analytics.avgViews")} value={overview.data?.avg_views} fmt />
           <Kpi label={t("analytics.totalViews")} value={overview.data?.total_views} fmt />
           <Kpi label={t("analytics.topTheme")} text={overview.data?.top_theme ?? "—"} />
         </div>
+        )}
 
         {/* Engagement over time */}
         <Card title={t("analytics.overTime")}>
-          {time.isLoading ? <Skeleton className="h-60" /> : (
+          {time.isError ? <ErrorState compact {...retry(time)} /> : time.isLoading ? <Skeleton className="h-60" /> : (
             <ResponsiveContainer width="100%" height={240}>
               <AreaChart data={time.data ?? []} margin={{ left: -10, right: 8, top: 8 }}>
                 <defs>
@@ -86,29 +100,45 @@ export default function Analytics() {
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
           {/* Cluster performance */}
           <Card title={t("analytics.clusterPerf")}>
-            {clusters.isLoading ? <Skeleton className="h-52" /> : (clusters.data?.length ?? 0) === 0 ? (
+            {clusters.isError ? <ErrorState compact {...retry(clusters)} /> : clusters.isLoading ? <Skeleton className="h-52" /> : clusterRows.length === 0 ? (
               <Empty text={t("analytics.noClusters")} />
             ) : (
-              <ResponsiveContainer width="100%" height={Math.max(200, (clusters.data!.length) * 34)}>
-                <BarChart data={clusters.data} layout="vertical" margin={{ left: 8, right: 16 }}>
-                  <CartesianGrid stroke={GRID} horizontal={false} />
-                  <XAxis type="number" stroke={AXIS} fontSize={11} tickLine={false} />
-                  <YAxis type="category" dataKey="label" stroke={AXIS} fontSize={10} width={104} tickLine={false} tickFormatter={(v: string) => (v.length > 14 ? v.slice(0, 13) + "…" : v)} />
-                  <Tooltip contentStyle={TOOLTIP} formatter={(v: number, n) => n === "avg_weight" ? `${v}×` : formatCount(v)} />
-                  <Bar dataKey="avg_weight" name={t("analytics.weight")} radius={[0, 5, 5, 0]}>
-                    {clusters.data!.map((c) => (
-                      <Cell key={c.id} fill={c.avg_weight >= 1 ? POSITIVE : SERIES} />
-                    ))}
-                  </Bar>
-                </BarChart>
-              </ResponsiveContainer>
+              <>
+                {/* Fixed-height box that scrolls: the chart can be as tall as
+                    it needs without pushing the page down. */}
+                <div className={allClusters ? "max-h-[520px] overflow-y-auto" : ""}>
+                  <ResponsiveContainer width="100%" height={Math.max(200, shownClusters.length * 34)}>
+                    <BarChart data={shownClusters} layout="vertical" margin={{ left: 8, right: 16 }}>
+                      <CartesianGrid stroke={GRID} horizontal={false} />
+                      <XAxis type="number" stroke={AXIS} fontSize={11} tickLine={false} />
+                      <YAxis type="category" dataKey="label" stroke={AXIS} fontSize={10} width={104} tickLine={false} tickFormatter={(v: string) => (v.length > 14 ? v.slice(0, 13) + "…" : v)} />
+                      <Tooltip contentStyle={TOOLTIP} formatter={(v: number, n) => n === "avg_weight" ? `${v}×` : formatCount(v)} />
+                      <Bar dataKey="avg_weight" name={t("analytics.weight")} radius={[0, 5, 5, 0]}>
+                        {shownClusters.map((c) => (
+                          <Cell key={c.id} fill={c.avg_weight >= 1 ? POSITIVE : SERIES} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+                {clusterRows.length > CLUSTERS_SHOWN && (
+                  <button
+                    onClick={() => setAllClusters((v) => !v)}
+                    className="mt-2 text-xs font-semibold text-secondary hover:text-heading"
+                  >
+                    {allClusters
+                      ? t("analytics.showTop", { count: CLUSTERS_SHOWN })
+                      : t("analytics.showAll", { count: clusterRows.length })}
+                  </button>
+                )}
+              </>
             )}
             <p className="mt-2 text-xs text-muted/80">{t("analytics.weightHint")}</p>
           </Card>
 
           {/* Benchmark */}
           <Card title={t("analytics.benchmark")}>
-            {bench.isLoading ? <Skeleton className="h-52" /> : (
+            {bench.isError ? <ErrorState compact {...retry(bench)} /> : bench.isLoading ? <Skeleton className="h-52" /> : (
               <ResponsiveContainer width="100%" height={200}>
                 <BarChart
                   data={[
@@ -134,7 +164,7 @@ export default function Analytics() {
 
         {/* Top content */}
         <Card title={t("analytics.topContent")}>
-          {top.isLoading ? <Skeleton className="h-52" /> : (
+          {top.isError ? <ErrorState compact {...retry(top)} /> : top.isLoading ? <Skeleton className="h-52" /> : (
             <div className="flex flex-col divide-y divide-border">
               {top.data?.map((r, i) => (
                 <a key={r.id} href={r.url} target="_blank" rel="noreferrer"

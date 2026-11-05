@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { fetchGraph, type GraphNode } from "../api/graph";
 import { BrainGraph } from "../components/graph/BrainGraph";
 import { NodePanel } from "../components/graph/NodePanel";
-import { Skeleton } from "../components/ui/primitives";
+import { ErrorState, Skeleton } from "../components/ui/primitives";
 import { PageTransition } from "../components/ui/motion";
 
 /**
@@ -18,7 +18,7 @@ import { PageTransition } from "../components/ui/motion";
 export default function BrainMap() {
   const { t } = useTranslation();
   const [selected, setSelected] = useState<GraphNode | null>(null);
-  const { data, isLoading } = useQuery({ queryKey: ["brain-graph"], queryFn: fetchGraph });
+  const { data, isLoading, isError, refetch, isFetching } = useQuery({ queryKey: ["brain-graph"], queryFn: fetchGraph });
 
   return (
     <PageTransition>
@@ -30,7 +30,9 @@ export default function BrainMap() {
 
         <div className="min-h-0 flex-1 lg:p-6">
           <div className="relative h-full overflow-hidden lg:rounded-3xl lg:border lg:border-border lg:shadow-card">
-            {isLoading || !data ? (
+            {isError ? (
+              <ErrorState onRetry={() => void refetch()} retrying={isFetching} />
+            ) : isLoading || !data ? (
               <Skeleton className="h-full w-full rounded-none" />
             ) : (
               <>
