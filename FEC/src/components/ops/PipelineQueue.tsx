@@ -25,6 +25,9 @@ export interface QueueStage {
   pending: number;
   waiting: number;
   failed: number;
+  /** Pending but unreachable (no audio, failed transcription): not queued. */
+  blocked: number;
+  blocked_reason: string;
   seconds_per_item: number;
   eta_seconds: number;
   measured: boolean;
@@ -37,6 +40,9 @@ export interface QueueData {
   eta_seconds: number;
   measured: boolean;
   failed: number;
+  /** Reels waiting on something that will never happen; not in `remaining`. */
+  blocked: number;
+  blocked_reasons: string[];
   stages: QueueStage[];
 }
 
@@ -59,14 +65,25 @@ export interface RunningJob {
   message: string;
 }
 
+/** The last update started from the interface, whatever became of it. */
+export interface LastPipelineJob {
+  id: number;
+  status: string;
+  message: string;
+  error: string;
+  at: string | null;
+}
+
 export function PipelineQueue({
   queue,
   job,
+  lastJob,
   budget,
   onStarted,
 }: {
   queue?: QueueData;
   job?: RunningJob;
+  lastJob?: LastPipelineJob | null;
   budget?: Budget | null;
   onStarted: () => void;
 }) {
@@ -166,6 +183,17 @@ export function PipelineQueue({
           </p>
         )}
 
+        {/* The result of the last update: a finished or failed run used to
+            disappear from the page the moment it stopped being "in corso". */}
+        {!job && lastJob && <LastRun job={lastJob} />}
+
+        {queue.blocked > 0 && (
+          <p className="mt-3 text-xs text-muted">
+            {t("queue.blocked", { count: queue.blocked })}
+            {queue.blocked_reasons.length > 0 && ` (${queue.blocked_reasons.join(", ")})`}
+          </p>
+        )}
+
         {idle && !job ? (
           <p className="mt-4 text-sm text-muted">{t("queue.empty")}</p>
         ) : (
@@ -210,6 +238,33 @@ export function PipelineQueue({
           that spends it, not buried in a settings page. */}
       {budget && <BudgetBar budget={budget} />}
     </section>
+  );
+}
+
+function LastRun({ job }: { job: LastPipelineJob }) {
+  const { t } = useTranslation();
+  const when = job.at
+    ? new Date(job.at).toLocaleString("it-IT", {
+        day: "numeric",
+        month: "short",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : "";
+  const failed = job.status === "failed";
+  // "Completato, ma senza: …" is a finished run with holes: say so in amber.
+  const partial = job.status === "done" && /senza:/i.test(job.message);
+  return (
+    <p
+      className={
+        "mt-3 text-sm " +
+        (failed ? "font-semibold text-danger" : partial ? "text-warning" : "text-muted")
+      }
+    >
+      {failed
+        ? t("queue.lastFailed", { when, why: job.error || job.message })
+        : t("queue.lastDone", { when, message: job.message })}
+    </p>
   );
 }
 

@@ -12,7 +12,8 @@ So this stage can run in every pipeline invocation and self-throttles.
 Failure semantics follow the project rule — failures stay failed:
 consecutive failures deactivate the source with a readable error, and coming
 back is an explicit human action (POST /blog-sources/{id}/reactivate/),
-never an automatic retry loop.
+never an automatic retry loop. `last_error` is shown to the client on the
+Fonti page, so it holds a sentence (`_human_error`), not a Python repr.
 """
 
 from __future__ import annotations
@@ -25,6 +26,28 @@ from core.models import BlogSource, KnowledgeDocument, ScraperConfig
 from pipeline.agents import blog_agent, blog_discovery
 
 logger = logging.getLogger(__name__)
+
+
+def _human_error(exc: Exception) -> str:
+    """An exception as a sentence the client can read in the source's row.
+
+    `last_error` is shown on the Fonti page. `repr(exc)` there is
+    `ReadTimeout(MaxRetryError("HTTPSConnectionPool(host=…`: alarming noise to
+    a non-engineer. The repr stays in the log line next to every call, for
+    whoever maintains this.
+    """
+    import requests
+
+    if isinstance(exc, (blog_discovery.RobotsForbidden, blog_discovery.BudgetSpent)):
+        return str(exc)[:200]  # already written in Italian
+    if isinstance(exc, requests.Timeout):
+        return "il sito non ha risposto in tempo"
+    if isinstance(exc, requests.ConnectionError):
+        return "sito non raggiungibile"
+    if isinstance(exc, requests.HTTPError):
+        code = getattr(exc.response, "status_code", None)
+        return f"il sito ha risposto con errore {code}" if code else "il sito ha risposto con un errore"
+    return (str(exc) or type(exc).__name__)[:200]
 
 
 def _cfg() -> dict:
@@ -75,7 +98,7 @@ def crawl_source(source: BlogSource, *, job=None, force: bool = False,
         return {"source": source.name, "failed": str(exc), "deactivated": True}
     except Exception as exc:  # noqa: BLE001
         source.consecutive_failures += 1
-        source.last_error = repr(exc)[:500]
+        source.last_error = _human_error(exc)
         source.last_crawled_at = timezone.now()
         if source.consecutive_failures >= cfg["max_consecutive_failures"]:
             source.is_active = False
@@ -84,7 +107,7 @@ def crawl_source(source: BlogSource, *, job=None, force: bool = False,
         source.save()
         logger.warning("[blogscrape] %s: scoperta fallita (%s consecutivi): %r",
                        source.name, source.consecutive_failures, exc)
-        return {"source": source.name, "failed": repr(exc)[:120],
+        return {"source": source.name, "failed": _human_error(exc),
                 "deactivated": not source.is_active}
 
     known = set(KnowledgeDocument.objects.filter(
@@ -170,7 +193,7 @@ def run(ctx) -> dict:
         except Exception as exc:  # noqa: BLE001 — one dead site never stops the others
             logger.warning("[blogscrape] %s: errore inatteso %r", source.name, exc)
             out["failed"] += 1
-            out["detail"][source.name] = {"failed": repr(exc)[:120]}
+            out["detail"][source.name] = {"failed": _human_error(exc)}
             continue
         out["detail"][source.name] = r
         if r.get("skipped"):

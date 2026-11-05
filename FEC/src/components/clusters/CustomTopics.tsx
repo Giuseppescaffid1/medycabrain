@@ -14,6 +14,7 @@ import { Badge, Button, Skeleton, fieldCls } from "../ui/primitives";
 import { ReelCard } from "../reels/ReelCard";
 import { ReelDetailDrawer } from "../reels/ReelDetailDrawer";
 import { EASE } from "../ui/motion";
+import { Notice, PanelError, apiErrorMessage, useNotice } from "../manage/parts";
 
 /**
  * Client-supplied themes ("Tiroide", "Osteoporosi", "Bijuva"…). The client
@@ -28,6 +29,7 @@ export function CustomTopics({ scope }: { scope: Scope }) {
   const [openReel, setOpenReel] = useState<number | null>(null);
 
   const topics = useQuery({ queryKey: ["custom-topics"], queryFn: fetchCustomTopics });
+  const { notice, ok, fail } = useNotice();
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["custom-topics"] });
@@ -35,11 +37,23 @@ export function CustomTopics({ scope }: { scope: Scope }) {
   };
   const add = useMutation({
     mutationFn: (l: string) => addCustomTopic(l),
-    onSuccess: () => { setLabel(""); invalidate(); },
+    onSuccess: (topic) => {
+      setLabel("");
+      invalidate();
+      const found = topic.medyca_matches + topic.doc_matches + topic.competitor_matches;
+      ok(t("topics.added", { count: found }));
+    },
+    // The server's sentence ("esiste già", "riprova tra un minuto"), not a guess.
+    onError: (e: unknown) => fail(apiErrorMessage(e, t("topics.addError"))),
   });
   const remove = useMutation({
     mutationFn: (id: number) => deleteCustomTopic(id),
-    onSuccess: () => { setOpenTopic(null); invalidate(); },
+    onSuccess: () => {
+      setOpenTopic(null);
+      invalidate();
+      ok(t("topics.removedOk"));
+    },
+    onError: (e: unknown) => fail(apiErrorMessage(e, t("manage.actionFailed"))),
   });
 
   return (
@@ -74,12 +88,12 @@ export function CustomTopics({ scope }: { scope: Scope }) {
         </Button>
       </form>
       {add.isPending && <p className="mb-3 text-xs text-muted">{t("topics.mapping")}</p>}
-      {add.isError && (
-        <p className="mb-3 text-xs font-semibold text-danger">⚠ {t("topics.addError")}</p>
-      )}
+      <Notice notice={notice} />
 
       {topics.isLoading ? (
         <Skeleton className="h-12" />
+      ) : topics.isError ? (
+        <PanelError message={t("topics.loadError")} onRetry={() => topics.refetch()} />
       ) : (
         <div className="flex flex-wrap gap-2">
           {topics.data?.map((tp) => (
@@ -151,7 +165,7 @@ function TopicPill({
       <button
         onClick={onRemove}
         aria-label={`Rimuovi ${topic.label}`}
-        className="flex h-10 w-8 items-center justify-center text-muted/60 transition hover:text-danger"
+        className="flex h-10 w-10 items-center justify-center text-muted/60 transition hover:text-danger"
       >
         ✕
       </button>

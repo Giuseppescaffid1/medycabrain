@@ -47,22 +47,124 @@ def me_view(request):
 
 # ── Accounts ───────────────────────────────────────────────────────────────────
 
-class AccountViewSet(viewsets.ModelViewSet):
+class _RemovableMixin:
+    """Remove = hide, add again = restore. Shared by accounts and blog sources.
+
+    "Rimuovi" used to flip `is_active`, the same column the pause toggle uses,
+    so a removed row stayed in the list looking like a paused one and could not
+    be added again (the unique column refused it, in English). Now removal
+    stamps `removed_at`: the default list hides those rows, `?removed=1` shows
+    only them, and adding the same account/URL again restores the old row.
+    Nothing is deleted: an account's reels, transcripts and analyses hang off
+    the row and would go with it.
+    """
+
+    duplicate_message = "Esiste già."
+
+    def _scope_removed(self, qs):
+        # Only the list is filtered: restore/crawl/destroy must still find a
+        # removed row by id.
+        if self.action != "list":
+            return qs
+        if self.request.query_params.get("removed") in ("1", "true"):
+            return qs.filter(removed_at__isnull=False)
+        return qs.filter(removed_at__isnull=True)
+
+    def create(self, request, *args, **kwargs):
+        from django.db import IntegrityError
+        from rest_framework.exceptions import ParseError
+
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        found = serializer.restorable
+        if found is not None:
+            self.restore_row(found)
+            data = self.get_serializer(self.queryset_all().get(pk=found.pk)).data
+            return Response({**data, **self.extra_create_data(), "restored": True})
+        try:
+            self.perform_create(serializer)
+        except IntegrityError as exc:
+            # Two requests racing past validation: still an answer, not a 500.
+            raise ParseError(self.duplicate_message) from exc
+        data = self.get_serializer(self.queryset_all().get(pk=serializer.instance.pk)).data
+        return Response({**data, **self.extra_create_data()}, status=status.HTTP_201_CREATED)
+
+    def extra_create_data(self) -> dict:
+        return {}
+
+    def perform_destroy(self, instance):
+        from django.utils import timezone
+        instance.is_active = False
+        instance.removed_at = timezone.now()
+        instance.save(update_fields=["is_active", "removed_at"])
+        self.after_remove(instance)
+
+    def after_remove(self, instance):
+        pass
+
+    def perform_update(self, serializer):
+        # Switching a row back on by hand also takes it out of "Rimossi".
+        was_active = serializer.instance.is_active
+        row = serializer.save()
+        if row.is_active and row.removed_at:
+            row.removed_at = None
+            row.save(update_fields=["removed_at"])
+        if row.is_active and not was_active:
+            self.after_resume(row)
+
+    def after_resume(self, row):
+        pass
+
+    @action(detail=True, methods=["post"], url_path="restore")
+    def restore(self, request, pk=None):
+        row = self.get_object()
+        self.restore_row(row)
+        return Response(self.get_serializer(self.queryset_all().get(pk=row.pk)).data)
+
+
+def _collection_paused_until():
+    """The date Instagram collection resumes, if the budget is spent now.
+
+    Adding an account while the Apify budget is exhausted works, but nothing
+    is collected until the cycle renews. The form has to say so at the moment
+    it is used (the figure is cached 5 minutes inside apify_budget).
+    """
+    from scraper import apify_budget
+
+    try:
+        b = apify_budget.spend()
+    except Exception:  # noqa: BLE001 — a budget lookup never blocks adding an account
+        return None
+    if b and b.get("available_usd", 1) <= 0:
+        return b.get("cycle_end")
+    return None
+
+
+class AccountViewSet(_RemovableMixin, viewsets.ModelViewSet):
     serializer_class = serializers.AccountSerializer
     permission_classes = [IsAuthenticated]
+    duplicate_message = "Questo account è già monitorato."
 
-    def get_queryset(self):
+    def queryset_all(self):
         return models.TrackedAccount.objects.annotate(
             reel_count=Count("reels", filter=Q(reels__is_active=True))
         ).order_by("username")
 
-    def perform_destroy(self, instance):
-        # Soft delete: deactivate, keep reels.
-        instance.is_active = False
-        instance.save(update_fields=["is_active"])
+    def get_queryset(self):
+        return self._scope_removed(self.queryset_all())
+
+    def extra_create_data(self):
+        return {"collection_paused_until": _collection_paused_until()}
+
+    # Removing keeps the reels active: they are the client's library and stay
+    # in the analysis (a removed BLOG is the opposite, see BlogSourceViewSet).
+    def restore_row(self, row):
+        row.removed_at = None
+        row.is_active = True
+        row.save(update_fields=["removed_at", "is_active"])
 
 
-class BlogSourceViewSet(viewsets.ModelViewSet):
+class BlogSourceViewSet(_RemovableMixin, viewsets.ModelViewSet):
     """The blogs we crawl — the TrackedAccount of the article world.
 
     Creating one queues a discovery job immediately: the whole promise of
@@ -72,11 +174,15 @@ class BlogSourceViewSet(viewsets.ModelViewSet):
 
     serializer_class = serializers.BlogSourceSerializer
     permission_classes = [IsAuthenticated]
+    duplicate_message = "Questo blog è già tra le fonti."
 
-    def get_queryset(self):
+    def queryset_all(self):
         return models.BlogSource.objects.annotate(
             document_count=Count("documents", filter=Q(documents__is_active=True))
         ).order_by("name")
+
+    def get_queryset(self):
+        return self._scope_removed(self.queryset_all())
 
     def _queue_crawl(self, source, force=False):
         job = _existing_job("blogsource_discover", {"source_id": source.id})
@@ -94,14 +200,25 @@ class BlogSourceViewSet(viewsets.ModelViewSet):
         source = serializer.save()
         self._queue_crawl(source)
 
-    def perform_destroy(self, instance):
-        # Soft delete, AND the documents go with it. Unlike an Instagram
-        # account — whose reels are the client's own library — a removed
-        # competitor blog must leave the analysis, or the client deletes a
-        # source and the gap engine keeps quoting it.
-        instance.is_active = False
-        instance.save(update_fields=["is_active"])
+    def after_remove(self, instance):
+        # The documents go with it. Unlike an Instagram account — whose reels
+        # are the client's own library — a removed competitor blog must leave
+        # the analysis, or the client deletes a source and the gap engine
+        # keeps quoting it.
         instance.documents.update(is_active=False)
+
+    def after_resume(self, row):
+        # Pause never hid the documents, but a row taken out of "Rimossi" the
+        # old way (before removed_at existed) has them hidden, and nothing
+        # else brought them back.
+        row.documents.update(is_active=True)
+
+    def restore_row(self, row):
+        row.removed_at = None
+        row.is_active = True
+        row.save(update_fields=["removed_at", "is_active"])
+        row.documents.update(is_active=True)
+        self._queue_crawl(row, force=True)
 
     @action(detail=True, methods=["post"], url_path="crawl")
     def crawl(self, request, pk=None):
@@ -115,9 +232,10 @@ class BlogSourceViewSet(viewsets.ModelViewSet):
         a human decision, and it gets one fresh chance immediately."""
         source = self.get_object()
         source.is_active = True
+        source.removed_at = None
         source.consecutive_failures = 0
         source.last_error = ""
-        source.save(update_fields=["is_active", "consecutive_failures", "last_error"])
+        source.save(update_fields=["is_active", "removed_at", "consecutive_failures", "last_error"])
         source.documents.update(is_active=True)
         job = self._queue_crawl(source, force=True)
         return Response({"job_id": job.id, "status": job.status})
@@ -629,6 +747,21 @@ class KnowledgeAskView(APIView):
                                references=refs, content_type=ctype))
 
 
+def _idea_count(request, default: int) -> int:
+    """`n` from the body, as a whole number between 3 and 12.
+
+    `int("abc")` used to escape as a 500; a client that sends junk gets a
+    sentence it can show instead.
+    """
+    from rest_framework.exceptions import ParseError
+
+    try:
+        n = int(request.data.get("n", default))
+    except (TypeError, ValueError):
+        raise ParseError("Il numero di idee deve essere un numero intero.") from None
+    return max(3, min(n, 12))
+
+
 class ContentIdeaViewSet(viewsets.ModelViewSet):
     """The content-ideation Second Brain: browse / save / dismiss ideas, and
     generate a fresh batch from competitor coverage vs Medyca's own."""
@@ -649,7 +782,7 @@ class ContentIdeaViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=["post"], url_path="plan")
     def plan(self, request):
         """Build an editorial plan: n contents ready to film, each grounded."""
-        n = max(3, min(int(request.data.get("n", 6)), 12))
+        n = _idea_count(request, 6)
         theme = (request.data.get("theme") or "").strip()[:200]
         running = _existing_job("editorial", {"theme": theme})
         if running:
@@ -665,7 +798,7 @@ class ContentIdeaViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=["post"], url_path="generate")
     def generate(self, request):
         """Kick off idea generation as a detached background job (returns 202)."""
-        n = int(request.data.get("n", 8))
+        n = _idea_count(request, 8)
         running = _existing_job("ideation", {})
         if running:
             return Response(serializers.JobSerializer(running).data,
@@ -864,16 +997,30 @@ class PipelineStatusView(APIView):
                        "pending": max(0, total - embedded), "failed": 0,
                        "total": total, "pct": round(100 * embedded / total) if total else 0})
 
+        from core import ops, queue_eta
+
         jobs = [
-            {"id": j.id, "kind": j.kind, "status": j.status, "progress": j.progress,
+            {"id": j.id, "kind": j.kind,
+             "kind_label": ops.JOB_KIND_LABELS.get(j.kind, j.kind),
+             "status": j.status, "progress": j.progress,
              "message": j.message[:120]}
             for j in models.Job.objects.filter(status__in=("queued", "running")).order_by("-id")[:10]
         ]
 
+        # The last update started from the interface, whatever became of it. A
+        # finished or failed run used to vanish from the page the moment it
+        # left the "active" list, so "did it work?" had no answer.
+        lp = models.Job.objects.filter(kind="pipeline").order_by("-id").first()
+        last_pipeline_job = None if lp is None else {
+            "id": lp.id, "status": lp.status, "message": lp.message[:200],
+            "error": lp.error[:300], "at": lp.finished_at or lp.updated_at,
+        }
+
         accounts = [
             {"username": a.username, "owner_type": a.owner_type, "reels": a.n,
              "last_scraped_at": a.last_scraped_at}
-            for a in models.TrackedAccount.objects.annotate(n=Count("reels")).order_by("-n")
+            for a in models.TrackedAccount.objects.filter(removed_at__isnull=True)
+            .annotate(n=Count("reels")).order_by("-n")
         ]
 
         last = {
@@ -882,7 +1029,6 @@ class PipelineStatusView(APIView):
             "cluster_run": models.ClusterRun.objects.aggregate(m=Max("created_at"))["m"],
         }
 
-        from core import ops, queue_eta
         from scraper import apify_budget
 
         return Response({
@@ -905,6 +1051,7 @@ class PipelineStatusView(APIView):
             },
             "stages": stages,
             "jobs": jobs,
+            "last_pipeline_job": last_pipeline_job,
             "accounts": accounts,
             "last": last,
         })
@@ -1158,10 +1305,34 @@ class CustomTopicViewSet(viewsets.ModelViewSet):
         )
 
     def perform_create(self, serializer):
+        from django.db import transaction
+        from rest_framework.exceptions import APIException
+
         from core import custom_topics
-        topic = serializer.save()
-        custom_topics.embed_topic(topic)
-        custom_topics.recompute_matches([topic])
+
+        # One unit: the row, its embedding and its matches. If mapping fails
+        # (the embedding model not loading is the realistic case) the row must
+        # not stay behind without an embedding, or the retry is refused with
+        # "esiste già" for a theme that never worked.
+        try:
+            with transaction.atomic():
+                topic = serializer.save()
+                custom_topics.embed_topic(topic)
+                custom_topics.recompute_matches([topic])
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("[custom-topics] mappatura fallita: %r", exc)
+            err = APIException("Non sono riuscito a mappare il tema adesso. Riprova tra un minuto.")
+            err.status_code = 503
+            raise err from exc
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        # Re-read through the annotated queryset so the answer carries how many
+        # contents the theme matched — the client's first question about it.
+        row = self.get_queryset().get(pk=serializer.instance.pk)
+        return Response(self.get_serializer(row).data, status=status.HTTP_201_CREATED)
 
     @action(detail=True, methods=["get"])
     def matches(self, request, pk=None):

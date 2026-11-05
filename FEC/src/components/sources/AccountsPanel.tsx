@@ -5,7 +5,10 @@ import {
   addAccount,
   deleteAccount,
   fetchAccounts,
+  fetchRemovedAccounts,
+  restoreAccount,
   updateAccount,
+  type AddAccountResult,
 } from "../../api/endpoints";
 import type { Account } from "../../api/types";
 import { Badge, Button, Skeleton, fieldCls } from "../ui/primitives";
@@ -13,7 +16,9 @@ import {
   AddForm,
   FilterSelect,
   FormError,
+  Notice,
   PanelEmpty,
+  PanelError,
   PanelHeader,
   ResultCount,
   RowAction,
@@ -23,6 +28,8 @@ import {
   TableFrame,
   Th,
   Toolbar,
+  apiErrorMessage,
+  useNotice,
 } from "../manage/parts";
 import { formatCount, formatDate } from "../../lib/utils";
 
@@ -44,35 +51,70 @@ export function AccountsPanel() {
   const [q, setQ] = useState("");
   const [status, setStatus] = useState("all");
 
-  const { data, isLoading } = useQuery({ queryKey: ["accounts"], queryFn: fetchAccounts });
+  const { notice, ok, fail } = useNotice();
+
+  const showRemoved = status === "removed";
+  const live = useQuery({ queryKey: ["accounts"], queryFn: fetchAccounts });
+  // Only fetched when "Rimossi" is chosen: the common case pays nothing.
+  const gone = useQuery({
+    queryKey: ["accounts", "removed"],
+    queryFn: fetchRemovedAccounts,
+    enabled: showRemoved,
+  });
+  const { data, isLoading, isError, refetch } = showRemoved ? gone : live;
   const invalidate = () => qc.invalidateQueries({ queryKey: ["accounts"] });
 
   const add = useMutation({
     mutationFn: (v: { username: string; owner: Account["owner_type"] }) =>
       addAccount(v.username, v.owner),
-    onSuccess: () => {
+    onSuccess: (res: AddAccountResult) => {
       setUsername("");
       setError("");
       setAdding(false);
       invalidate();
+      if (res.restored) ok(t("accounts.restoredOnAdd", { name: res.username }));
+      else if (res.collection_paused_until)
+        ok(
+          t("accounts.addedBudgetPaused", {
+            date: formatDate(res.collection_paused_until),
+          })
+        );
+      else ok(t("accounts.added"));
     },
-    onError: (e: unknown) => {
-      const detail = (e as { response?: { data?: Record<string, string[]> } })?.response?.data;
-      const first = detail && Object.values(detail)[0];
-      setError(Array.isArray(first) ? first[0] : t("common.error"));
-    },
+    onError: (e: unknown) => setError(apiErrorMessage(e, t("common.error"))),
   });
   const toggle = useMutation({
     mutationFn: (v: { id: number; is_active: boolean }) =>
       updateAccount(v.id, { is_active: v.is_active }),
-    onSuccess: invalidate,
+    onSuccess: (_r, v) => {
+      invalidate();
+      ok(v.is_active ? t("accounts.resumed") : t("accounts.paused"));
+    },
+    onError: (e: unknown) => fail(apiErrorMessage(e, t("manage.actionFailed"))),
   });
   const remove = useMutation({
     mutationFn: (id: number) => deleteAccount(id),
-    onSuccess: invalidate,
+    onSuccess: () => {
+      invalidate();
+      ok(t("accounts.removedOk"));
+    },
+    onError: (e: unknown) => fail(apiErrorMessage(e, t("manage.actionFailed"))),
+  });
+  const restore = useMutation({
+    mutationFn: (id: number) => restoreAccount(id),
+    onSuccess: () => {
+      invalidate();
+      ok(t("manage.restored"));
+    },
+    onError: (e: unknown) => fail(apiErrorMessage(e, t("manage.actionFailed"))),
   });
 
-  const clean = (u: string) => u.trim().replace(/^@/, "").replace(/\/$/, "");
+  // The server is the judge; this only saves a round trip for the obvious
+  // cases: "@Medyca", " medyca ", or a pasted profile link.
+  const clean = (u: string) => {
+    const link = u.match(/instagram\.com\/([^/?#\s]+)/i);
+    return (link ? link[1] : u).trim().replace(/^@/, "").replace(/\/+$/, "").toLowerCase();
+  };
 
   const rows = useMemo(() => {
     const needle = q.trim().toLowerCase();
@@ -104,6 +146,7 @@ export function AccountsPanel() {
   return (
     <section aria-labelledby="tab-instagram" id="panel-instagram" role="tabpanel">
       <PanelHeader description={t("accounts.igSubtitle")} action={addButton} />
+      <Notice notice={notice} />
 
       <AddForm open={adding}>
         <form
@@ -151,7 +194,9 @@ export function AccountsPanel() {
 
       {isLoading ? (
         <Skeleton className="h-64" />
-      ) : !data?.length ? (
+      ) : isError ? (
+        <PanelError message={t("accounts.loadError")} onRetry={() => refetch()} />
+      ) : !data?.length && !showRemoved ? (
         <PanelEmpty message={t("accounts.empty")} />
       ) : (
         <>
@@ -165,15 +210,18 @@ export function AccountsPanel() {
                 { value: "all", label: t("manage.filterAll") },
                 { value: "active", label: t("accounts.active") },
                 { value: "inactive", label: t("accounts.inactive") },
+                { value: "removed", label: t("manage.removed") },
                 { value: "owned", label: t("scope.medyca") },
                 { value: "competitor", label: t("scope.competitor") },
               ]}
             />
-            <ResultCount shown={rows.length} total={data.length} />
+            <ResultCount shown={rows.length} total={data?.length ?? 0} />
           </Toolbar>
 
           {!rows.length ? (
-            <PanelEmpty message={t("manage.noResults")} />
+            <PanelEmpty
+              message={showRemoved && !data?.length ? t("manage.noneRemoved") : t("manage.noResults")}
+            />
           ) : (
             <TableFrame
               minWidth={720}
@@ -227,29 +275,43 @@ export function AccountsPanel() {
                       {a.last_scraped_at ? formatDate(a.last_scraped_at) : t("accounts.never")}
                     </td>
                     <td className="px-4 py-3">
-                      <StatusToggle
-                        onClick={() => toggle.mutate({ id: a.id, is_active: !a.is_active })}
-                        title={t("manage.toggleHint")}
-                      >
-                        <Badge
-                          className={
-                            a.is_active ? "bg-success/10 text-success" : "bg-surface text-muted"
-                          }
+                      {showRemoved ? (
+                        <Badge className="bg-surface text-muted">{t("manage.removed")}</Badge>
+                      ) : (
+                        <StatusToggle
+                          onClick={() => toggle.mutate({ id: a.id, is_active: !a.is_active })}
+                          title={t("manage.toggleHint")}
                         >
-                          {a.is_active ? t("accounts.active") : t("accounts.inactive")}
-                        </Badge>
-                      </StatusToggle>
+                          <Badge
+                            className={
+                              a.is_active ? "bg-success/10 text-success" : "bg-surface text-muted"
+                            }
+                          >
+                            {a.is_active ? t("accounts.active") : t("accounts.inactive")}
+                          </Badge>
+                        </StatusToggle>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-right">
                       <RowActions>
-                        <RowAction
-                          tone="danger"
-                          onClick={() => {
-                            if (confirm(t("accounts.confirmRemove"))) remove.mutate(a.id);
-                          }}
-                        >
-                          {t("accounts.remove")}
-                        </RowAction>
+                        {showRemoved ? (
+                          <RowAction
+                            tone="action"
+                            disabled={restore.isPending}
+                            onClick={() => restore.mutate(a.id)}
+                          >
+                            {t("manage.restore")}
+                          </RowAction>
+                        ) : (
+                          <RowAction
+                            tone="danger"
+                            onClick={() => {
+                              if (confirm(t("accounts.confirmRemove"))) remove.mutate(a.id);
+                            }}
+                          >
+                            {t("accounts.remove")}
+                          </RowAction>
+                        )}
                       </RowActions>
                     </td>
                   </tr>

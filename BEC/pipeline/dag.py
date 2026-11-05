@@ -122,11 +122,14 @@ class DAG:
 STAGE_NAMES = ["scrape", "download", "transcribe", "batch", "enrich", "embed",
                "blogscrape", "knowledge", "cluster"]
 
-# What each stage is called on the client's screen. Same words as core/ops.py.
+# What each stage is called on the client's screen. core/ops.py imports this
+# very dict: a copy there was missing `batch`, and the status page then showed
+# every nightly run as two.
 STAGE_LABELS = {
     "scrape": "Raccolta da Instagram",
     "download": "Download dei video",
     "transcribe": "Trascrizione audio",
+    "batch": "Analisi in blocco (consegna entro 24 h)",
     "enrich": "Analisi dei contenuti",
     "embed": "Indicizzazione per la ricerca",
     "blogscrape": "Scoperta articoli blog",
