@@ -485,19 +485,43 @@ class ReelViewSet(viewsets.ReadOnlyModelViewSet):
             # index can serve that expression, and the join to transcripts
             # made Postgres compute it for every row (3 s; 6.6 s with the
             # paginator's count). Each side is its own subquery, matching its
-            # own GIN index (migration 0023), OR-ed on the reel id. Measured on
-            # the live data, same query: 1460 ms -> 4.6 ms. A plain OR of the
-            # two conditions after a join was tried and does NOT use the
-            # indexes (1432 ms with them): the OR spans two tables.
-            query = SearchQuery(search, config="italian")
-            by_caption = (models.Reel.objects
-                          .annotate(sv=SearchVector("caption", config="italian"))
-                          .filter(sv=query).values("id"))
-            by_transcript = (models.Transcript.objects
-                             .annotate(sv=SearchVector("text", config="italian"))
-                             .filter(sv=query).values("reel_id"))
-            qs = qs.filter(Q(id__in=by_caption) | Q(id__in=by_transcript))
+            # own GIN index (migration 0023), OR-ed on the reel id. A plain OR
+            # of the two conditions after a join does NOT use the indexes: the
+            # OR spans two tables.
+            # Several words keep the old meaning (all of them, each anywhere
+            # in caption+transcript): one `id IN caption OR id IN transcript`
+            # per word, AND-ed. One SearchQuery over both words would need
+            # them in the SAME field.
+            terms = self._search_terms(search)
+            for term in terms:
+                query = SearchQuery(term, config="italian")
+                by_caption = (models.Reel.objects
+                              .annotate(sv=SearchVector("caption", config="italian"))
+                              .filter(sv=query).values("id"))
+                by_transcript = (models.Transcript.objects
+                                 .annotate(sv=SearchVector("text", config="italian"))
+                                 .filter(sv=query).values("reel_id"))
+                qs = qs.filter(Q(id__in=by_caption) | Q(id__in=by_transcript))
+            if not terms:  # only stop words: as before, nothing matches
+                qs = qs.none()
         return qs
+
+    @staticmethod
+    def _search_terms(search):
+        """Words of the search that the Italian config does not discard.
+
+        A stop word ("di", "per") makes its own query empty, which matches
+        nothing; inside one query Postgres just drops it. Dropping it here
+        gives the same result as before for a multi-word search.
+        """
+        words = search.split()
+        if not words:
+            return []
+        from django.db import connection
+        with connection.cursor() as cur:
+            cur.execute("SELECT w, numnode(plainto_tsquery('italian', w)) "
+                        "FROM unnest(%s::text[]) AS w", [words])
+            return [w for w, n in cur.fetchall() if n]
 
     def get_serializer_class(self):
         if self.action == "retrieve":
@@ -1419,13 +1443,22 @@ class SecondBrainGraphView(APIView):
                 return []
             # In bulk: this view cost 1221 queries (8.9 s) when it asked for
             # the counts, reels and articles one cluster at a time.
-            clusters = list(run.clusters.all().order_by("-size").annotate(
+            # .only(): the heavy JSON columns (embedding, chunk_vectors,
+            # raw_response, keywords...) are not drawn on the map. Decoding
+            # them for ~9700 rows was half of the 5.5 s this view took.
+            clusters = list(run.clusters.all().order_by("-size").only(
+                "run", "label_it", "description_it", "centroid", "size").annotate(
                 n_reels=Count("reel_assignments", distinct=True)))
             ids = [c.id for c in clusters]
             top_reels, top_docs = {}, {}
             for a in (models.ReelClusterAssignment.objects
                       .filter(cluster_id__in=ids, reel__is_active=True)
                       .select_related("reel", "reel__account", "reel__enrichment")
+                      .only("cluster_id", "reel__shortcode", "reel__caption",
+                            "reel__view_count", "reel__account__username",
+                            "reel__account__owner_type",
+                            "reel__enrichment__primary_topic",
+                            "reel__enrichment__summary_it")
                       .order_by("cluster_id", "-reel__view_count")):
                 bucket = top_reels.setdefault(a.cluster_id, [])
                 if len(bucket) < 5:
@@ -1433,6 +1466,9 @@ class SecondBrainGraphView(APIView):
             for a in (models.DocClusterAssignment.objects
                       .filter(cluster_id__in=ids)
                       .select_related("document", "document__source")
+                      .only("cluster_id", "document__title", "document__summary_it",
+                            "document__source_url", "document__owner_type",
+                            "document__source__name")
                       .order_by("cluster_id", "id")):
                 bucket = top_docs.setdefault(a.cluster_id, [])
                 if len(bucket) < 3:
