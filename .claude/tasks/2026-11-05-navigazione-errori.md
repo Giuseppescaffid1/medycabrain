@@ -1,7 +1,7 @@
 ---
 id: 2026-11-05-navigazione-errori
 titolo: Pagine di consultazione: niente schermi bianchi, liste complete, scope separati
-stato: approvato
+stato: revisione
 ramo: feat/navigazione-errori
 pr: ""
 ticket: ""
@@ -401,6 +401,51 @@ server (codice N). Riprova tra poco.»). *File:* `FilterBar.tsx`, `Login.tsx`,
    l'invariante, ma la metto per iscritto.
 
 ## 3. Sviluppo           (sviluppatore)
+
+Ramo `feat/navigazione-errori`, un commit (`0e1fe31`). Tutto il disegno 2.3 è
+implementato; le decisioni del Registro sono seguite (Q1 ritorno dopo login,
+Q2 nginx 300 s, Q3 bozze in Second Brain, Q4 solo chip, Q5 anelli, Q7 chiavi
+verificate, Q8 scope inatteso = competitor).
+
+**Backend** (`BEC/core/`)
+- `serializers.py`: virgola mancante in `BlogDraftSerializer` (+ `llm_model` read-only); `ReelDetailSerializer` espone `is_active` (il test ha mostrato che mancava: il drawer non poteva sapere che il reel era escluso); `ClusterSerializer` con `scope` e conteggi/miniature da annotazioni/contesto.
+- `views.py`: `ReelViewSet` filtra `is_active` solo su `list`; ricerca = due sottoquery in OR (`id IN caption` OR `id IN transcript`); `ClusterViewSet` con sottoquery annotate + miniature in batch; `SecondBrainGraphView` in blocco.
+- `analytics.py`: `cluster_performance` in una query; `top_content` senza tetto 400.
+- `models.py` + `migrations/0023_search_indexes.py`: due `GinIndex(SearchVector(..., config="italian"))`. **Non applicata alla produzione.**
+- Test: `test_endpoints_smoke.py` crea una riga di `BlogDraft`/`ContentIdea`/`StrategyBrief`; nuovo `test_navigation.py` (14 test: reel escluso 200/lista/404/restore, ricerca stessi id e senza duplicati, scope del cluster incl. valore strano, conteggi annotati = conteggi riga per riga, miniature max 3 senza vuote, costo query costante all'aumentare dei cluster per lista e grafo, grafo, cluster_performance, top_content oltre i 400).
+- `deploy/nginx-medycabrain.conf`: `location = /api/v1/knowledge/ask/` a 300 s. Il file live lo copia il rilasciatore (+ `nginx -t` e reload).
+
+**Frontend** (`FEC/src/`)
+- Nuovi: `ui/ErrorBoundary.tsx`, `ErrorState` (in `primitives.tsx`), `ui/LoadMore.tsx`, `lib/queryKeys.ts`, `plan/BlogDraftCard.tsx`, `fetchAllPages`/`errorStatus` in `api/client.ts`.
+- `main.tsx` (boundary + retry solo rete/5xx), `App.tsx` (boundary di pagina con `key`, `Scoped`, `from` dopo login, barra in flusso), `Sidebar` (tiene solo la sezione).
+- Pagine: Library (articoli e reel infiniti, keepPreviousData), Timeline (istogramma da `an-time`, griglia per mese), Clusters, ClusterDetail (redirect per scope, reel/articoli infiniti, 4 stati), Workspace, Analytics (errore per scheda, primi 20 + «Mostra tutti» in box scorrevole), BrainMap, SecondBrain (errori, sezione bozze), Login (3 messaggi), KnowledgeBank (drawer in loco, messaggio 504), ContentDetail (solo commento).
+- Componenti: drawer reel/articolo (tre stati, invalidazione completa, nota con autosalvataggio 800 ms + salvataggio in uscita, badge da `owner_type`), `ArticleCard`, `FilterBar` (etichette italiane + chip «Mostra esclusi»), `GoToContent` (accetta il link MCP, `onOpen`), `AnswerBody` (`[n]` pulsante solo con `onCite`), `StatusBar` (in flusso, `floating` per la Home, riga errore), `layout.ts` (anelli), `JobsContext`/`api/jobs.ts` (poll al mount, `starting`, `lastError`, kind nuovi, invalidazione `uploads`/`blog-sources`/`knowledge-docs`).
+- `it.json`: chiavi nuove + pagina Documentazione (limiti, bozze, link MCP, ritorno dopo login).
+- Documentazione: `01-data-model.md`, `05-rest-api.md`, `06-frontend.md` (inclusa la riga «no return-to-content» riscritta e segnata come decisione ribaltata). Drawio e architecture-summary non cambiano (nessuno stadio toccato).
+
+**Misure (EXPLAIN ANALYZE).** Non potendo creare gli indici in produzione ho copiato `reels(id, caption, is_active)` e `transcripts(reel_id, text)` (1618 e 1473 righe, sola lettura da prod) in un database di prova (poi eliminato) e ho confrontato:
+- vista di prima (left join + `to_tsvector` al volo, senza indici): **1460 ms**;
+- stessa OR dopo il join, **con** gli indici: **1432 ms** (non li usa: la OR attraversa due tabelle) — per questo il disegno «due OR» non bastava;
+- due sottoquery `id IN (...) OR id IN (...)` con gli indici (espressione identica a quella che genera Django, `COALESCE` incluso): **4.6–5.1 ms**, due `Bitmap Index Scan`; con parola rara (`tibolone`) 4.1 ms.
+Il disegno 2.3 punto 5 («due condizioni in OR sul join») è stato quindi cambiato in due sottoquery; è l'unica deviazione dal disegno. La ricerca parte da 940 risultati per «menopausa»: il costo ora è dominato dalla paginazione, non dal testo.
+Query contate nei test: lista cluster e grafo hanno costo costante al crescere dei cluster (assert nei test); i numeri 1230/1221/310 → ~4/~8/2 sono quelli attesi dal disegno, non rimisurati sul DB vivo (non ho toccato i servizi).
+
+**Comandi eseguiti**
+- `manage.py test core --noinput` (DB di test separato `test_medycabrain_nav`, perché `test_medycabrain` esisteva già, probabilmente di un altro ramo): **72 test OK** (erano 58 prima + 14 nuovi).
+- `manage.py makemigrations --check --dry-run`: nessuna deriva. `manage.py check`: nessun problema.
+- `npm run build` in `FEC` (usa `node_modules` della copia principale tramite link temporaneo, rimosso prima del commit): `tsc -b` e `vite build` OK.
+- `makemigrations core -n search_indexes` per generare la 0023. **Mai eseguito `migrate`**, nessun servizio riavviato, nessun push.
+
+**Rimasto fuori / da sapere**
+- **Collaudo da utente reale non fatto da me**: nessun gesto sulla UI viva (il frontend live non è stato ricostruito né il backend riavviato). Da fare nel collaudo: mobile 380 px e desktop, backend staccato → `ErrorState`, switch di scope dal dettaglio, link incollato col lato sbagliato, doc 843, 903 articoli raggiungibili, cluster da 146 reel, reel escluso (chip → drawer → Ripristina), link MCP in «Vai al contenuto» con chat intatta, reload con job in corso, `[n]` non più pulsanti, anelli della mappa a occhio (non verificati visivamente: solo la matematica).
+- **Migrazioni**: la 0023 dipende da `0022_link_media`. Gli altri due rami aggiungono la loro dalla stessa base: chi arriva dopo deve fare `makemigrations --merge` (Q6). Il rilascio applica 0023 (creazione indice su ~13 MB: pochi secondi, blocca le scritture su `reels`/`transcripts` per quel tempo).
+- **nginx**: il file del repo è cambiato, quello live (`/etc/nginx/sites-enabled/medycabrain-port`) no.
+- `generateIdeas` (POST sincrono di 300 s in `api/secondBrain.ts`) è codice morto che nessuna pagina chiama; non toccato. Il «genera idee» di fatto passa da `startIdeation`/`startPlan`, ora protetti.
+- Non fatto: `StatBar` resta muto su errore (come da disegno); `FilterBar` e `CustomTopics` non hanno stato di errore proprio (i filtri restano vuoti, `CustomTopics` è nell'area di Clusters ma non è stato toccato); la Home mostra «–» se le statistiche falliscono.
+- Non fatto: stato filtri Libreria nell'URL, pagina dedicata agli esclusi (fuori per decisione).
+- Il polling dei job alla mount mostra solo i job ancora attivi; uno finito mentre la pagina era chiusa non compare.
+- Rischio noto: l'invalidazione a fine job dipende dai nomi `uploads` e `blog-sources` letti nel codice di oggi; se gli altri rami li rinominano, smette in silenzio.
+
 ## 4. Revisione          (revisore)
 ## 5. Collaudo           (collaudatore)
 ## 6. Rilascio           (rilasciatore)
