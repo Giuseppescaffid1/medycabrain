@@ -446,8 +446,91 @@ Query contate nei test: lista cluster e grafo hanno costo costante al crescere d
 - Il polling dei job alla mount mostra solo i job ancora attivi; uno finito mentre la pagina era chiusa non compare.
 - Rischio noto: l'invalidazione a fine job dipende dai nomi `uploads` e `blog-sources` letti nel codice di oggi; se gli altri rami li rinominano, smette in silenzio.
 
+### Secondo giro (sviluppatore)
+
+Dopo revisione e collaudo, tre correzioni. Misure su una copia temporanea del DB di produzione (`pg_dump` in `nav2_copy`, 0023 applicata solo lì, poi eliminata). Produzione non toccata, niente push.
+
+1. **Ricerca reel con più parole** (`ReelViewSet.get_queryset`). Ora, per ogni parola, `id IN (didascalia) OR id IN (trascrizione)`, e AND tra le parole: stesso significato di prima (ogni parola ovunque tra didascalia e trascrizione) e indici GIN usati. Le parole che la config italiana scarta («di», «per») vengono tolte prima (una query vuota non trova nulla e avrebbe azzerato la ricerca; una ricerca fatta solo di quelle non trova nulla, come prima). Le frasi tra virgolette non erano gestite nemmeno prima (query «plain»): invariato. Test nuovo `test_search_words_may_sit_in_different_fields` (una parola in didascalia, una in trascrizione → trovato; solo una delle due → no; parola vuota in mezzo ignorata). Sulla copia, stessi id della vista vecchia (vettore concatenato): «menopausa» 940, «tibolone dosaggio» 25, «menopausa terapia ormonale» 273. Tempo della sola query degli id: vecchia 3.2–3.4 s → nuova 8–11 ms; `EXPLAIN ANALYZE` 17–23 ms con `Bitmap Index Scan` su `reels_caption_fts_gin` e `transcripts_text_fts_gin`; API 0.04–0.2 s, 5 query. Aggiornato `05-rest-api.md`.
+2. **Grafo** (`SecondBrainGraphView.add_world`). `.only()` sulle tre query (cluster: `run`, `label_it`, `description_it`, `centroid`, `size`; assegnazioni reel con reel/account/enrichment; assegnazioni documenti con documento/fonte): niente più embedding, `chunk_vectors`, `raw_response`, `keywords`, `content_*`. Prima: **5.5–6.3 s, 17 query**. Dopo: **0.57–0.9 s, 17 query**, risposta identica (hash MD5 uguale, 1681 nodi, 2186 archi). Primo tentativo senza `run` nell'elenco: 335 query (il campo differito veniva riletto una riga alla volta); annotato in `05-rest-api.md`.
+3. **Mappa** (`BrainGraph.tsx`, `it.json`). A riposo le etichette restano su hub e temi; Opportunità e temi del cliente mostrano il nome al passaggio (hover) o al tocco (selezionato). Sotto 640 px non si disegnano gli archi tratteggiati delle opportunità (il nodo ciuffo rosso) e una riga in basso spiega la vista ridotta (`map.hintCompact`); sopra, tutto come prima. **Non verificato a occhio in un browser**: solo `tsc` + build. Da guardare a 380 px e desktop nel collaudo.
+
+Comandi: `manage.py test core --noinput` → 73 test OK; `makemigrations --check --dry-run` → nessuna deriva; `npm run build` OK (link a `node_modules` rimosso). Il DB di prova `nav2_copy` è stato eliminato.
+
 ## 4. Revisione          (revisore)
+
+**Verdetto: PASSA** (nessun rilievo bloccante; un rilievo medio da annotare nella documentazione).
+
+Controllato su `origin/main...HEAD` (3 commit, solo sul ramo). Nessun segreto nel diff.
+
+**Invarianti: tutti rispettati**
+- `owner_type` resta binario. `ClusterSerializer.get_scope` (serializers.py, `get_scope`) mappa `owned` -> `medyca`, ogni altro valore -> `competitor`. Nessun terzo valore introdotto.
+- `ClusterDetail.tsx`: le query di reel, articoli e argomenti hanno `enabled: sameSide`, quindi con link sul lato sbagliato non parte nessuna richiesta di contenuti; poi `Navigate replace` al lato vero. `Sidebar.useScope` tiene solo la sezione. `Scoped` rimonta per scope. Badge articoli letto da `owner_type`.
+- Nessun `failed` azzerato; nessuna credenziale di terzi. Documentazione nello stesso commit (01, 05, 06, it.json); drawio non serve (nessuno stadio toccato).
+- Redirect dopo login (App.tsx `afterLoginTarget`): accetta solo stringhe che iniziano con `/` e non `//`; `from` viene dallo state di router scritto da `ToLogin`, non dall'URL. Nessun open redirect.
+- Reel escluso: `get_queryset` filtra `is_active` solo per `list`. Le azioni non-lista (`retrieve`, `annotation`, `tags`) lavorano per id; `exclude`/`restore` usavano gia `Reel.objects`. Le liste non fanno ricomparire gli esclusi. Nessun'altra azione di ReelViewSet restituisce liste.
+
+**Rilievo medio (non bloccante) - views.py, ricerca reel (`ReelViewSet.get_queryset`, blocco `search`)**
+I risultati NON sono identici a prima per le ricerche con piu parole. `SearchQuery` e di tipo "plain" (AND dei termini). Prima il vettore era `caption + transcript` concatenato: «tibolone dosaggio» trovava un reel con «tibolone» nella didascalia e «dosaggio» solo nella trascrizione. Ora serve che tutti i termini stiano nello stesso campo (due sottoquery OR). I test (`test_search_matches_caption_and_transcript_only`) usano una sola parola, quindi non lo vedono, e la frase «stessi id di prima» in lavagna/docs e valida solo per una parola. Con una parola e identico, senza duplicati (Transcript e OneToOne). Il compromesso (1460 ms -> 4.6 ms) e ragionevole e un indice su un vettore concatenato tra due tabelle non e possibile; ma va scritto in `documentation/low-level/05-rest-api.md` (riga `reels`) e, meglio, coperto da un test a due parole che fissi il comportamento voluto.
+
+**Migrazione 0023_search_indexes**: `AddIndex` normale (non CONCURRENTLY). Tabelle reali: `reels` 1618 righe, `transcripts` 1473 righe / 13 MB: creazione di pochi secondi, scritture bloccate solo per quel tempo. Accettabile, niente `atomic=False`. Il rilascio la applichi in finestra tranquilla (la pipeline notturna scrive su queste tabelle). Dipende da `0022_link_media`; gli altri due rami hanno una 0023 (merge noto, non e un rilievo).
+
+**Query in blocco: stessi numeri**
+- `cluster_performance`: stessa formula di `normalized_engagement` (`views + LIKE_BLEND*likes` / mediana, `1.0` se mediana <= 0, arrotondata a 3), stessi filtri (`is_active`, cluster della run). Corretta.
+- Lista cluster: `reel_count`/`doc_count` come sottoquery `Count` (come prima: contano tutte le assegnazioni, anche reel disattivati), `has_blog` con `Exists`. Le miniature ora sono ordinate per visualizzazioni (prima senza ordine, [:3]): differenza innocua.
+- Grafo: `n_reels` = `Count(distinct)` uguale al vecchio `.count()`; top 5 reel per `-view_count` con `is_active`, top 3 articoli (ora ordinati per id, prima senza ordine). `n_reels` usato anche nelle opportunita, che usano la stessa lista restituita da `add_world`. Corretto.
+- `top_content` senza tetto 400: piu corretto, costo misurato 0.53 s.
+
+**nginx**: `location = /api/v1/knowledge/ask/` a 300 s, uguale a frontend e gunicorn, stesse intestazioni del blocco generico. Il file live non e cambiato (compito del rilasciatore, `nginx -t` + reload).
+
+**Note minori (non rilievi)**: `generateIdeas` resta codice morto; l'invalidazione a fine job dipende dai nomi `uploads`/`blog-sources` degli altri rami. Il collaudo da utente reale resta da fare (non fatto dallo sviluppatore).
+
 ## 5. Collaudo           (collaudatore)
+
+**Verdetto: PASSA** (con tre riserve non bloccanti, in fondo). Collaudo del 2026-11-05 sul ramo `feat/navigazione-errori` (1e2104f).
+
+**Ambiente.** Produzione (:9093, `main`) non toccata: nessuna migrazione, nessun riavvio, nessun POST. Ho clonato il DB (`pg_dump` in `collaudo_nav`, poi eliminato), applicato la 0023 solo sulla copia, avviato gunicorn del ramo su :9193 e servito `FEC/dist` del ramo su :9194 (piccolo server node nello scratchpad, proxy `/api` verso :9193). Utente di prova creato solo nella copia. Browser: Chromium headless (Playwright), desktop 1366x850 e telefono 380x800. `node_modules` linkato e rimosso; DB e processi rimossi.
+
+**Comandi**
+```
+makemigrations --check --dry-run  -> No changes detected
+manage.py check                   -> System check identified no issues (0 silenced).
+manage.py test core --noinput     -> Ran 72 tests in 12.191s  OK
+npm run build (tsc -b + vite)     -> ✓ built in 19.28s
+migrate (solo sulla copia)        -> Applying core.0023_search_indexes... OK
+```
+
+**Prova da utente vero (desktop e 380 px, stessi risultati)**
+- `/second-brain/blog-drafts/` -> `200 0.15s`, `count:1`; la pagina Second Brain mostra la sezione bozze con la bozza «Espansione: Tutti gli uomini vanno in andropausa…».
+- Link `/content/blog/843` da sloggato -> `/login`; dopo il login -> `http://127.0.0.1:9194/content/blog/843`. Il badge in testa al documento dice «Competitor» (ambra) più il tema; fonte «YouTVRS» (nella copia il doc 843 ha una fonte).
+- Cambio scope da `/competitor/clusters/21020` -> `/medyca/clusters` (lista, nessun «Proteine personalizzate»). Link incollato `/medyca/clusters/21020` -> redirect a `/competitor/clusters/21020`.
+- Libreria articoli competitor: `48 / 903` -> dopo i «Carica altri» `903 / 903`, nessun pulsante rimasto.
+- Cluster 21020 (154 reel): `154 / 154` raggiunto con «Carica altri».
+- Timeline competitor: «1436 pubblicati · maggio 2021 – novembre 2026», griglia «Tutti (dai più recenti)»; istogramma scorre in orizzontale.
+- Reel escluso (id 14): Escludi -> badge «Escluso dal dataset»; reload della pagina -> si apre (non 404) con «Ripristina»; Ripristina -> torna normale. DB: `is_active = t`. Reel inesistente 999999 -> messaggio «non esiste più», non schermo bianco.
+- Backend spento (12 pagine, desktop+telefono): Libreria, Timeline, Clusters, ClusterDetail, Workspace, Brain-map, ContentDetail reel/blog -> 1 «Riprova» + «Non riesco a caricare questi dati adesso»; Analytics -> 5 «Riprova» (uno per scheda); Second Brain -> 4. Nessuno spinner (`.animate-spin` = 0), nessun errore JS (`pageerrors: []`). Backend riacceso + clic «Riprova» sulla Libreria -> `24 / 1548`, errore sparito. Eccezioni: `/knowledge-bank` (nessun caricamento all'apertura) e Home (mostra «–», dichiarato).
+- Nessun overflow orizzontale a 380 px su 7 pagine (`scrollWidth 380`).
+
+**Tempi (copia del DB, con gli indici 0023)**
+| Cosa | Dichiarato prima | Misurato ora |
+|---|---|---|
+| Ricerca reel «menopausa» (API) | 6.6 s | 0.07–0.09 s, 4 query |
+| Ricerca nella UI (digitazione -> risposta) | 7.5 s | 0.5–0.9 s |
+| `EXPLAIN ANALYZE` stessa ricerca | 3 s | 203 ms, due Bitmap Index Scan su `transcripts_text_fts_gin` |
+| Cluster competitor | 5.3 s, 1230 query | 0.23–0.24 s, 5 query |
+| Analytics cluster-performance | 2.6 s, 310 query | 0.32–0.36 s, 4 query |
+| Grafo `/second-brain/graph/` | 8.9 s, 1221 query | **5.2–6.4 s, 17 query** |
+
+**Riserve (non bloccanti, da leggere)**
+1. **Il grafo resta lento: 5–6 s.** Le query sono scese da 1221 a 17, ma il tempo no. Profilo: 2.64 s su 5.2 s sono `json.decoder.raw_decode` (9722 chiamate), cioè si decodifica una colonna JSON per riga, probabilmente il vettore `embedding` dei documenti caricato dalla query sulle assegnazioni (`views.py` ~1118, `add_world`); quella query da sola 1.3 s. Un `.only()`/`defer()` sulle colonne pesanti dovrebbe bastare. Il disegno prometteva «da 8.9 s a ~8 query»: le query ci sono, il tempo no.
+2. **Mappa, controllo visivo (serve un occhio umano).** Aprire `http://81.17.96.27:9093/brain-map` dopo il rilascio (o il mio screenshot non basta): a riposo i 307 temi non si sovrappongono più nell'arco unico, ma in basso le Opportunità sono ancora fitte con etichette sovrapposte e un ventaglio rosso denso di archi. A 380 px la mappa mostra un ciuffo di linee illeggibile. Giudizio di Giuseppe.
+3. Le miniature dei reel sono immagini rotte nella mia copia (i file `/media` non sono nel DB clonato): non è un difetto del ramo, ma non ho potuto vedere le miniature vere.
+
+**Non provato**
+- Link MCP incollato in «Vai al contenuto» con chat intatta (serve una chat con risposta LLM; non ho chiamato il modello). Coperto solo dal build.
+- Reload con un job in corso (barra di stato) e errore di avvio job: non ho avviato job (scriverebbero e userebbero LLM).
+- Nota del reel (autosalvataggio/Esc), `[n]` non cliccabili negli articoli, messaggio 504 della chat, badge «Medyca» di un articolo senza fonte (nella copia il doc 843 ha una fonte), etichette formato in `FilterBar`, messaggi di Login (3 casi): non provati a mano.
+- Il test `AnalyticsTests` che gira due volte è dichiarato dallo sviluppatore; non verificato. Il timeout nginx a 300 s non è provabile qui (file live non cambiato).
+- Un verde dei 72 test non prova che le funzioni siano giuste: la copertura è sottile; i gesti sopra sono la prova vera.
 ## 6. Rilascio           (rilasciatore)
 ## Registro delle decisioni
 

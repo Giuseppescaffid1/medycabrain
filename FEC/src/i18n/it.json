@@ -90,7 +90,8 @@
   "map": {
     "title": "Mappa del Second Brain",
     "subtitle": "Tre mondi: i tuoi contenuti, quelli dei competitor e le opportunità che ne nascono.",
-    "hint": "Clicca un tema per aprirlo e vederne i contenuti",
+    "hint": "Clicca un tema per aprirlo e vederne i contenuti. Passa sopra un punto rosso per leggerne il nome",
+    "hintCompact": "Vista ridotta per il telefono: tocca un tema per aprirlo, un punto rosso per leggerne il nome. Le frecce delle opportunità si vedono su uno schermo più largo",
     "recenter": "Ricentra",
     "legendMedyca": "Medyca",
     "legendCompetitor": "Competitor",

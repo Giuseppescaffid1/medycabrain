@@ -71,6 +71,20 @@ class ReelSearchTests(NavigationBase):
         ids = sorted(r["id"] for r in resp.json()["results"])
         self.assertEqual(ids, sorted([a.id, b.id]))
 
+    def test_search_words_may_sit_in_different_fields(self):
+        # Before 0023 the vector was caption+transcript, so «tibolone dosaggio»
+        # found a reel with one word in the caption and the other in the audio.
+        a = self.reel(self.comp, "W1", caption="Tibolone e menopausa")
+        models.Transcript.objects.create(reel=a, text="il dosaggio dipende dalla donna")
+        b = self.reel(self.comp, "W2", caption="Tibolone")  # only one of the two
+        c = self.reel(self.comp, "W3", caption="Altro")
+        models.Transcript.objects.create(reel=c, text="dosaggio")
+        resp = self.client.get("/api/v1/reels/?search=tibolone dosaggio")
+        self.assertEqual([r["id"] for r in resp.json()["results"]], [a.id])
+        # a stop word in the search is ignored, as inside one tsquery
+        resp = self.client.get("/api/v1/reels/?search=tibolone di dosaggio")
+        self.assertEqual([r["id"] for r in resp.json()["results"]], [a.id])
+
     def test_search_does_not_duplicate_a_reel(self):
         a = self.reel(self.comp, "S4", caption="menopausa")
         models.Transcript.objects.create(reel=a, text="menopausa menopausa")
