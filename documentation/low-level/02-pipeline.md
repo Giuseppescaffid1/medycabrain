@@ -210,14 +210,16 @@ il setting `YTDLP_PROXY` non è vuoto. **Vuoto = la via dei cookie qui sopra, in
 - Con il proxy **non si mandano cookie** (`YT_COOKIES_FILE` / `VIMEO_COOKIES_FILE` ignorati).
 - **Vimeo** passa dal player pubblico `player.vimeo.com/video/<id>[?h=hash]` con
   `Referer: https://vimeo.com/`, perché la pagina `vimeo.com/<id>` richiede il login.
-- Formato `bestaudio/worst`: il proxy si paga a GB, meglio il flusso più leggero.
-- La password è tolta da errori e log. Due frasi nuove per il cliente: «bloccato anche tramite
+- Formato `bestaudio/worst` **solo con il proxy**: si paga a GB, meglio il flusso più leggero.
+  Senza proxy resta `bestaudio/best`, e yt-dlp è quello del venv principale come prima.
+- La password è tolta da errori e log (`_scrub`: prima sul testo intero, poi si taglia agli ultimi
+  800 caratteri; toglie l'indirizzo, la password da sola e la sua forma con `%`). Due frasi nuove per il cliente: «bloccato anche tramite
   proxy» e «il proxy non ha risposto».
 
 **yt-dlp gira in un venv separato**, `BEC/venv-ytdlp` (yt-dlp 2026.10.26 + curl_cffi 0.17.0 +
 yt-dlp-ejs 0.8.0). Vimeo risponde 401 senza l'impronta TLS di un browser e serve curl_cffi 0.17,
 ma il venv principale tiene curl_cffi 0.7.4 per il client Instagram. Se `venv-ytdlp` manca si
-usa `BEC/venv`. Per crearlo:
+usa `BEC/venv`. Si usa **solo con il proxy**: senza proxy resta `BEC/venv/bin/yt-dlp`. Per crearlo:
 
 ```bash
 python3 -m venv BEC/venv-ytdlp && BEC/venv-ytdlp/bin/pip install -r BEC/requirements-ytdlp.txt
@@ -225,7 +227,9 @@ python3 -m venv BEC/venv-ytdlp && BEC/venv-ytdlp/bin/pip install -r BEC/requirem
 
 **Limiti noti.** Vimeo via proxy è lento (7 MB in 434 s). Il traffico del proxy costa a GB. Se il
 traffico finisce, i download falliscono con la frase «il proxy non ha risposto» (restano `failed`,
-nessun ritentativo automatico; la scheda-riferimento resta salvata).
+nessun ritentativo automatico; la scheda-riferimento resta salvata). L'indirizzo del proxy, con la
+password, sta sulla riga di comando di yt-dlp: gli altri utenti del server lo vedono con `ps`.
+Va bene su un VPS con un solo utente; non su una macchina condivisa.
 
 ### Articles (web pages) from a link
 

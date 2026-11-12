@@ -50,8 +50,18 @@ Three jobs, in order of how much they can go wrong:
    and channel without any authentication. Verified on all eleven YouTube
    links on 2026-09-13 and on the three Vimeo links on 2026-09-14 (Vimeo also
    returns duration and thumbnail, and accepts the dirty address as pasted).
-3. `fetch_audio(url, dest)` — yt-dlp. **Both providers need a cookies file**
-   exported from a logged-in browser, and neither is optional on this machine:
+3. `fetch_audio(url, dest)` — yt-dlp. From a datacentre IP neither host gives
+   audio to an anonymous client, so there are two ways in:
+
+   * **Residential proxy** (`YTDLP_PROXY`, preferred): the download goes out
+     through an Italian residential IP, with no cookies at all, and on Vimeo
+     through the public player address (`player.vimeo.com/video/<id>`) with a
+     Referer. Only on this path yt-dlp comes from `venv-ytdlp` and the format
+     is `bestaudio/worst` (the proxy is paid by the GB). The proxy address
+     carries a password: `_scrub` removes it from every error and log line.
+   * **Cookies file** — the fallback, used ONLY when `YTDLP_PROXY` is empty,
+     and then exactly the old path (main venv yt-dlp, `bestaudio/best`).
+     Both providers need it exported from a logged-in browser:
 
    * **YouTube** (`YT_COOKIES_FILE`): without cookies it answers "Sign in to
      confirm you're not a bot" to every player client from a datacentre IP.
@@ -88,7 +98,8 @@ import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
-from urllib.parse import parse_qsl, quote, urlencode, urlparse, urlunparse
+from urllib.parse import (parse_qsl, quote, unquote, urlencode, urlparse,
+                          urlsplit, urlunparse)
 from urllib.request import Request as _Req
 from urllib.request import urlopen
 
@@ -320,13 +331,41 @@ _PROXY_BLOCKED = ("Anche passando dal proxy il sito ha rifiutato il download. "
 def _ytdlp_binary() -> str:
     """yt-dlp from its own environment when it exists, else the main one.
 
-    The own environment (`venv-ytdlp`, requirements-ytdlp.txt) carries
+    Used ONLY on the proxy path: without the proxy the download keeps the
+    main environment's yt-dlp, as before the proxy existed. The own environment (`venv-ytdlp`, requirements-ytdlp.txt) carries
     curl_cffi 0.17, which Vimeo's player needs; the main environment keeps
     curl_cffi 0.7.4 for the Instagram client. See requirements-ytdlp.txt.
     """
     base = Path(settings.BASE_DIR)
     own = base / "venv-ytdlp" / "bin" / "yt-dlp"
     return str(own if own.is_file() else base / "venv" / "bin" / "yt-dlp")
+
+
+def _main_ytdlp_binary() -> str:
+    return str(Path(settings.BASE_DIR) / "venv" / "bin" / "yt-dlp")
+
+
+def _scrub(text: str, proxy: str) -> str:
+    """`text` with every trace of the proxy address replaced by "<proxy>".
+
+    Run it on the WHOLE stderr, before any cut: cutting first can leave a
+    fragment of the address (or of the password) at the edge that no longer
+    matches the full URL. The password is also removed on its own, raw,
+    decoded and URL-quoted, because yt-dlp may print it apart from the URL.
+    """
+    if not proxy or not text:
+        return text
+    secrets = [proxy]
+    try:
+        pw = urlsplit(proxy).password
+    except ValueError:
+        pw = None
+    if pw:
+        secrets += [pw, unquote(pw), quote(pw, safe=""), quote(pw)]
+    # Longest first: the full address must go before the password inside it.
+    for secret in sorted(set(filter(None, secrets)), key=len, reverse=True):
+        text = text.replace(secret, "<proxy>")
+    return text
 
 
 def _proxy() -> str:
@@ -588,14 +627,15 @@ def fetch_audio(url: str, dest_mp3: Path) -> None:
     with tempfile.TemporaryDirectory(dir=str(settings.TMP_DIR)) as tmp:
         out = Path(tmp) / "a.%(ext)s"
         cmd = [
-            _ytdlp_binary(),
+            _ytdlp_binary() if proxy else _main_ytdlp_binary(),
             *prov.extra_args(),
             *(("--proxy", proxy, *prov.proxied_args) if proxy else ()),
-            # `worst` and not `best` as the fallback: if a video has no
-            # audio-only stream, `best` downloads the whole video, 10-20x the
-            # bytes, and the proxy is paid by the GB. The audio is transcoded
-            # to 16 kHz mono anyway, so quality of the fallback is irrelevant.
-            "-f", "bestaudio/worst", "--no-playlist", "--no-warnings",
+            # With the proxy, `worst` and not `best` as the fallback: if a
+            # video has no audio-only stream, `best` downloads the whole video,
+            # 10-20x the bytes, and the proxy is paid by the GB. The audio is
+            # transcoded to 16 kHz mono anyway. Without it, the old format.
+            "-f", "bestaudio/worst" if proxy else "bestaudio/best",
+            "--no-playlist", "--no-warnings",
             # Let yt-dlp do the transcode: it already knows the container.
             "-x", "--audio-format", "mp3",
             # 16 kHz mono is what whisper wants and what the rest of the
@@ -624,9 +664,9 @@ def fetch_audio(url: str, dest_mp3: Path) -> None:
                 "Riprova più tardi, oppure carica il file a mano.") from None
         # The proxy address holds a password and yt-dlp can echo it back in
         # an error: strip it before the text goes anywhere.
-        err = (proc.stderr or "")[-800:]
-        if proxy:
-            err = err.replace(proxy, "<proxy>")
+        # Scrub the whole text and only then cut: the other way round, an
+        # address straddling the cut leaves a fragment that matches nothing.
+        err = _scrub(proc.stderr or "", proxy)[-800:]
         if proc.returncode != 0:
             lowered = err.lower()
             if proxy and any(n.lower() in lowered for n in prov.auth_needles):

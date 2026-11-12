@@ -330,6 +330,9 @@ class ProxyPath(SimpleTestCase):
         self.assertNotIn("--proxy", cmd)
         self.assertIn("--cookies", cmd)
         self.assertEqual(cmd[-1], "https://vimeo.com/1220776839")
+        self.assertEqual(cmd[cmd.index("-f") + 1], "bestaudio/best")
+        self.assertTrue(cmd[0].endswith("/venv/bin/yt-dlp"))
+        self.assertNotIn("venv-ytdlp", cmd[0])
 
     def test_with_proxy_cookies_are_not_sent(self):
         with tempfile.NamedTemporaryFile() as ck:
@@ -372,13 +375,35 @@ class ProxyPath(SimpleTestCase):
                 self._run_fixed()
         self.assertNotIn("SECRET", "\n".join(logs.output))
 
-    def _run_fixed(self):
-        proc = mock.Mock(returncode=1,
-                         stderr="ERROR: weird http://u:SECRET@h:1 failure")
+    def test_password_straddling_the_800_char_cut_does_not_leak(self):
+        real = "http://u:SECRET@h:1"
+        # Slide the address across the 800-char cut: at some offset the cut
+        # falls inside the password.
+        for pad in range(0, len(real)):
+            text = "x" * 300 + real + "y" * (794 - pad)
+            with self.assertLogs("core.link_ingest", "WARNING") as logs:
+                with mock.patch("core.link_ingest._proxy", return_value=real):
+                    self._run_fixed(text)
+            self.assertNotIn("SECRET", "\n".join(logs.output))
+            self.assertNotIn("SECRET", str(self._raised))
+
+    def test_password_printed_alone_is_scrubbed(self):
+        from core.link_ingest import _scrub
+        proxy = "http://u:S%40CRET@h:1"
+        for said in ("auth failed for S%40CRET", "auth failed for S@CRET",
+                     f"tunnel {proxy}"):
+            out = _scrub(said, proxy)
+            self.assertNotIn("CRET", out, said)
+        self.assertEqual(_scrub("nothing here", proxy), "nothing here")
+        self.assertEqual(_scrub("anything", ""), "anything")
+
+    def _run_fixed(self, stderr="ERROR: weird http://u:SECRET@h:1 failure"):
+        proc = mock.Mock(returncode=1, stderr=stderr)
         with tempfile.TemporaryDirectory() as out, \
                 mock.patch("core.link_ingest.subprocess.run", return_value=proc):
-            with self.assertRaises(LinkRefused):
+            with self.assertRaises(LinkRefused) as cm:
                 fetch_audio("https://youtu.be/aCPj6fKx_Yc", Path(out) / "a.mp3")
+        self._raised = cm.exception
 
 
 class FromLinksEndpoint(APITestCase):
