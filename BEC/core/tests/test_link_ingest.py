@@ -21,7 +21,7 @@ from pathlib import Path
 from unittest import mock
 
 from django.contrib.auth.models import User
-from django.test import SimpleTestCase
+from django.test import override_settings, SimpleTestCase
 from rest_framework.test import APITestCase
 
 from core.link_ingest import (
@@ -248,6 +248,9 @@ class MixedAndRejected(SimpleTestCase):
             "youtube")
 
 
+# YTDLP_PROXY pinned empty: these test the cookie path, and must not change
+# with whatever the machine's .env holds.
+@override_settings(YTDLP_PROXY="")
 class RefusalsBecomeSentences(SimpleTestCase):
     """What yt-dlp says on stderr, turned into something the client can act on.
 
@@ -291,6 +294,91 @@ class RefusalsBecomeSentences(SimpleTestCase):
             "ERROR: [vimeo] 1220776839: This video is protected by a "
             "password. Use --video-password or --cookies-from-browser ...")
         self.assertNotIn("VIMEO_COOKIES_FILE", protected)
+
+
+class ProxyPath(SimpleTestCase):
+    """The residential-proxy path of fetch_audio. yt-dlp is never run: only
+    the command it would get, and the sentences that come back."""
+
+    PROXY = "http://user:SECRET_pw_session-{session}_lifetime-30m@geo.example:1"
+
+    def _run(self, url, *, proxy, stderr="", returncode=0, cookies=""):
+        proc = mock.Mock(returncode=returncode, stderr=stderr)
+        with tempfile.TemporaryDirectory() as out, \
+                self.settings(YTDLP_PROXY=proxy, VIMEO_COOKIES_FILE=cookies,
+                              YT_COOKIES_FILE=cookies), \
+                mock.patch("core.link_ingest.subprocess.run",
+                           return_value=proc) as run:
+            err = None
+            try:
+                fetch_audio(url, Path(out) / "a.mp3")
+            except LinkRefused as exc:
+                err = exc
+        return run.call_args[0][0], err
+
+    def test_proxy_gets_a_fresh_session_each_download(self):
+        a, _ = self._run("https://youtu.be/aCPj6fKx_Yc", proxy=self.PROXY)
+        b, _ = self._run("https://youtu.be/aCPj6fKx_Yc", proxy=self.PROXY)
+        pa, pb = a[a.index("--proxy") + 1], b[b.index("--proxy") + 1]
+        self.assertNotIn("{session}", pa)
+        self.assertNotEqual(pa, pb)
+
+    def test_no_proxy_means_the_old_path(self):
+        with tempfile.NamedTemporaryFile() as ck:
+            cmd, _ = self._run("https://vimeo.com/1220776839", proxy="",
+                               cookies=ck.name)
+        self.assertNotIn("--proxy", cmd)
+        self.assertIn("--cookies", cmd)
+        self.assertEqual(cmd[-1], "https://vimeo.com/1220776839")
+
+    def test_with_proxy_cookies_are_not_sent(self):
+        with tempfile.NamedTemporaryFile() as ck:
+            cmd, _ = self._run("https://youtu.be/aCPj6fKx_Yc",
+                               proxy=self.PROXY, cookies=ck.name)
+        self.assertNotIn("--cookies", cmd)
+
+    def test_vimeo_goes_through_the_player_with_a_referer(self):
+        cmd, _ = self._run("https://vimeo.com/1220776839", proxy=self.PROXY)
+        self.assertEqual(cmd[-1], "https://player.vimeo.com/video/1220776839")
+        self.assertEqual(cmd[cmd.index("--referer") + 1], "https://vimeo.com/")
+        cmd, _ = self._run("https://vimeo.com/1220776839/8272103f6e",
+                           proxy=self.PROXY)
+        self.assertEqual(
+            cmd[-1], "https://player.vimeo.com/video/1220776839?h=8272103f6e")
+
+    def test_audio_only_and_never_the_whole_video(self):
+        cmd, _ = self._run("https://youtu.be/aCPj6fKx_Yc", proxy=self.PROXY)
+        self.assertEqual(cmd[cmd.index("-f") + 1], "bestaudio/worst")
+
+    def test_block_through_the_proxy_does_not_blame_the_cookies(self):
+        _, err = self._run(
+            "https://youtu.be/aCPj6fKx_Yc", proxy=self.PROXY, returncode=1,
+            stderr="ERROR: Sign in to confirm you're not a bot")
+        self.assertIn("proxy", str(err))
+        self.assertNotIn("COOKIES", str(err))
+
+    def test_proxy_down_is_said_without_the_address(self):
+        real = "http://user:SECRET_pw_session-abc_lifetime-30m@geo.example:1"
+        _, err = self._run(
+            "https://youtu.be/aCPj6fKx_Yc", proxy=self.PROXY, returncode=1,
+            stderr=f"ERROR: Unable to connect to proxy {real}")
+        self.assertIn("non ha risposto", str(err))
+        self.assertNotIn("SECRET", str(err))
+
+    def test_password_never_reaches_the_log(self):
+        with self.assertLogs("core.link_ingest", "WARNING") as logs:
+            with mock.patch("core.link_ingest._proxy",
+                            return_value="http://u:SECRET@h:1"):
+                self._run_fixed()
+        self.assertNotIn("SECRET", "\n".join(logs.output))
+
+    def _run_fixed(self):
+        proc = mock.Mock(returncode=1,
+                         stderr="ERROR: weird http://u:SECRET@h:1 failure")
+        with tempfile.TemporaryDirectory() as out, \
+                mock.patch("core.link_ingest.subprocess.run", return_value=proc):
+            with self.assertRaises(LinkRefused):
+                fetch_audio("https://youtu.be/aCPj6fKx_Yc", Path(out) / "a.mp3")
 
 
 class FromLinksEndpoint(APITestCase):

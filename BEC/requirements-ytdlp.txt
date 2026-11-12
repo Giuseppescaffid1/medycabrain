@@ -1,0 +1,11 @@
+# Ambiente SEPARATO solo per yt-dlp: BEC/venv-ytdlp (creazione: vedi
+# documentation/low-level/02-pipeline.md, «Proxy residenziale»).
+#
+# Perché non nel venv principale: Vimeo risponde 401 a chi non si presenta
+# con l'impronta TLS di un browser, e questo funziona solo con yt-dlp
+# 2026.10.26 + curl_cffi 0.17.0 (provato: con curl_cffi 0.7.4 resta 401).
+# Ma curl_cffi 0.7.4 è fissato nel venv principale per il client Instagram
+# (scraper/ig_client.py): alzarlo lì rischia di rompere lo scraper.
+yt-dlp==2026.10.26
+curl_cffi==0.17.0
+yt-dlp-ejs==0.8.0

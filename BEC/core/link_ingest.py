@@ -84,6 +84,7 @@ import os
 import re
 import subprocess
 import tempfile
+import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
@@ -176,6 +177,13 @@ class Provider:
     # yt-dlp's stderr wins. Provider-specific, because a remedy that names the
     # wrong product sends the reader hunting for a bug that is not there.
     errors: tuple[tuple[tuple[str, ...], str], ...] = ()
+    # With the proxy on, the address yt-dlp is given (None = the pasted one),
+    # and the extra arguments that address needs.
+    proxied_url: Callable[[str], str] | None = None
+    proxied_args: tuple[str, ...] = ()
+    # Needles that mean "the host wants a login / thinks we are a bot". With
+    # the proxy on, the cookie remedy would be false (no cookies are used).
+    auth_needles: tuple[str, ...] = ()
 
 
 def _yt_extra_args() -> list[str]:
@@ -205,6 +213,22 @@ def _vimeo_extra(m: re.Match) -> str:
     return in_query.group(1) if in_query else ""
 
 
+def _vimeo_player_url(url: str) -> str:
+    """The public player address of a canonical Vimeo link.
+
+    yt-dlp's `web` client for vimeo.com refuses anonymous callers before it
+    calls Vimeo; the embed player does not, as long as the request comes from
+    a residential IP with a browser TLS fingerprint (curl_cffi >= 0.17) and a
+    Vimeo Referer. Verified 2026-11-12 on the three TVRS videos. The unlisted
+    hash travels as `?h=`.
+    """
+    m = re.match(r"https://vimeo\.com/(\d+)(?:/([0-9a-f]+))?$", url)
+    if not m:
+        return url
+    base = f"https://player.vimeo.com/video/{m.group(1)}"
+    return f"{base}?h={m.group(2)}" if m.group(2) else base
+
+
 PROVIDERS: tuple[Provider, ...] = (
     Provider(
         name="youtube",
@@ -216,6 +240,7 @@ PROVIDERS: tuple[Provider, ...] = (
         ),
         cookies_setting="YT_COOKIES_FILE",
         extra_args=_yt_extra_args,
+        auth_needles=("not a bot", "Sign in to confirm"),
         errors=(
             (("not a bot", "Sign in to confirm"),
              "YouTube ha bloccato il download da questo server. I cookie "
@@ -239,6 +264,9 @@ PROVIDERS: tuple[Provider, ...] = (
             f"https://vimeo.com/api/oembed.json?url={quote(url, safe='')}"
         ),
         cookies_setting="VIMEO_COOKIES_FILE",
+        proxied_url=_vimeo_player_url,
+        proxied_args=("--referer", "https://vimeo.com/"),
+        auth_needles=("only works when logged-in", "HTTP Error 401"),
         errors=(
             # yt-dlp raises this before contacting Vimeo (vimeo.py:391,
             # REQUIRES_AUTH on the web client), so it is always the cookies —
@@ -264,7 +292,39 @@ PROVIDERS: tuple[Provider, ...] = (
 _COMMON_ERRORS: tuple[tuple[tuple[str, ...], str], ...] = (
     (("private video", "unavailable"),
      "Il video non è disponibile (privato o rimosso)."),
+    # The proxy itself is down, out of traffic or refusing our login. Needles
+    # are specific on purpose: a bare "407" or "proxy" would match unrelated
+    # text. Never the proxy address in the sentence: it carries a password.
+    (("unable to connect to proxy", "tunnel connection failed",
+      "connect tunnel failed", "proxy authentication", "proxyerror"),
+     "Il servizio che instrada i download non ha risposto (o ha finito il "
+     "traffico). Riprova più tardi, oppure carica il file a mano."),
 )
+
+_PROXY_BLOCKED = ("Anche passando dal proxy il sito ha rifiutato il download. "
+                  "Riprova tra poco, oppure carica il file a mano.")
+
+
+def _ytdlp_binary() -> str:
+    """yt-dlp from its own environment when it exists, else the main one.
+
+    The own environment (`venv-ytdlp`, requirements-ytdlp.txt) carries
+    curl_cffi 0.17, which Vimeo's player needs; the main environment keeps
+    curl_cffi 0.7.4 for the Instagram client. See requirements-ytdlp.txt.
+    """
+    base = Path(settings.BASE_DIR)
+    own = base / "venv-ytdlp" / "bin" / "yt-dlp"
+    return str(own if own.is_file() else base / "venv" / "bin" / "yt-dlp")
+
+
+def _proxy() -> str:
+    """The proxy address for ONE download, or "" when none is configured.
+
+    `{session}` becomes a fresh id: the provider keeps one exit IP per id, so
+    a download keeps its IP from start to end and a retry gets a new one.
+    """
+    raw = (getattr(settings, "YTDLP_PROXY", "") or "").strip()
+    return raw.replace("{session}", uuid.uuid4().hex[:8]) if raw else ""
 
 
 @dataclass(frozen=True)
@@ -502,19 +562,29 @@ def fetch_audio(url: str, dest_mp3: Path) -> None:
     """
     prov = provider_for(url)
     dest_mp3.parent.mkdir(parents=True, exist_ok=True)
+    proxy = _proxy()
+    # With the proxy: no cookies (an account cookie travelling from a second
+    # IP is a flag, and an expired one only adds failures) and, on Vimeo, the
+    # public player address. Without it: the old cookie path, unchanged.
+    target = prov.proxied_url(url) if (proxy and prov.proxied_url) else url
     with tempfile.TemporaryDirectory(dir=str(settings.TMP_DIR)) as tmp:
         out = Path(tmp) / "a.%(ext)s"
         cmd = [
-            str(Path(settings.BASE_DIR) / "venv" / "bin" / "yt-dlp"),
+            _ytdlp_binary(),
             *prov.extra_args(),
-            "-f", "bestaudio/best", "--no-playlist", "--no-warnings",
+            *(("--proxy", proxy, *prov.proxied_args) if proxy else ()),
+            # `worst` and not `best` as the fallback: if a video has no
+            # audio-only stream, `best` downloads the whole video, 10-20x the
+            # bytes, and the proxy is paid by the GB. The audio is transcoded
+            # to 16 kHz mono anyway, so quality of the fallback is irrelevant.
+            "-f", "bestaudio/worst", "--no-playlist", "--no-warnings",
             # Let yt-dlp do the transcode: it already knows the container.
             "-x", "--audio-format", "mp3",
             # 16 kHz mono is what whisper wants and what the rest of the
             # pipeline produces for reels and uploads alike.
             "--postprocessor-args", "ffmpeg:-ar 16000 -ac 1",
-            *_cookies_args(prov),
-            "-o", str(out), url,
+            *([] if proxy else _cookies_args(prov)),
+            "-o", str(out), target,
         ]
         try:
             proc = subprocess.run(cmd, capture_output=True, text=True,
@@ -533,10 +603,19 @@ def fetch_audio(url: str, dest_mp3: Path) -> None:
             # not get.
             raise LinkRefused(
                 "Il download ha superato i 30 minuti e l'ho interrotto. "
-                "Riprova più tardi, oppure carica il file a mano.") from exc
+                "Riprova più tardi, oppure carica il file a mano.") from None
+        # The proxy address holds a password and yt-dlp can echo it back in
+        # an error: strip it before the text goes anywhere.
         err = (proc.stderr or "")[-800:]
+        if proxy:
+            err = err.replace(proxy, "<proxy>")
         if proc.returncode != 0:
             lowered = err.lower()
+            if proxy and any(n.lower() in lowered for n in prov.auth_needles):
+                # Cookie remedies would be false here: none were used.
+                logger.warning("[link] bloccato anche via proxy %s: %s",
+                               url, err.strip())
+                raise LinkRefused(_PROXY_BLOCKED)
             for needles, message in (*prov.errors, *_COMMON_ERRORS):
                 if any(n.lower() in lowered for n in needles):
                     raise LinkRefused(message)
