@@ -290,6 +290,15 @@ VIMEO_COOKIES_FILE = os.environ.get("VIMEO_COOKIES_FILE", "")
 # Senza, tornano solo le anteprime e l'errore dice "formato non disponibile",
 # che manda a cercare la cosa sbagliata. Serve anche il pacchetto yt-dlp-ejs.
 YT_JS_RUNTIME = os.environ.get("YT_JS_RUNTIME", "node")
+# Proxy residenziale per i download di YouTube e Vimeo (core/link_ingest.py).
+# Da un IP di datacenter YouTube chiede il login a ogni player client (provato
+# il 2026-11-12 con 6 client, con e senza Node) e Vimeo risponde 401. Da un IP
+# residenziale italiano (IPRoyal) YouTube scarica senza cookie e Vimeo lascia
+# passare il player pubblico. `{session}` viene sostituito a ogni download con
+# un id nuovo: stesso IP per tutto il download, IP nuovo al tentativo dopo.
+# Contiene una password: solo in .env, mai nei log né nei messaggi al cliente.
+# Vuoto = niente proxy, si torna ai cookie.
+YTDLP_PROXY = os.environ.get("YTDLP_PROXY", "")
 
 # Apify supplies reel metadata and a working CDN video url from its own
 # proxied infrastructure, which is what unblocks the download backlog: our own

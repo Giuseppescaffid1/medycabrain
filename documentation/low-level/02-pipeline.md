@@ -126,7 +126,7 @@ Adding a third host is one more row.
 
 ### Three walls, all real, all cleared (2026-09-13 / 14)
 
-Neither host gives audio to an anonymous datacentre IP. **Both need a cookies file**, exported
+Neither host gives audio to an anonymous datacentre IP. **Without the proxy (see «Proxy residenziale» below) both need a cookies file**, exported
 from a logged-in browser, in **Netscape** format (a Cookie-Editor JSON export must be
 converted). Both live **outside the repository**, mode 0600, and neither is ever committed:
 
@@ -192,6 +192,49 @@ remedy shown for a Vimeo link would send the reader hunting for a bug that is no
 file to re-export, and `_save_reference_only` keeps the title, channel and link as a citable
 reference. Nothing retries on its own.
 
+### Proxy residenziale (YTDLP_PROXY, 2026-11-12)
+
+I cookie sono la via vecchia e fragile (scadono, sono l'accesso a un account). Dal 2026-11-12 i
+download di YouTube e Vimeo passano da un **proxy residenziale** (IPRoyal, IP italiano) quando
+il setting `YTDLP_PROXY` non è vuoto. **Vuoto = la via dei cookie qui sopra, invariata.**
+
+**Perché.** Misurato il 2026-11-12 sul VPS: dall'IP di datacenter YouTube chiede il login a
+**ogni** player client (6 provati) e Vimeo risponde 401. Dal proxy, senza cookie: video YouTube
+5 MB di audio in **68 s**; video Vimeo 38 MB in **434 s** scaricando un pezzo alla volta, **39 s** con `--concurrent-fragments 8` (vedi sotto).
+
+**Come funziona** (`fetch_audio` in `core/link_ingest.py`):
+
+- `YTDLP_PROXY` sta **solo in `.env`** (contiene la password), es.
+  `http://utente:password_session-{session}@host:porta`. `{session}` è sostituito a ogni download
+  con un id nuovo: stesso IP per tutto il download, IP diverso al tentativo dopo.
+- Con il proxy **non si mandano cookie** (`YT_COOKIES_FILE` / `VIMEO_COOKIES_FILE` ignorati).
+- **Vimeo** passa dal player pubblico `player.vimeo.com/video/<id>[?h=hash]` con
+  `Referer: https://vimeo.com/`, perché la pagina `vimeo.com/<id>` richiede il login.
+- Formato `bestaudio/worst` **solo con il proxy**: si paga a GB, meglio il flusso più leggero.
+  Senza proxy resta `bestaudio/best`, e yt-dlp è quello del venv principale come prima.
+- **`--concurrent-fragments 8`, solo con il proxy.** Vimeo dà l'audio in HLS (centinaia di pezzi
+  piccoli); yt-dlp li scaricava uno alla volta e ognuno aspettava il proxy. Misurato il 2026-11-12
+  su `https://vimeo.com/1220776839`: **434 s** uno alla volta contro **39 s** con 8 in parallelo,
+  stessi 38 MB di traffico (quindi stesso costo del proxy). Senza proxy il comando non cambia.
+- La password è tolta da errori e log (`_scrub`: prima sul testo intero, poi si taglia agli ultimi
+  800 caratteri; toglie l'indirizzo, la password da sola e la sua forma con `%`). Due frasi nuove per il cliente: «bloccato anche tramite
+  proxy» e «il proxy non ha risposto».
+
+**yt-dlp gira in un venv separato**, `BEC/venv-ytdlp` (yt-dlp 2026.10.26 + curl_cffi 0.17.0 +
+yt-dlp-ejs 0.8.0). Vimeo risponde 401 senza l'impronta TLS di un browser e serve curl_cffi 0.17,
+ma il venv principale tiene curl_cffi 0.7.4 per il client Instagram. Se `venv-ytdlp` manca si
+usa `BEC/venv`. Si usa **solo con il proxy**: senza proxy resta `BEC/venv/bin/yt-dlp`. Per crearlo:
+
+```bash
+python3 -m venv BEC/venv-ytdlp && BEC/venv-ytdlp/bin/pip install -r BEC/requirements-ytdlp.txt
+```
+
+**Limiti noti.** Il traffico del proxy costa a GB. Se il
+traffico finisce, i download falliscono con la frase «il proxy non ha risposto» (restano `failed`,
+nessun ritentativo automatico; la scheda-riferimento resta salvata). L'indirizzo del proxy, con la
+password, sta sulla riga di comando di yt-dlp: gli altri utenti del server lo vedono con `ps`.
+Va bene su un VPS con un solo utente; non su una macchina condivisa.
+
 ### Articles (web pages) from a link
 
 An address that is not a video and not refused becomes an `UploadedMedia(kind="article")` and
@@ -237,7 +280,7 @@ Pages behind a login or paywall, or with under 120 characters of text, fail with
 
 - **Not supported**: Instagram reels from a link, PDF/Word documents, Drive/Dropbox/OneDrive
   (they ask for an account). They are listed back with a reason. Planned in a separate task.
-- **YouTube/Vimeo cookies** (`~/.config/medycabrain/*_cookies.txt`) were last written 14–15
+- **YouTube/Vimeo cookies** (only used when `YTDLP_PROXY` is empty; `~/.config/medycabrain/*_cookies.txt`) were last written 14–15
   Sep 2026: transcription from a link fails with the "cookie scaduti" sentence until they are
   re-exported. Operational, not code; the reference card is still saved.
 
