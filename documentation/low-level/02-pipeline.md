@@ -67,6 +67,13 @@ Adding a third host is one more row.
    | YouTube | `watch?v=`, `youtu.be/`, `shorts/`, `embed/`, `live/`; id = 11 chars `[A-Za-z0-9_-]` | `https://www.youtube.com/watch?v=<id>` | `&t=365s`, `&list=…`, brackets from the notes |
    | Vimeo | `vimeo.com/<id>`, `player.vimeo.com/video/<id>`, `vimeo.com/<id>/<hash>`, `h=<hash>` **anywhere in the query** (`?badge=0&h=…`, `?share=copy&h=…`), `channels/<x>/<id>`, `groups/<x>/videos/<id>`; id = **numeric**, `\d{6,12}`; hash = lowercase hex, `[0-9a-f]{8,12}` | `https://vimeo.com/<id>`, or `https://vimeo.com/<id>/<hash>` when unlisted | `?fl=pl&fe=cm`, `#t=3m12s`, and trailing pages like `/settings` |
 
+   **TVRS video pages** (`tvrs.it/<any path>?v=<digits>`, with or without `www.`) are Vimeo
+   videos too: `v` is the Vimeo id, and the link is canonicalised to `https://vimeo.com/<id>`,
+   so the TVRS and the Vimeo spelling of one video are **one** row. The pattern `_TVRS_VIDEO`
+   sits next to `PROVIDERS`, not in it (it has no cookies or oEmbed of its own: it *is* Vimeo).
+   The id comes from `v`, **never** from the first player in the page's HTML: the page embeds
+   a whole playlist. Without a numeric `v`, a `tvrs.it` address stays an ordinary web page.
+
    The query is read **only** to find `h=` in it, and it stops where the link
    stops: a comma, a semicolon, a bracket, a pipe — or the next `http://`,
    when there is no separator at all. This is not cosmetic. A class that

@@ -347,7 +347,7 @@
         "Gli articoli dei blog (medyca.it + i blog dei competitor monitorati)",
         "I temi che indichi tu (tiroide, osteoporosi, Bijuva…)",
         "Le interviste audio/video che carichi tu (del medico): trascritte e trasformate in materiale + bozza articolo",
-        "I video che tieni come riferimento, da YouTube o da Vimeo: incolli i link (anche tutti insieme) e diventano materiale consultabile — trascritti come le interviste, con il link sempre a portata di mano. Per ognuno dici se è roba tua o di altri.",
+        "I video che tieni come riferimento, da YouTube o da Vimeo (anche le pagine video di TVRS): incolli i link (anche tutti insieme) e diventano materiale consultabile — trascritti come le interviste, con il link sempre a portata di mano. Per ognuno dici se è roba tua o di altri.",
         "Le pagine web e gli articoli che tieni come riferimento: incolli il link (anche insieme ai video) e la piattaforma ne legge il testo, senza trascrizione. Dopo l'incolla vedi, link per link, cosa è successo e perché, se qualcosa non è stato letto. Se un link è andato in errore puoi premere «Riprova», oppure incollarlo di nuovo."
       ]
     },
@@ -405,7 +405,7 @@
         "37 video trascritti il 27 luglio avevano usato il modello locale di riserva, meno preciso sui termini medici. Il collegamento al servizio di trascrizione è stato corretto e quelle trascrizioni sono state rifatte.",
         "Gli articoli non hanno metriche di engagement (view, like): compaiono in Libreria, Cluster, temi e chat, ma non nei grafici di Analytics, che restano sui reel. Un'analisi dedicata ai blog (cadenza di pubblicazione, copertura dei temi) è prevista in un giro successivo.",
         "Gli articoli in lingua diversa dall'italiano (es. International Menopause Society) vengono riassunti e classificati in italiano; la ricerca dentro il testo originale inglese è meno precisa di quella sugli articoli italiani.",
-        "Link incollati: leggo video YouTube e Vimeo e pagine web. Reel Instagram, PDF e Word, cartelle Drive/Dropbox non si possono incollare (per i file: scaricali e caricali qui sopra). Le pagine protette da accesso o abbonamento non si leggono. Il titolo e il canale di un video si leggono mentre lavora la piattaforma, non subito: un video privato o rimosso compare nella lista come «errore», con il motivo.",
+        "Link incollati: leggo video YouTube e Vimeo (anche le pagine video di TVRS) e pagine web. Reel Instagram, PDF e Word, cartelle Drive/Dropbox non si possono incollare (per i file: scaricali e caricali qui sopra). Le pagine protette da accesso o abbonamento non si leggono. Il titolo e il canale di un video si leggono mentre lavora la piattaforma, non subito: un video privato o rimosso compare nella lista come «errore», con il motivo.",
         "Se il server viene riavviato mentre un file o un link è in lavorazione, l'elemento passa a «errore» con la scritta «Interrotto da un riavvio» e non riparte da solo: premi «Riprova». Se l'analisi dopo la trascrizione non riesce, il testo è comunque salvato e l'analisi si completa nella notte. I link che l'utente ha aggiunto a mano compaiono sempre in Libreria, anche se il sistema li giudica fuori tema.",
         "Le interviste caricate si trascrivono in italiano; dei file video conserviamo solo l'audio (non il video). File molto grandi: caricali con una connessione stabile.",
         "Instagram non lascia più vedere l'elenco dei post di un profilo a chi non è collegato: per questo l'elenco passa da un servizio esterno. Il tuo account non è coinvolto.",
@@ -667,7 +667,7 @@
     "titleLabel": "Titolo",
     "empty": "Ancora niente. Trascina un file audio o video nel riquadro qui sopra, oppure incolla i link dei video che vuoi tenere come riferimento.",
     "linksLabel": "Oppure incolla dei link a video",
-    "linksHint": "Puoi incollare l'elenco così com'è, con titoli e date: i link li trovo io. Leggo i video di YouTube e Vimeo e le pagine web (articoli). Reel Instagram, PDF e cartelle Drive per ora no: ti dico quali ho lasciato fuori e perché. Lo stesso link incollato due volte viene aggiunto una volta sola.",
+    "linksHint": "Puoi incollare l'elenco così com'è, con titoli e date: i link li trovo io. Leggo i video di YouTube e Vimeo (anche le pagine video di TVRS) e le pagine web (articoli). Reel Instagram, PDF e cartelle Drive per ora no: ti dico quali ho lasciato fuori e perché. Lo stesso link incollato due volte viene aggiunto una volta sola.",
     "linksPlaceholder": "Parte I: https://www.youtube.com/watch?v=…\nParte II: https://vimeo.com/…\nArticolo: https://…",
     "linksAdd": "Aggiungi i video",
     "linksAdded": "Aggiunti: {{count}}",

@@ -138,6 +138,18 @@ _VIMEO_ID = re.compile(
     r"(?P<query>\?(?:(?!https?://)[^\s\"'<>,;()\[\]|])*)?"
 )
 
+# TVRS's own video pages: `tvrs.it/programmi/canale-salute/?v=1238425507`. The
+# page embeds a whole playlist of players, so the first embed in its HTML is
+# NOT the video the client meant; the `v` parameter is the Vimeo id of the one
+# they pasted. Without a numeric `v` it is an ordinary page and stays an article.
+# It lives outside PROVIDERS (it has no cookies, errors or oEmbed of its own:
+# it IS Vimeo) and is canonicalised onto the vimeo.com address, so a link
+# pasted in both spellings is one row.
+_TVRS_VIDEO = re.compile(
+    r"(?:^|[^\w.])(?:www\.)?tvrs\.it(?:/[^\s\"'<>?#,;()\[\]|]*)?"
+    r"\?(?:[^\s\"'<>#,;()\[\]|]*&)?v=(\d{6,12})(?!\w)"
+)
+
 _VIMEO_QUERY_HASH = re.compile(r"[?&]h=([0-9a-f]{8,12})(?![\w-])")
 
 _UA = ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
@@ -310,6 +322,11 @@ def extract_links(text: str) -> list[VideoRef]:
                 url=prov.canonical(m.group(1), extra),
                 unlisted_hash=extra,
             )))
+    for m in _TVRS_VIDEO.finditer(text or ""):
+        found.append((m.start(), VideoRef(
+            provider="vimeo", video_id=m.group(1),
+            url=_vimeo_canonical(m.group(1)),
+        )))
     found.sort(key=lambda pair: pair[0])
     seen: dict[str, VideoRef] = {}
     for _pos, ref in found:
@@ -398,7 +415,8 @@ def scan_links(text: str) -> LinkScan:
     unknown: dict[str, dict] = {}
     for m in _ANY_URL.finditer(text or ""):
         raw = m.group(0).rstrip(_TRAILING)
-        if not raw or any(p.pattern.search(raw) for p in PROVIDERS):
+        if (not raw or _TVRS_VIDEO.search(raw)
+                or any(p.pattern.search(raw) for p in PROVIDERS)):
             continue  # a video, already in `videos`
         parts = urlparse(raw)
         host = (parts.hostname or "").lower()
