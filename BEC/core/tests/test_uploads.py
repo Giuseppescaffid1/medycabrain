@@ -72,6 +72,29 @@ class ScanLinks(SimpleTestCase):
         scan = scan_links(f"{ARTICLE},https://altro-sito.it/pagina")
         self.assertEqual(len(scan.articles), 2)
 
+    def test_tvrs_pages_are_vimeo_videos_by_their_v_parameter(self):
+        scan = scan_links(
+            "https://tvrs.it/programmi/canale-salute/?v=1238425507\n"
+            "https://tvrs.it/programmi/canale-salute/?v=1238424324\n"
+            "https://www.tvrs.it/programmi/canale-salute/?v=1238423247")
+        self.assertEqual([(v.provider, v.video_id, v.url) for v in scan.videos],
+                         [("vimeo", i, f"https://vimeo.com/{i}")
+                          for i in ("1238425507", "1238424324", "1238423247")])
+        self.assertEqual(scan.articles, [])
+        self.assertEqual(scan.unknown, [])
+
+    def test_tvrs_without_a_numeric_v_stays_a_web_page(self):
+        scan = scan_links("https://tvrs.it/programmi/canale-salute/ "
+                          "https://tvrs.it/programmi/canale-salute/?v=abc")
+        self.assertEqual(scan.videos, [])
+        self.assertEqual(len(scan.articles), 2)
+
+    def test_the_tvrs_and_vimeo_spelling_of_one_video_are_one_link(self):
+        scan = scan_links("https://tvrs.it/programmi/canale-salute/?v=1238425507 "
+                          "https://vimeo.com/1238425507")
+        self.assertEqual([v.url for v in scan.videos],
+                         ["https://vimeo.com/1238425507"])
+
     def test_a_video_is_never_also_an_article(self):
         scan = scan_links(f"{YT} {VIMEO}")
         self.assertEqual(scan.articles, [])
