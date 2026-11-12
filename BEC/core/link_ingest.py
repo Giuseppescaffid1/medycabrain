@@ -630,6 +630,10 @@ def fetch_audio(url: str, dest_mp3: Path) -> None:
             _ytdlp_binary() if proxy else _main_ytdlp_binary(),
             *prov.extra_args(),
             *(("--proxy", proxy, *prov.proxied_args) if proxy else ()),
+            # Vimeo serves audio as HLS (hundreds of small fragments); one at
+            # a time, each waited on the proxy: 434 s vs 39 s with 8 in
+            # parallel (same 38 MB, same cost). Only on the proxy path.
+            *(("--concurrent-fragments", "8") if proxy else ()),
             # With the proxy, `worst` and not `best` as the fallback: if a
             # video has no audio-only stream, `best` downloads the whole video,
             # 10-20x the bytes, and the proxy is paid by the GB. The audio is

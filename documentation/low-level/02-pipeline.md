@@ -200,7 +200,7 @@ il setting `YTDLP_PROXY` non è vuoto. **Vuoto = la via dei cookie qui sopra, in
 
 **Perché.** Misurato il 2026-11-12 sul VPS: dall'IP di datacenter YouTube chiede il login a
 **ogni** player client (6 provati) e Vimeo risponde 401. Dal proxy, senza cookie: video YouTube
-5 MB di audio in **68 s**; video Vimeo 7 MB in **434 s** (lento, ma sotto il timeout di 30 min).
+5 MB di audio in **68 s**; video Vimeo 38 MB in **434 s** scaricando un pezzo alla volta, **39 s** con `--concurrent-fragments 8` (vedi sotto).
 
 **Come funziona** (`fetch_audio` in `core/link_ingest.py`):
 
@@ -212,6 +212,10 @@ il setting `YTDLP_PROXY` non è vuoto. **Vuoto = la via dei cookie qui sopra, in
   `Referer: https://vimeo.com/`, perché la pagina `vimeo.com/<id>` richiede il login.
 - Formato `bestaudio/worst` **solo con il proxy**: si paga a GB, meglio il flusso più leggero.
   Senza proxy resta `bestaudio/best`, e yt-dlp è quello del venv principale come prima.
+- **`--concurrent-fragments 8`, solo con il proxy.** Vimeo dà l'audio in HLS (centinaia di pezzi
+  piccoli); yt-dlp li scaricava uno alla volta e ognuno aspettava il proxy. Misurato il 2026-11-12
+  su `https://vimeo.com/1220776839`: **434 s** uno alla volta contro **39 s** con 8 in parallelo,
+  stessi 38 MB di traffico (quindi stesso costo del proxy). Senza proxy il comando non cambia.
 - La password è tolta da errori e log (`_scrub`: prima sul testo intero, poi si taglia agli ultimi
   800 caratteri; toglie l'indirizzo, la password da sola e la sua forma con `%`). Due frasi nuove per il cliente: «bloccato anche tramite
   proxy» e «il proxy non ha risposto».
@@ -225,7 +229,7 @@ usa `BEC/venv`. Si usa **solo con il proxy**: senza proxy resta `BEC/venv/bin/yt
 python3 -m venv BEC/venv-ytdlp && BEC/venv-ytdlp/bin/pip install -r BEC/requirements-ytdlp.txt
 ```
 
-**Limiti noti.** Vimeo via proxy è lento (7 MB in 434 s). Il traffico del proxy costa a GB. Se il
+**Limiti noti.** Il traffico del proxy costa a GB. Se il
 traffico finisce, i download falliscono con la frase «il proxy non ha risposto» (restano `failed`,
 nessun ritentativo automatico; la scheda-riferimento resta salvata). L'indirizzo del proxy, con la
 password, sta sulla riga di comando di yt-dlp: gli altri utenti del server lo vedono con `ps`.

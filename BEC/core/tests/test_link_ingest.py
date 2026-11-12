@@ -323,11 +323,16 @@ class ProxyPath(SimpleTestCase):
         self.assertNotIn("{session}", pa)
         self.assertNotEqual(pa, pb)
 
+    def test_proxy_downloads_fragments_in_parallel(self):
+        cmd, _ = self._run("https://vimeo.com/1220776839", proxy=self.PROXY)
+        self.assertEqual(cmd[cmd.index("--concurrent-fragments") + 1], "8")
+
     def test_no_proxy_means_the_old_path(self):
         with tempfile.NamedTemporaryFile() as ck:
             cmd, _ = self._run("https://vimeo.com/1220776839", proxy="",
                                cookies=ck.name)
         self.assertNotIn("--proxy", cmd)
+        self.assertNotIn("--concurrent-fragments", cmd)
         self.assertIn("--cookies", cmd)
         self.assertEqual(cmd[-1], "https://vimeo.com/1220776839")
         self.assertEqual(cmd[cmd.index("-f") + 1], "bestaudio/best")
