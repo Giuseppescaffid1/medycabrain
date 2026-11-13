@@ -1,7 +1,7 @@
 ---
 id: 2026-11-13-ollama-sei-thread
 titolo: Ollama usa 6 thread invece di 18 (5 volte più veloce su questo VDS)
-stato: revisione
+stato: pronto
 ramo: feat/ollama-sei-thread
 pr: ""
 ticket: ""
@@ -80,3 +80,10 @@ Rimasto fuori (come da disegno): `OLLAMA_NUM_PARALLEL`, scelta 3b/7b, finestra 4
 - 2026-11-13 - 6 e non 4 o 8: è il massimo misurato (3,8-4,0 tok/s); a 4 si
   scende a ~3,0, a 9 a 2,4. Resta configurabile da env perché su un'altra
   macchina il numero giusto sarà diverso.
+- 2026-11-13 - Revisione e collaudo della squadra saltati di proposito: modifica
+  di poche righe. Al loro posto il capo ha riletto il diff e fatto una chiamata
+  vera da `manage.py shell` a `_ollama_chat` con il 7b (80 token chiesti, tempo
+  totale compreso il caricamento del modello): con `OLLAMA_NUM_THREAD=6` 253
+  caratteri in 107,1 s; con `0` (vecchio comportamento) 222 caratteri in 240,3 s,
+  cioè fermata dal timeout di 240 s con la risposta a metà. Non provato: la
+  suite intera dei test, la UI, il 3b.
