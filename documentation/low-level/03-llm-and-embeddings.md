@@ -96,10 +96,45 @@ Known limits, measured rather than assumed:
   `gpt-oss` model.
 - Groq's free tier caps requests per day per model (order of 250-1,000; read the live figure in
   console.groq.com → Settings → Limits). That is what `_MODEL_CHAIN` is for.
-- **There is no token or cost accounting inside the platform.** Usage is read on the provider's
-  own dashboard; the only internal trace is which model served each row (`llm_model`).
+- **Every call is now recorded** (since 2026-11-13) in `llm_calls` — see
+  [«What is recorded for each call»](#what-is-recorded-for-each-call). Money is still read on
+  the provider's own dashboard; what the table gives is calls, tokens and **seconds per process**.
 - aiapiflow resells Claude access, which the project rule "niente credenziali di terze parti
   rivendute" is about. It is kept last so the platform does not depend on it.
+
+### What is recorded for each call
+
+`llm/usage.py`, hooked in `chat()` (`llm/client.py`) — the one place all 16 callers pass
+through, so none of them changed. Numbers and short labels only: **no prompt, no answer**.
+
+- **Local model (Ollama).** The row is born `waiting` **before** the lock, goes `running` as
+  the lock is taken (`wait_seconds`), counts tokens live (one stream chunk per token, written at
+  most every 2 s), and closes with Ollama's own last line: `prompt_eval_count`, `eval_count`,
+  `load/prompt_eval/eval_duration` (nanoseconds). `done_reason == "length"` or a timeout that
+  returns partial text (`_ollama_chat` returns what it has, without an error) → `truncated`.
+  "No free slot after 900 s" → `failed`.
+- **Remote models** (`_fast_chat`, `_anthropic_chat`, `_hf_chat`): a row at the start and one
+  update at the end, with the token counts the provider reports (`usage`; if absent the tokens
+  stay empty and the row is still written). No live tokens: they answer all at once.
+- **Whisper** (`transcriber_agent._transcribe`) is not a `chat()` call, but takes the same
+  machine: `usage.stt()` records it (`kind='stt'`) so its hours enter the daily totals.
+- **Who asked**: `usage.scope(process, stage, job_id, run_id)` — set by `DAG.run`
+  (`pipeline:<stage>`), `run_job` (`job:<kind>`), `core/knowledge.answer` (`web:chat`) and the
+  reranker (`mcp:cerca`, only when nothing else labels it). Without a scope: `cmd:<command>` or
+  `altro`. The label lives in a contextvar **and** a process-wide fallback set from the main
+  thread, because a contextvar does not cross into a `ThreadPoolExecutor` (`enrich` uses 5
+  threads); the fallback is not set from web request threads (it would leak between requests).
+- **Recording never breaks a call.** Every write is in a savepoint and wrapped: on any error a
+  warning is logged and the call goes on; a database error also trips a 30 s breaker so a dead
+  database does not add a connection timeout to every model call.
+- Machine hours = seconds the local model held the lock + local transcription; **not**
+  multiplied by the 18 cores (one generation uses the whole machine; measured 2026-11-13, see
+  the decision log in `.claude/tasks/2026-11-13-processi-locali.md`).
+
+Measured on this VDS before the thread fix (kept because the page's first job is to show it):
+qwen2.5 7b Q4_K_M at 18 threads 0.2-0.8 tok/s, at 6 threads 3.8-4.0 tok/s; the memory bus, not
+the cores, is the ceiling. Ollama loads the model with a 4096-token window (`/api/ps`,
+`client.py` does not set `num_ctx`): a longer prompt is cut silently. Not changed here.
 
 ### Batch: the same models at half price
 

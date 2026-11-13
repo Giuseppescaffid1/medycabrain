@@ -49,6 +49,9 @@ via host cron, **and on demand** — `POST /api/v1/ops/run/` queues a `Job(kind=
 (`core/pipeline_run.py`), one run at a time. `core/queue_eta.py` says how much is left and how
 long it should take, measured from the recent runs in `logs/pipeline.log`.
 See `documentation/low-level/02-pipeline.md`.
+**Progress is recorded**: every stage writes `stage_runs` (`core/progress.py`: done/total) and every
+model call writes `llm_calls` (`llm/usage.py`, numbers only, never the text); the page «Avanzamento»
+(`/avanzamento`, `GET /ops/progress/`) reads them, tqdm style, with who works each item.
 
 ## Models
 

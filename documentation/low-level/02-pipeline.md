@@ -671,6 +671,52 @@ repr: `_human_error()` maps timeout / connection / HTTP errors to Italian
 («il sito non ha risposto in tempo», «sito non raggiungibile», «il sito ha
 risposto con errore 503»); the repr stays in the log line.
 
+## Progress of a round: `StageRun`, `core/progress.py` (2026-11-13)
+
+Every stage reports "how far along" so the «Avanzamento» page can draw a tqdm-like line per
+stage (done/total, speed, elapsed, remaining). Mechanism:
+
+- `DAG.run` (`pipeline/dag.py`) writes one `stage_runs` row per planned stage at the start of the
+  round (`waiting`, so the page also shows what is still to come), binds the running one
+  (`progress.bind`), and closes it `done` or `failed` (with the client sentence from
+  `upload_workflow._client_message`). Stages that never ran (a fatal one stopped the round) are
+  deleted, not left as false failures. A dry run plans nothing. It also wraps every stage in
+  `usage.scope("pipeline:<stage>")`, so each model call is labelled with its stage and round.
+  `run_job` does the same with `job:<kind>`.
+- The agents declare, with three calls (`core/progress.py`): `open(total, unit, phase)`,
+  `start_item(kind, id, label)`, `item_done("done"|"failed"|"skipped")`. With no stage bound
+  (a Job calling an agent function, a hand-run command) all of them are no-ops, except that
+  `start_item` still names the item for the model calls.
+- Writes are throttled to one per stage per 2 s (plus one when a phase opens or closes) and every
+  write is wrapped: **if the database does not answer, the stage carries on** and the bar simply
+  stops moving.
+- `enrich` and `knowledge` count **inside the worker thread** (`_tracked` in `enrich_agent.py`,
+  once per item, not per rate-limit retry), because their results arrive in submission order
+  and late; the counters are behind a lock (5 threads by default).
+
+| Stage | Total declared | Phases | Who works |
+|---|---|---|---|
+| `scrape` | active accounts | one | Apify, no model |
+| `download` | reels taken this round, after the cap | one | no model |
+| `transcribe` | reels to transcribe | one | Whisper remote, local as backstop (per item) |
+| `batch` | deliveries to collect, then items to hand over | Ritiro, Consegna | Anthropic in bulk |
+| `enrich` | reels to analyse, then reels for claims | Analisi, Affermazioni | read from `llm_calls` |
+| `embed` | **not declared** (v1) | – | local vector model |
+| `blogscrape` | active sources (the note carries «articolo 3 di 12») | one | no model |
+| `knowledge` | articles | Analisi, Affermazioni, Vettori | read from `llm_calls` |
+| `cluster` | **not declared** (v1) | – | local + a model for the names |
+
+Not covered, on purpose: `embed` and `cluster` show only «in corso da N min»; commands run by
+hand (`reprocess`, `ingest_blog`, `sonnet_batch`) get no bar (their model calls show up as loose
+lines); Jobs only have the percentage they already had; the Batch has no live bar (see
+`BatchRun`). A stage failing is shown on **Avanzamento** from `stage_runs`, while `RunTimeline` on
+Stato still reads the log — they can differ on a failed stage (known: `ops.run_history` only
+closes a stage on its `✓` line); fixing that is separate work.
+
+Retention: `manage.py prune_llm_calls` deletes closed `llm_calls`/`stage_runs` older than
+`LLM_CALL_RETENTION_DAYS` (90). It wants one line in the crontab, once a day (added by the
+release step).
+
 ## The idempotency contract
 
 The pipeline is safe to run on a fixed schedule because **state lives on each row**, not in
@@ -694,7 +740,8 @@ All under `BEC/core/management/commands/`. Run with `python manage.py <name>`.
 | `eval_mcp` | Run the MCP connector eval suite (retrieval, integrity, latency, judge). |
 | `graph_check` | Verify the IG Graph token / caller / discoverability. |
 | `ig_session` | Import / test Instagram cookies. |
-| `progress` | Live pipeline progress bar. |
+| `progress` | Live pipeline progress bar, in the terminal (counts rows over the whole history; the page «Avanzamento» is the per-round, per-item version). |
+| `prune_llm_calls` | Delete `llm_calls` / `stage_runs` older than `LLM_CALL_RETENTION_DAYS` (default 90). Flags: `--days`, `--dry-run`. Run daily from cron. |
 | `seed_client_user` | Create the client user + token + `ScraperConfig` defaults. |
 | `seed_demo` | Create synthetic demo reels. |
 
