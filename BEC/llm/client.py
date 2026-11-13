@@ -8,6 +8,9 @@ local backstop used when HF has no token or its credits are depleted
 
 Modeled on the SPI _HuggingFaceExtractor for the HF side: InferenceClient
 .chat_completion + fence-stripping JSON parsing with retries.
+
+Ollama is pinned to OLLAMA_NUM_THREAD threads (default 6): on this VDS more
+threads make generation slower, not faster (3.8-4.0 tok/s at 6, 0.2-0.8 at 18).
 """
 
 from __future__ import annotations
@@ -112,6 +115,9 @@ def _ollama_chat(system: str, user: str, max_tokens: int, temperature: float,
         "stream": True,
         "options": {"temperature": temperature, "num_predict": max_tokens},
     }
+    if settings.OLLAMA_NUM_THREAD > 0:
+        # Ollama's default (all cores) collapses to <1 tok/s on this VDS; see settings.
+        payload["options"]["num_thread"] = settings.OLLAMA_NUM_THREAD
     if json_mode:  # only for structured-extraction prompts, not free-text answers
         payload["format"] = "json"
     _last_model.set(f"ollama:{settings.OLLAMA_MODEL}")

@@ -148,6 +148,11 @@ HF_LLM_MODEL = os.environ.get("HF_LLM_MODEL", "Qwen/Qwen2.5-7B-Instruct")
 # Local-first: Ollama runs a quantized Qwen2.5-7B (zero cost, good Italian).
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://127.0.0.1:11434")
 OLLAMA_MODEL = os.environ.get("OLLAMA_MODEL", "qwen2.5:7b-instruct-q4_K_M")
+# Threads for generation. Ollama defaults to every core (18 here) and on this
+# VDS (EPYC Zen 1, KVM) the limit is memory bandwidth, not cores: qwen2.5 7b
+# Q4_K_M does 0.2-0.8 tok/s at 18 threads, 1.4-1.9 at 12, 3.8-4.0 at 6, 2.9-3.2
+# at 4. 0 = do not send the option (let Ollama decide). Re-measure on new hardware.
+OLLAMA_NUM_THREAD = int(os.environ.get("OLLAMA_NUM_THREAD", "6"))
 # Provider order: try each until one answers. Default local-only; HF is
 # dormant (add ",hf" to call it — e.g. after refilling credits).
 # Fast remote provider (OpenAI-compatible): Groq / Cerebras / OpenRouter /
