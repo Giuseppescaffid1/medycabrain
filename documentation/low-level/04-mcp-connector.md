@@ -275,8 +275,9 @@ groundedness, all of which the suite checks at 100%.
   returning `403` to claude.ai's own `Origin: https://claude.ai` requests.
 - **Auth = a secret path segment.** The ASGI wrapper `app` gates every request behind
   `MCP_SECRET` (from `BEC/.env`). A `_clean()` step strips whitespace/invisible unicode from
-  copy-pasted URLs and forgives a missing `/mcp` suffix. There is no OAuth/login — **the URL
-  is the credential**. Full OAuth was judged disproportionate for a single client.
+  copy-pasted URLs and forgives a missing `/mcp` suffix. There is no real login — **the URL
+  is the credential**. Since 2026-11 claude.ai also wants an OAuth handshake: see
+  "Accesso da claude.ai (OAuth automatico)" below.
 - **Public URL:** `{MCP_PUBLIC_URL}/{MCP_SECRET}/mcp`, i.e. `https://mcp.medyca.it/{MCP_SECRET}/mcp`
   (`MCP_PUBLIC_URL` in `BEC/.env`; it used to be `messtudent.com/medyca-mcp`). The server also serves a
   small "invito" HTML page (`MCP_INVITE`) with a copy button.
@@ -293,6 +294,38 @@ groundedness, all of which the suite checks at 100%.
   cert and proxies to `127.0.0.1:8025`; Cloudflare sits in front as a proxy in Full (strict)
   mode. **The Caddy config is not in this repo** — `deploy/nginx-medycabrain.conf` is only the
   port-9093 app preview and has no MCP route.
+
+## Accesso da claude.ai (OAuth automatico)
+
+**Perché.** Verso il 13 novembre 2026 claude.ai ha cambiato il modo di collegare un connettore.
+Prima chiamava solo `POST /<segreto>/mcp`. Ora, prima di accettarlo, cerca le "istruzioni di
+accesso" e si registra da solo. Nel log del server: `/.well-known/oauth-protected-resource` 404,
+`/.well-known/oauth-authorization-server` 404, `POST /register` 404, e a video "Couldn't register
+with medycabrain's sign-in service".
+
+**Cosa abbiamo messo.** Un piccolo server di accesso che dice sempre sì: `mcp_bridge/oauth_shim.py`,
+chiamato da `app()` in `build_app()` prima del controllo del segreto. Cinque indirizzi:
+
+- `GET /.well-known/oauth-protected-resource/<segreto>[/mcp]`: dice dove sta l'accesso. Risponde
+  solo se il segreto è giusto; senza segreto resta 404.
+- `GET /.well-known/oauth-authorization-server` (e `openid-configuration`): elenca gli altri indirizzi.
+- `POST /register`: registra il client (senza salvare nulla).
+- `GET /authorize`: approva subito e rimanda a claude.ai con un codice (PKCE S256 obbligatorio).
+- `POST /token`: cambia il codice (o il refresh token) in un token valido 30 giorni.
+
+**Il segreto resta la chiave.** Nessuna schermata di login, nessuna password. I token **non
+vengono controllati** su `/<segreto>/mcp`: con o senza `Authorization` funziona come prima.
+Esistono solo perché claude.ai non va avanti senza. Chi non conosce l'indirizzo con il segreto
+continua a ricevere 404 sull'MCP.
+
+**Lista dei redirect ammessi.** Solo `https://claude.ai/api/mcp/auth_callback` e
+`https://claude.com/api/mcp/auth_callback`, più quelli in `MCP_OAUTH_REDIRECTS` (`.env`, separati
+da virgola). Ogni altro indirizzo è rifiutato: nessun altro sito può usare questo accesso.
+
+**Senza stato.** Codici e token sono firmati (HMAC-SHA256) con `MCP_SECRET`: niente database.
+Cambiare il segreto invalida tutto in un colpo. Codice valido 5 minuti, token 30 giorni.
+
+Test: `BEC/core/tests/test_mcp_oauth.py`.
 
 ## Registering it on claude.ai
 

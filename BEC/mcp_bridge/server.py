@@ -12,10 +12,11 @@ the reasoning; we hand it the same retrieval the in-app chat uses
 surfaces answer from identical ground.
 
 Auth: claude.ai custom connectors need a public HTTPS URL and offer OAuth or
-nothing. Full OAuth (authorization server + dynamic client registration) is
-out of proportion for one client, so the credential IS the URL: a random
-secret path segment, checked here, rotatable by editing .env (MCP_SECRET)
-and restarting. The trade-off is documented in docs/mcp-connettore-claude.md
+nothing. A real login is out of proportion for one client, so the credential
+IS the URL: a random secret path segment, checked here, rotatable by editing
+.env (MCP_SECRET) and restarting. Since Nov 2026 claude.ai also insists on
+an OAuth handshake; oauth_shim.py answers it by approving everyone, and the
+secret stays the only key. The trade-off is documented in docs/mcp-connettore-claude.md
 — whoever has the URL has read access, treat it like a password.
 
 Runs as its own service (uvicorn on 127.0.0.1:8020, systemd
@@ -40,6 +41,8 @@ django.setup()
 from django.conf import settings  # noqa: E402
 
 from mcp.server.mcpserver import MCPServer  # noqa: E402
+
+from mcp_bridge import oauth_shim  # noqa: E402
 
 MCP_SECRET = os.environ.get("MCP_SECRET", "")
 MCP_INVITE = os.environ.get("MCP_INVITE", "")
@@ -532,6 +535,11 @@ def build_app():
         if not MCP_SECRET:
             # Refusing to run open is the whole point of the wrapper.
             await _deny(send, 503, "MCP_SECRET non configurato")
+            return
+        # claude.ai's OAuth steps (see oauth_shim.py): answered before the
+        # secret check because they are asked at the root, without the secret.
+        if await oauth_shim.handle(scope, receive, send, MCP_SECRET,
+                                   MCP_PUBLIC_URL):
             return
         path = scope.get("path", "")
         parts = path.split("/", 2)
