@@ -24,6 +24,7 @@ const ContentDetail = lazyPage(() => import("./pages/ContentDetail"));
 const BrainMap = lazyPage(() => import("./pages/BrainMap"));
 const Documentation = lazyPage(() => import("./pages/Documentation"));
 const Status = lazyPage(() => import("./pages/Status"));
+const Progress = lazyPage(() => import("./pages/Progress"));
 
 function Shell({ children }: { children: React.ReactNode }) {
   const [navOpen, setNavOpen] = useState(false);
@@ -74,6 +75,7 @@ function AppRoutes() {
           <Route path="/brain-map" element={<BrainMap />} />
           <Route path="/documentazione" element={<Documentation />} />
           <Route path="/stato" element={<Status />} />
+          <Route path="/avanzamento" element={<Progress />} />
           <Route path="/workspace" element={<Workspace />} />
           <Route path="/accounts" element={<Accounts />} />
           <Route path="*" element={<Navigate to="/" replace />} />

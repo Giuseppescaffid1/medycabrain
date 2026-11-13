@@ -101,6 +101,13 @@ export const IconPulse = svg(
   <path d="M2 12h4l2.5-6 4 13 3-9 2 2h4.5" />
 );
 
+export const IconProgress = svg(
+  <>
+    <path d="M4 6h16M4 12h10M4 18h13" />
+    <path d="M18 10l3 2-3 2" />
+  </>
+);
+
 export const IconLogout = svg(
   <>
     <path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3" />

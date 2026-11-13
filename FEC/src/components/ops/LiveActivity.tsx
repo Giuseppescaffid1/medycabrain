@@ -1,15 +1,13 @@
+import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { Badge } from "../ui/primitives";
-import { elapsedNow, fmtDuration, useTicker } from "./live";
 
 /**
- * What the machine is doing right now.
+ * "In questo momento", reduced to one line and a link.
  *
- * The stage bars elsewhere on this page only move when a stage finishes, and
- * a stage such as the transcription runs for the best part of an hour. During
- * that hour the page looked frozen, which reads as "nothing is happening" at
- * the exact moment most is. This panel reads the running processes instead,
- * so there is always something that visibly advances.
+ * What is running, stage by stage and item by item, now lives on the
+ * Avanzamento page (`/avanzamento`); keeping the same list here would show the
+ * same numbers in two places. What stays is the re-analysis bar, which that
+ * page does not cover.
  */
 export interface Job {
   job: string;
@@ -30,53 +28,34 @@ export interface Reanalysis {
 export function LiveActivity({
   jobs,
   reanalysis,
-  updatedAt,
 }: {
   jobs: Job[];
   reanalysis?: Reanalysis | null;
   updatedAt?: number;
 }) {
   const { t } = useTranslation();
-  useTicker(jobs.length > 0);
 
   return (
     <section>
       <h2 className="mb-1 text-xs font-bold uppercase tracking-wider text-muted">
         {t("ops.live")}
       </h2>
-      <p className="mb-3 text-xs text-muted/80">{t("ops.liveHint")}</p>
+      <p className="mb-3 text-xs text-muted/80">{t("ops.liveLinkHint")}</p>
 
-      {jobs.length === 0 ? (
-        <p className="rounded-xl border border-border bg-surface p-4 text-sm text-muted shadow-card">
-          {t("ops.idle")}
-        </p>
-      ) : (
-        <div className="space-y-2">
-          {jobs.map((j) => (
-            <div
-              key={j.pid}
-              className="rounded-xl border border-secondary/30 bg-secondary/5 p-4 shadow-card"
-            >
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-                <span
-                  className="h-2 w-2 shrink-0 rounded-full bg-success motion-safe:animate-pulse"
-                  aria-hidden
-                />
-                <span className="text-sm font-bold text-navy">{j.label}</span>
-                {j.stage && (
-                  <Badge className="bg-white text-secondary">{j.stage}</Badge>
-                )}
-                <span className="ml-auto shrink-0 text-xs font-semibold tabular-nums text-muted">
-                  {t("ops.since")} {fmtDuration(elapsedNow(j.seconds, updatedAt))}
-                </span>
-              </div>
-              {j.detail && (
-                <p className="mt-2 break-words text-xs text-muted">{j.detail}</p>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-xl border border-border bg-surface p-4 shadow-card">
+        <span className="flex items-center gap-2 text-sm font-semibold text-navy">
+          {jobs.length > 0 && (
+            <span className="h-2 w-2 shrink-0 rounded-full bg-success motion-safe:animate-pulse" aria-hidden />
+          )}
+          {jobs.length > 0 ? `${jobs.length} ${t("ops.running")}` : t("ops.idleShort")}
+        </span>
+        <Link
+          to="/avanzamento"
+          className="min-h-10 rounded-full px-1 py-2 text-sm font-bold text-secondary underline underline-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-secondary"
+        >
+          {t("ops.liveLink")}
+        </Link>
+      </div>
 
       {reanalysis && reanalysis.done < reanalysis.total && (
         <div className="mt-3 rounded-xl border border-border bg-surface p-4 shadow-card">

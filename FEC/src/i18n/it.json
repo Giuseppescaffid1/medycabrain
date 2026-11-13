@@ -22,7 +22,8 @@
     "documentation": "Documentazione",
     "status": "Stato pipeline",
     "plan": "Piano editoriale",
-    "manage": "Gestione"
+    "manage": "Gestione",
+    "progress": "Avanzamento"
   },
   "scope": {
     "medyca": "Medyca",
@@ -417,7 +418,8 @@
         "Undici dei ventitré account monitorati non hanno mai restituito contenuti (uno ha il nome scritto male) o non pubblicano da oltre un anno: vanno ripuliti.",
         "Dei video presi da un link non sempre riusciamo a ottenere l'audio: YouTube e Vimeo bloccano i server come il nostro, quindi scarichiamo passando da una connessione residenziale italiana, senza bisogno di accessi o cookie. Se quella connessione non risponde (o è finito il traffico), il download fallisce. In quel caso il video resta comunque in piattaforma con titolo, canale e link — cercabile e citabile come riferimento — ma senza trascrizione, e la riga te lo dice in chiaro. Se ti serve la trascrizione subito, carica il file video a mano.",
         "Se una pagina non riesce a caricare i dati, vedi un messaggio chiaro con il pulsante «Riprova»: una lista vuota vuol dire che non c'è niente, mai che qualcosa si è rotto.",
-        "Nella mappa del Second Brain i temi oltre i primi si dispongono in cerchi concentrici attorno al loro gruppo: così nessuno si sovrappone, anche quando sono centinaia."
+        "Nella mappa del Second Brain i temi oltre i primi si dispongono in cerchi concentrici attorno al loro gruppo: così nessuno si sovrappone, anche quando sono centinaia.",
+        "Avanzamento: gli stadi «indicizzazione» e «raggruppamento per tema» non dicono quanti elementi mancano, mostrano solo «in corso da…». La consegna in blocco non ha una barra che si muove: dice quando è stata consegnata e quando arriva la risposta. I lavori avviati dal sito mostrano solo la percentuale. I dettagli si tengono 90 giorni."
       ]
     },
     "models": {
@@ -475,6 +477,10 @@
         "Le fonti effettivamente citate vengono evidenziate, così puoi verificarle una per una.",
         "Se incolli il link di una pagina nella domanda, viene letta sul momento e usata solo per quella risposta: resta marcata come fonte esterna, non entra nella knowledge bank e non viene mai confusa con i contenuti di Medyca."
       ]
+    },
+    "progress": {
+      "title": "Dove vedere cosa sta succedendo",
+      "body": "Apri «Avanzamento» nel menu, sotto «Stato pipeline». Ogni stadio ha una barra con quattro numeri: quanti elementi sono fatti sul totale, a che velocità, da quanto tempo lavora e quanto manca. Sotto la barra c'è scritto quale reel o articolo sta leggendo adesso, e chi lo sta lavorando: il modello locale, un modello remoto, la consegna in blocco o nessun modello. Vale per ogni giro, anche quando riattivi tutto e arrivano nuovi reel e nuove fonti. In fondo trovi le ore di macchina di oggi per ogni tipo di lavoro."
     }
   },
   "quality": {
@@ -491,9 +497,7 @@
   "status": {
     "title": "Stato della pipeline",
     "subtitle": "Avanzamento di ogni stadio, aggiornato ogni 5 secondi",
-    "stages": "Avanzamento per stadio",
-    "jobs": "Lavori in corso",
-    "noJobs": "Nessun lavoro in corso.",
+    "stages": "Totale storico per stadio",
     "accounts": "Account monitorati",
     "account": "Account",
     "reels": "Reel",
@@ -596,7 +600,10 @@
     "running": "in corso",
     "since": "da",
     "reanalysis": "Rianalisi con il modello più recente",
-    "reanalysisHint": "I contenuti analizzati in passato da un modello più economico vengono rifatti con {{model}}. Le analisi già fatte restano consultabili nel frattempo."
+    "reanalysisHint": "I contenuti analizzati in passato da un modello più economico vengono rifatti con {{model}}. Le analisi già fatte restano consultabili nel frattempo.",
+    "liveLink": "Segui l'avanzamento, stadio per stadio",
+    "liveLinkHint": "Quello che sta girando adesso si vede nella pagina Avanzamento.",
+    "idleShort": "Non sta girando niente."
   },
   "sources": {
     "title": "Blog monitorati",
@@ -754,5 +761,101 @@
     "appTitle": "La piattaforma ha avuto un problema",
     "appBody": "Non è andato perso niente. Ricarica la pagina per ripartire.",
     "reload": "Ricarica"
+  },
+  "progress": {
+    "title": "Avanzamento",
+    "subtitle": "Cosa sta girando adesso, stadio per stadio.",
+    "refresh": "Aggiorna",
+    "updatedAt": "aggiornato alle",
+    "loadError": "Non riesco a leggere l'avanzamento. Controlla la connessione e riprova.",
+    "staleError": "Ultimo aggiornamento non riuscito: mostro i dati delle {{time}}.",
+    "now": "Adesso",
+    "nowHint": "Si aggiorna da solo ogni 2 secondi. Il tempo che manca è una stima: la velocità è quella vera di questo giro.",
+    "empty": "Qui comparirà l'avanzamento dal prossimo giro.",
+    "idle": "Non sta girando niente.",
+    "lastRound": "Ultimo giro: {{when}}, {{duration}}, {{done}} stadi su {{total}}.",
+    "lastRoundUnknown": "Ultimo giro: {{when}}.",
+    "nextRounds": "Gli orari dei prossimi giri sono nella pagina Stato.",
+    "nextRoundsLink": "Vai a Stato",
+    "interrupted": "Interrotto alle {{time}}: il processo si è fermato.",
+    "roundCron": "Giro automatico",
+    "roundManual": "Giro avviato a mano",
+    "roundCommand": "Giro avviato da comando",
+    "startedAt": "iniziato alle {{time}}",
+    "waiting": "in attesa",
+    "running": "In corso",
+    "done": "Finito",
+    "failed": "Fallito",
+    "stagesCount": "Stadi del giro",
+    "doneLine": "{{done}} su {{total}} in {{duration}}",
+    "doneLineNoTotal": "fatto in {{duration}}",
+    "failedItems": "{{n}} non riusciti",
+    "skippedItems": "{{n}} saltati",
+    "failedBefore": "{{done}} fatti su {{total}} prima dell'errore",
+    "runningNoTotal": "In corso da {{duration}}",
+    "phase": "Fase",
+    "box": {
+      "done": "Fatti",
+      "speed": "Velocità",
+      "elapsed": "Passato",
+      "left": "Mancano"
+    },
+    "perMinute": "{{n}} al min",
+    "tokensPerSecond": "{{n}} token/s",
+    "roughly": "circa {{duration}}",
+    "speedPrevious": "stima dai giri precedenti",
+    "inThisRound": "in questo giro",
+    "who": {
+      "none": "nessun modello",
+      "batch": "in blocco (risposta entro 24 h)",
+      "stt": "trascrizione",
+      "llm": "modello",
+      "llm_local": "modello locale",
+      "llm_remote": "modello remoto",
+      "llm_mixed": "modello locale e remoto",
+      "embed": "modello dei vettori, locale",
+      "cluster": "locale, più un modello per i nomi"
+    },
+    "workingOn": "Sta lavorando su",
+    "andMore": "e altri {{n}}",
+    "local": "locale",
+    "remote": "remoto",
+    "state": {
+      "waiting": "in coda per il modello locale da {{duration}}",
+      "reading": "sta leggendo",
+      "writing": "sta scrivendo",
+      "running": "in elaborazione"
+    },
+    "tokens": "{{n}} token",
+    "usually": "di solito ancora circa {{duration}}",
+    "longer": "più lunga del solito",
+    "atMost": "al massimo {{duration}}",
+    "otherCalls": "Altre richieste al modello",
+    "otherCallsHint": "Chat, ricerca e comandi: non sono uno stadio del giro.",
+    "jobs": "Lavori avviati dal sito",
+    "jobsHint": "Per questi lavori il sistema conosce solo la percentuale, non quanti pezzi mancano.",
+    "pipelineJobNote": "Il giro avviato a mano si vede qui sopra, stadio per stadio.",
+    "batches": "In consegna",
+    "batchesHint": "Questi elementi sono stati consegnati in blocco ad Anthropic a metà prezzo. La risposta arriva entro 24 ore e non c'è una barra che si muove: il ritiro avviene al giro successivo.",
+    "batchesEmpty": "Nessuna consegna in blocco aperta.",
+    "batchLine": "{{n}} {{kind}} · consegnati {{when}} · risposta attesa entro {{by}}",
+    "batchReturn": "Numeri di ritorno dell'ultimo giro: {{written}} scritti, {{failed}} non riusciti.",
+    "today": "Oggi",
+    "todayHint": "Le ore in cui la macchina ha lavorato per il modello locale e per la trascrizione. Non si paga in euro: si paga in tempo.",
+    "day": "Giorno",
+    "prevDay": "Giorno prima",
+    "nextDay": "Giorno dopo",
+    "dayEmpty": "In questo giorno il modello locale non ha lavorato.",
+    "dayError": "Non riesco a leggere i totali del giorno.",
+    "machineTime": "{{duration}} di macchina",
+    "waitedFor": "in attesa {{duration}}",
+    "tokensInOut": "{{tin}} token letti, {{tout}} scritti",
+    "calls": "{{n}} chiamate",
+    "failedCalls": "{{n}} non riuscite",
+    "total": "Totale",
+    "remoteTitle": "Modelli remoti, per confronto",
+    "remoteLine": "{{calls}} chiamate · {{tokens}} token · {{duration}} di attesa della risposta",
+    "speedLine": "Velocità del modello locale nelle ultime 24 ore: {{n}} token al secondo ({{model}}).",
+    "speedNone": "Velocità del modello locale: nessuna chiamata nelle ultime 24 ore."
   }
 }

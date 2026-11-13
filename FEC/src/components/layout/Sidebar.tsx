@@ -7,7 +7,7 @@ import { cn } from "../../lib/utils";
 import { EASE } from "../ui/motion";
 import {
   IconAccounts, IconAnalytics, IconChat, IconClusters, IconDocs, IconLibrary,
-  IconLogout, IconMap, IconPlan, IconPulse, IconStar, IconTimeline,
+  IconLogout, IconMap, IconPlan, IconProgress, IconPulse, IconStar, IconTimeline,
 } from "../ui/icons";
 
 type Scope = "medyca" | "competitor";
@@ -171,6 +171,7 @@ export function NavContent({ onNavigate }: { onNavigate?: () => void }) {
         <Item to="/accounts" icon={IconAccounts} label={t("nav.accounts")} onNavigate={onNavigate} />
         <Item to="/documentazione" icon={IconDocs} label={t("nav.documentation")} onNavigate={onNavigate} />
         <Item to="/stato" icon={IconPulse} label={t("nav.status")} onNavigate={onNavigate} />
+        <Item to="/avanzamento" icon={IconProgress} label={t("nav.progress")} onNavigate={onNavigate} />
       </nav>
 
       <div className="mt-3 flex items-center gap-3 border-t border-border pt-3">
