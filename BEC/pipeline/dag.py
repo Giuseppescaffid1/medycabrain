@@ -58,19 +58,34 @@ class DAG:
 
     def run(self, ctx: Context, only: set[str] | None = None,
             skip: set[str] | None = None,
-            on_step: Callable[[int, int, str], None] | None = None) -> int:
+            on_step: Callable[[int, int, str], None] | None = None,
+            source: str = "cron", job_id: int | None = None) -> int:
         """Run the steps in order.
 
         `on_step(index, total, stage)` is called as each stage begins, so a
         caller that is not a terminal — a `Job` row the UI polls — can report
         progress. It is optional and never fatal: the cron entrypoint passes
         nothing and behaves exactly as before.
+
+        Each stage also gets a row in `stage_runs` (written by `core/progress`,
+        read by the Avanzamento page) and labels its model calls with
+        `pipeline:<stage>`. `source` says who started the round (cron or "manual"
+        for a Job of the interface); `job_id` links it. Both are bookkeeping:
+        none of it can stop a stage.
         """
+        from core import progress
+        from llm import usage
+
         only = only or set()
         skip = skip or set()
         failed: list[str] = []
         planned = [s for s in self.steps
                    if (not only or s.name in only) and s.name not in skip]
+
+        run_id = usage.current().get("run_id") or usage.new_run_id()
+        # A dry run does nothing, so it plans nothing: rows would sit `waiting`.
+        rows = ({} if ctx.dry_run else
+                progress.plan_stages(run_id, [s.name for s in planned], source, job_id))
 
         _header(f"medycabrain pipeline — {'DRY RUN' if ctx.dry_run else 'LIVE'}")
         for step in self.steps:
@@ -92,17 +107,35 @@ class DAG:
                 continue
 
             t0 = time.time()
+            progress.bind(rows.get(step.name))
             try:
-                result = step.fn(ctx) or {}
+                with usage.scope(f"pipeline:{step.name}", stage=step.name,
+                                 job_id=job_id, run_id=run_id,
+                                 stage_run_id=rows.get(step.name)):
+                    result = step.fn(ctx) or {}
                 ctx.stats[step.name] = result
                 dt = time.time() - t0
+                progress.end_stage("done")
                 _ok(f"{step.name} done in {dt:.1f}s — {result}")
             except Exception as exc:  # noqa: BLE001
                 failed.append(step.name)
+                # The sentence the page shows; the real error is in the log.
+                try:
+                    from core.upload_workflow import _client_message
+                    reason = _client_message(exc)
+                except Exception:  # noqa: BLE001
+                    reason = "Errore imprevisto durante la lavorazione."
+                progress.end_stage("failed", reason)
                 _fail(f"{step.name} FAILED: {exc!r}")
                 if step.fatal:
                     _fail("fatal step failed — aborting pipeline")
                     break
+
+        # Stages that never ran (a fatal one stopped the round) would stay
+        # `waiting` until the ghost sweep called them "interrotto". They were
+        # never started: remove them rather than report a false failure.
+        if rows:
+            progress.drop_waiting(run_id)
 
         _header("pipeline summary")
         for name, res in ctx.stats.items():

@@ -12,6 +12,8 @@ Heavy imports (whisper, sentence-transformers, hdbscan) are deferred
 inside each agent module, so --dry-run and --only scrape stay light.
 """
 
+import sys
+
 from django.core.management.base import BaseCommand
 
 from pipeline.dag import DAG, STAGE_NAMES, Context, build_steps
@@ -36,6 +38,8 @@ class Command(BaseCommand):
         skip = {name for name in STAGE_NAMES if opts.get(f"skip_{name}")}
 
         ctx = Context(dry_run=opts["dry_run"], limit=opts["limit"])
-        code = DAG(steps).run(ctx, only=only, skip=skip)
+        # Cron has no terminal; a person typing the command does.
+        source = "command" if sys.stdin.isatty() else "cron"
+        code = DAG(steps).run(ctx, only=only, skip=skip, source=source)
         if code != 0:
             raise SystemExit(code)

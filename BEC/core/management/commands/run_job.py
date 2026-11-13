@@ -17,6 +17,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.utils import timezone
 
 from core.models import Job
+from llm import usage
 
 # How often a running job proves it is alive. The reaper (views._reap_stale_jobs)
 # declares dead any job untouched for 25 minutes; a single long whisper call
@@ -88,7 +89,9 @@ class Command(BaseCommand):
                          daemon=True).start()
 
         try:
-            result = self._dispatch(job)
+            # Every model call of this job is labelled with it (Avanzamento page).
+            with usage.scope(f"job:{job.kind}", job_id=job.id):
+                result = self._dispatch(job)
             job.status = "done"
             job.progress = 100
             job.message = job.message or "Completato"

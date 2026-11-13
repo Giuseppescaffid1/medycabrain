@@ -25,6 +25,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from django.db.models import Q
 
+from core import progress
 from core.models import DONE, FAILED, PENDING, SKIPPED, Enrichment, Reel, ReelArgument
 from llm import client, prompts
 from llm.client import LLMRateLimit
@@ -49,11 +50,27 @@ _WORKERS = max(1, int(os.environ.get("ENRICH_WORKERS", "5")))
 _RATE_RETRIES = 4
 
 
+def _tracked(call, item):
+    """Count one item on the stage's bar and name it for the model calls it
+    makes. It runs INSIDE the worker thread, not in the loop that collects
+    results: there the results arrive in submission order and late, so a slow
+    first reel would hold the whole bar still. Counted once per item, not per
+    rate-limit retry."""
+    progress.start_item(*progress.describe(item))
+    try:
+        out = call()
+    except BaseException:
+        progress.item_done("failed")
+        raise
+    progress.item_done("done")
+    return out
+
+
 def _with_retry(fn, reel):
     """One unit of work, in its own thread, patient with rate limits."""
     from django.db import connection
 
-    try:
+    def _attempts():
         for attempt in range(_RATE_RETRIES):
             try:
                 return fn(reel)
@@ -65,6 +82,9 @@ def _with_retry(fn, reel):
                             reel.shortcode, wait)
                 time.sleep(wait)
         raise RuntimeError("unreachable")
+
+    try:
+        return _tracked(_attempts, reel)
     finally:
         # Threads get their own connection; leaving them open exhausts the
         # database's connection slots over a long run.
@@ -76,7 +96,7 @@ def _parallel(reels, fn):
     if _WORKERS == 1:
         for reel in reels:
             try:
-                yield reel, fn(reel), None
+                yield reel, _tracked(lambda: fn(reel), reel), None
             except Exception as exc:  # noqa: BLE001
                 yield reel, None, exc
         return
@@ -313,7 +333,9 @@ def run(ctx) -> dict:
     enriched = failed = 0
     # Materialise before handing out to threads: a lazy, sliced queryset would
     # be re-evaluated per worker.
-    for reel, _res, exc in _parallel(list(qs), _enrich_one):
+    reels = list(qs)
+    progress.open(len(reels), "reel", "Analisi")
+    for reel, _res, exc in _parallel(reels, _enrich_one):
         if exc is None:
             reel.enrich_status = DONE
             reel.last_error = ""
@@ -331,7 +353,9 @@ def run(ctx) -> dict:
     if ctx.limit:
         qs2 = qs2[: ctx.limit]
     arg_reels = total_args = arg_failed = 0
-    for reel, n, exc in _parallel(list(qs2), _extract_arguments):
+    arg_list = list(qs2)
+    progress.open(len(arg_list), "reel", "Affermazioni")
+    for reel, n, exc in _parallel(arg_list, _extract_arguments):
         if exc is None:
             reel.argument_status = DONE
             reel.save(update_fields=["argument_status"])

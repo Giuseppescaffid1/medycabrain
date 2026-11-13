@@ -326,6 +326,11 @@ APIFY_REEL_ACTOR = os.environ.get("APIFY_REEL_ACTOR", "apify~instagram-reel-scra
 OLLAMA_LOCK_PATH = os.environ.get("OLLAMA_LOCK_PATH", "/tmp/medycabrain-ollama.lock")
 OLLAMA_LOCK_WAIT = int(os.environ.get("OLLAMA_LOCK_WAIT", "900"))
 
+# How long the per-call detail (`llm_calls`) and per-stage rows (`stage_runs`)
+# are kept. `manage.py prune_llm_calls` deletes older rows; daily totals older
+# than this are lost (no summary table in v1).
+LLM_CALL_RETENTION_DAYS = int(os.environ.get("LLM_CALL_RETENTION_DAYS", "90"))
+
 LLM_PROVIDER_ORDER = os.environ.get("LLM_PROVIDER_ORDER", "fast,ollama").split(",")
 WHISPER_MODEL = os.environ.get("WHISPER_MODEL", "small")
 WHISPER_COMPUTE_TYPE = os.environ.get("WHISPER_COMPUTE_TYPE", "int8")

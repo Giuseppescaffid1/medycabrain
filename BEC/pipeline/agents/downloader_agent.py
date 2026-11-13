@@ -24,6 +24,7 @@ from django.conf import settings
 
 from django.db.models import Case, IntegerField, Value, When
 
+from core import progress
 from core.models import DONE, FAILED, PENDING, SKIPPED, Reel
 from scraper.types import IGThrottled
 
@@ -383,6 +384,9 @@ def run(ctx) -> dict:
     stopped_early = False
     spent_api = False
     deferred = 0
+    # The total is the slice taken this round (after the cap), not the whole
+    # queue: that is what this round can finish.
+    progress.open(len(batch), "reel", "Download")
     for reel in batch:
         # Once Instagram's quota is gone, only the reels that would call it are
         # blocked. A reel holding a fresh CDN url needs no API at all, and
@@ -392,7 +396,9 @@ def run(ctx) -> dict:
         needs_api = not (reel.video_url and not _url_expired(reel.video_url))
         if stopped_early and needs_api:
             deferred += 1
+            progress.item_done("skipped")
             continue
+        progress.start_item(*progress.describe(reel))
 
         # Pace only the throttled endpoint. A cached url goes straight to the
         # CDN, which has no quota — sleeping there would waste hours.
@@ -402,12 +408,14 @@ def run(ctx) -> dict:
             spent_api = _process_one(reel)
             done += 1
             throttled_streak = 0
+            progress.item_done("done")
         except IGThrottled as exc:
             # The quota for this window is gone: every further call in this run
             # would fail too (measured: once it starts, 45/45 failed). Stop, and
             # do NOT charge the reel an attempt — it did nothing wrong.
             throttled_streak += 1
             throttled_total += 1
+            progress.item_done("skipped")
             reel.media_status = PENDING
             reel.last_error = f"quota Instagram esaurita: {exc}"[:500]
             reel.save(update_fields=["media_status", "last_error"])
@@ -422,6 +430,7 @@ def run(ctx) -> dict:
             # it has gone three times, it is gone.
             if throttled_streak >= _THROTTLE_STREAK or throttled_total >= _THROTTLE_STREAK:
                 stopped_early = True
+                progress.note("fermato: quota Instagram esaurita")
                 logger.warning("[downloader] quota Instagram esaurita: proseguo solo "
                                "con i reel che hanno gia un url utilizzabile")
         except Exception as exc:  # noqa: BLE001
@@ -431,9 +440,11 @@ def run(ctx) -> dict:
             if reel.media_attempts >= _MAX_ATTEMPTS:
                 reel.media_status = SKIPPED
                 skipped += 1
+                progress.item_done("skipped")
             else:
                 reel.media_status = FAILED
                 failed += 1
+                progress.item_done("failed")
             reel.save(update_fields=["media_attempts", "last_error", "media_status"])
             logger.warning("[downloader] %s failed (attempt %s): %r",
                            reel.shortcode, reel.media_attempts, exc)

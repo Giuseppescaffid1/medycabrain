@@ -11,6 +11,11 @@ Modeled on the SPI _HuggingFaceExtractor for the HF side: InferenceClient
 
 Ollama is pinned to OLLAMA_NUM_THREAD threads (default 6): on this VDS more
 threads make generation slower, not faster (3.8-4.0 tok/s at 6, 0.2-0.8 at 18).
+
+Every attempt is recorded in `llm_calls` by `llm/usage.py` (who asked, which
+model, how long it waited for the local lock, tokens, seconds — never the text).
+`chat()` is the single place that does it, so the callers are untouched, and a
+failing write never fails the call.
 """
 
 from __future__ import annotations
@@ -26,6 +31,8 @@ import time
 
 import requests
 from django.conf import settings
+
+from llm import usage
 
 logger = logging.getLogger(__name__)
 
@@ -95,6 +102,9 @@ def _hf_chat(system: str, user: str, max_tokens: int, temperature: float) -> str
                       {"role": "user", "content": user}],
             max_tokens=max_tokens, temperature=temperature,
         )
+        u = getattr(resp, "usage", None)
+        usage.note_tokens(getattr(u, "prompt_tokens", None),
+                          getattr(u, "completion_tokens", None))
         return resp.choices[0].message.content or ""
     except Exception as exc:  # noqa: BLE001
         msg = str(exc)
@@ -104,10 +114,14 @@ def _hf_chat(system: str, user: str, max_tokens: int, temperature: float) -> str
 
 
 def _ollama_chat(system: str, user: str, max_tokens: int, temperature: float,
-                 json_mode: bool = False, timeout: int = 240, on_token=None) -> str:
+                 json_mode: bool = False, timeout: int = 240, on_token=None,
+                 rec=None) -> str:
     """Local generation. Streams so a slow CPU still shows life: `timeout`
     becomes a per-chunk read timeout instead of a whole-answer deadline, so a
-    long-but-progressing answer is no longer killed halfway."""
+    long-but-progressing answer is no longer killed halfway.
+
+    `rec` is the `usage.Call` of this attempt (optional): it gets the live token
+    count and, from Ollama's last line, the real numbers."""
     payload = {
         "model": settings.OLLAMA_MODEL,
         "messages": [{"role": "system", "content": system},
@@ -136,15 +150,38 @@ def _ollama_chat(system: str, user: str, max_tokens: int, temperature: float,
             piece = (data.get("message") or {}).get("content", "")
             if piece:
                 chunks.append(piece)
+                if rec is not None:
+                    # One chunk per token (43 chunks for 44 tokens, measured
+                    # 2026-11-13): counting them is the live token count.
+                    rec.tokens(len(chunks))
                 if on_token:
                     with contextlib.suppress(Exception):
                         on_token("".join(chunks))
             if data.get("done"):
+                if rec is not None:
+                    _record_ollama_stats(rec, data)
                 break
             if time.time() > deadline:
                 logger.warning("[llm] ollama stream exceeded %ss — returning partial", timeout)
+                # Not an error for the caller, but the answer is cut: say so.
+                if rec is not None:
+                    rec.stats(truncated=True, output_tokens=len(chunks))
                 break
     return "".join(chunks)
+
+
+def _record_ollama_stats(rec, data: dict) -> None:
+    """Ollama's last line carries the real numbers (durations in nanoseconds)."""
+    def secs(key):
+        v = data.get(key)
+        return round(v / 1e9, 2) if isinstance(v, (int, float)) else None
+    rec.stats(prompt_tokens=data.get("prompt_eval_count"),
+              output_tokens=data.get("eval_count"),
+              load_seconds=secs("load_duration"),
+              prompt_seconds=secs("prompt_eval_duration"),
+              eval_seconds=secs("eval_duration"),
+              # "length" = cut at num_predict (our max_tokens)
+              truncated=data.get("done_reason") == "length")
 
 
 @contextlib.contextmanager
@@ -270,6 +307,8 @@ def _anthropic_chat(system: str, user: str, max_tokens: int, temperature: float,
         # with a parse error that hides the real cause.
         raise LLMError(
             f"anthropic: risposta troncata al tetto di {max_tokens} token")
+    u = getattr(msg, "usage", None)
+    usage.note_tokens(getattr(u, "input_tokens", None), getattr(u, "output_tokens", None))
     return "".join(b.text for b in msg.content if getattr(b, "type", "") == "text")
 
 
@@ -339,7 +378,10 @@ def _fast_chat(system: str, user: str, max_tokens: int, temperature: float,
         # loudly instead of burning the local fallback on it.
         logger.error("[llm] fast provider rejected the request: %s", resp.text[:200])
     resp.raise_for_status()
-    return resp.json()["choices"][0]["message"]["content"]
+    body = resp.json()
+    u = body.get("usage") or {}
+    usage.note_tokens(u.get("prompt_tokens"), u.get("completion_tokens"))
+    return body["choices"][0]["message"]["content"]
 
 
 def transcribe_audio(path: str, prompt: str = "", language: str = "it") -> dict:
@@ -469,28 +511,59 @@ def chat(system: str, user: str, max_tokens: int = 800, temperature: float = 0.2
             return endpoint["models"][task]
         return model if endpoint is (settings.FAST_ENDPOINTS or [None])[0] else ""
 
+    prompt_chars = len(system) + len(user)
+
+    def _recorded(label: str, model_name: str, fn) -> str:
+        """Run one remote attempt and write it down. The row exists while the
+        call is in flight (so the page can say who is working) and is closed
+        with the tokens the provider reported."""
+        rec = usage.begin(label, model_name, is_local=False, waiting=False,
+                          max_tokens=max_tokens, prompt_chars=prompt_chars)
+        try:
+            text = fn()
+        except BaseException as exc:
+            rec.fail(exc)
+            raise
+        rec.done_remote(model=last_model_used())
+        return text
+
     def _call_alt(endpoint, alt_model: str) -> str:
         """Same endpoint, a sibling model — used when a daily cap is hit."""
         fn = _anthropic_chat if endpoint.get("dialect") == "anthropic" else _fast_chat
-        return fn(system, user, max_tokens, temperature, json_mode=json_mode,
-                  timeout=min(timeout, 300), model=alt_model, endpoint=endpoint)
+        return _recorded(endpoint["name"], alt_model, lambda: fn(
+            system, user, max_tokens, temperature, json_mode=json_mode,
+            timeout=min(timeout, 300), model=alt_model, endpoint=endpoint))
 
     def _call(provider, endpoint=None):
         if provider == "fast":
+            name = _model_on(endpoint) or endpoint.get("models", {}).get("reasoning", "")
             if (endpoint or {}).get("dialect") == "anthropic":
-                return _anthropic_chat(system, user, max_tokens, temperature,
-                                       json_mode=json_mode, timeout=min(timeout, 300),
-                                       model=_model_on(endpoint), endpoint=endpoint)
-            return _fast_chat(system, user, max_tokens, temperature,
-                              json_mode=json_mode, timeout=min(timeout, 120),
-                              model=_model_on(endpoint), endpoint=endpoint)
+                return _recorded(endpoint["name"], name, lambda: _anthropic_chat(
+                    system, user, max_tokens, temperature,
+                    json_mode=json_mode, timeout=min(timeout, 300),
+                    model=_model_on(endpoint), endpoint=endpoint))
+            return _recorded(endpoint["name"], name, lambda: _fast_chat(
+                system, user, max_tokens, temperature,
+                json_mode=json_mode, timeout=min(timeout, 120),
+                model=_model_on(endpoint), endpoint=endpoint))
         if provider == "hf":
-            return _hf_chat(system, user, max_tokens, temperature)
+            return _recorded("hf", settings.HF_LLM_MODEL,
+                             lambda: _hf_chat(system, user, max_tokens, temperature))
         # Local generation: take the single CPU slot, never run two at once.
-        with _ollama_slot(priority=priority):
-            return _ollama_chat(system, user, max_tokens, temperature,
-                                json_mode=json_mode, timeout=timeout,
-                                on_token=on_token)
+        # The row is born BEFORE the wait: "in coda" is a state worth showing.
+        rec = usage.begin("ollama", settings.OLLAMA_MODEL, is_local=True, waiting=True,
+                          max_tokens=max_tokens, prompt_chars=prompt_chars)
+        try:
+            with _ollama_slot(priority=priority):
+                rec.running()
+                text = _ollama_chat(system, user, max_tokens, temperature,
+                                    json_mode=json_mode, timeout=timeout,
+                                    on_token=on_token, rec=rec)
+        except BaseException as exc:
+            rec.fail(exc)
+            raise
+        rec.done(model=f"{settings.OLLAMA_MODEL}")
+        return text
 
     last_err = None
     for provider, endpoint in providers:

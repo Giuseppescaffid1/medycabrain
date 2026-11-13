@@ -78,7 +78,8 @@ def run_pipeline_job(job, only: list[str] | None = None,
     log_path.parent.mkdir(parents=True, exist_ok=True)
     with open(log_path, "a", buffering=1) as pipeline_log:
         with contextlib.redirect_stdout(_Tee(sys.stdout, pipeline_log)):
-            code = DAG(steps).run(ctx, only=only_set, on_step=on_step)
+            code = DAG(steps).run(ctx, only=only_set, on_step=on_step,
+                                  source="manual", job_id=job.id)
 
     stats = ctx.stats
     done_stages = list(stats)

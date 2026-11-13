@@ -18,7 +18,9 @@ from pathlib import Path
 
 from django.conf import settings
 
+from core import progress
 from core.models import DONE, FAILED, PENDING, Reel, Transcript
+from llm import usage
 
 logger = logging.getLogger(__name__)
 
@@ -56,7 +58,12 @@ def _transcribe(mp3_path: Path) -> dict:
 
         for attempt in range(4):
             try:
-                out = client.transcribe_audio(str(mp3_path), prompt=prompts.MEDICAL_GLOSSARY)
+                progress.who("Whisper remoto")
+                # Whisper is not a chat() call, but it takes the same hours:
+                # record it so the "Oggi" totals include it.
+                with usage.stt(settings.FAST_STT_MODEL, is_local=False):
+                    out = client.transcribe_audio(str(mp3_path),
+                                                  prompt=prompts.MEDICAL_GLOSSARY)
                 if out.get("text"):
                     segs = out["segments"]
                     return {"text": out["text"], "segments": segs, "language": "it",
@@ -78,17 +85,20 @@ def _transcribe(mp3_path: Path) -> dict:
                 logger.warning("[transcriber] remote STT failed (%r) — using local", exc)
                 break
 
+    progress.who("Whisper locale")
     model = _get_model()
-    segments_iter, info = model.transcribe(
-        str(mp3_path), language="it", vad_filter=True, beam_size=5,
-        initial_prompt=_local_prompt(),
-    )
     segments = []
     parts = []
-    for seg in segments_iter:
-        segments.append({"start": round(seg.start, 2), "end": round(seg.end, 2),
-                         "text": seg.text.strip()})
-        parts.append(seg.text.strip())
+    with usage.stt(settings.WHISPER_MODEL, is_local=True):
+        segments_iter, info = model.transcribe(
+            str(mp3_path), language="it", vad_filter=True, beam_size=5,
+            initial_prompt=_local_prompt(),
+        )
+        # The segments are produced lazily: the work happens in this loop.
+        for seg in segments_iter:
+            segments.append({"start": round(seg.start, 2), "end": round(seg.end, 2),
+                             "text": seg.text.strip()})
+            parts.append(seg.text.strip())
     return {
         "text": " ".join(parts).strip(),
         "segments": segments,
@@ -112,13 +122,17 @@ def run(ctx) -> dict:
     if ctx.limit:
         qs = qs[: ctx.limit]
     done = failed = 0
-    for reel in qs:
+    reels = list(qs)
+    progress.open(len(reels), "reel", "Trascrizione")
+    for reel in reels:
+        progress.start_item(*progress.describe(reel))
         mp3 = Path(settings.MEDIA_ROOT) / reel.audio_file
         if not mp3.exists():
             reel.transcribe_status = FAILED
             reel.last_error = "audio file missing"
             reel.save(update_fields=["transcribe_status", "last_error"])
             failed += 1
+            progress.item_done("failed")
             continue
         try:
             result = _transcribe(mp3)
@@ -137,7 +151,9 @@ def run(ctx) -> dict:
             reel.last_error = ""
             reel.save(update_fields=["transcribe_status", "enrich_status", "last_error"])
             done += 1
+            progress.item_done("done")
         except Exception as exc:  # noqa: BLE001
+            progress.item_done("failed")
             reel.transcribe_status = FAILED
             reel.last_error = repr(exc)[:500]
             reel.save(update_fields=["transcribe_status", "last_error"])

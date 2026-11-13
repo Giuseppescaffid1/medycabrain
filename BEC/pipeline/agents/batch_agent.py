@@ -43,6 +43,7 @@ from django.conf import settings
 from django.db.models import Q
 from django.utils import timezone
 
+from core import progress
 from core.models import (BATCHED, DONE, FAILED, PENDING, SKIPPED, BatchRun,
                          KnowledgeDocument, Reel)
 from llm import batch as batch_api
@@ -192,6 +193,7 @@ def submit_kind(kind_name: str, limit: int | None = None) -> dict:
 
     items, by_id, local = [], {}, []
     for row in rows:
+        progress.item_done("done")
         built = kind.build(row)
         if built is None:
             local.append(row)
@@ -235,6 +237,13 @@ def submit_kind(kind_name: str, limit: int | None = None) -> dict:
 
 def submit(limit: int | None = None) -> dict:
     """Hand over every kind of pending work."""
+    if batch_api.available() and progress.is_bound():
+        # How many items this round will hand over: the bar of the "Consegna"
+        # phase. Counted per kind with the same cap submit_kind applies (the
+        # pending lists are loaded once more, hence only when a bar exists).
+        cap = min(limit or settings.BATCH_MAX_REQUESTS, settings.BATCH_MAX_REQUESTS)
+        total = sum(min(len(k.pending()), cap) for k in KINDS.values())
+        progress.open(total, "elementi", "Consegna")
     return {k: submit_kind(k, limit) for k in KINDS}
 
 
@@ -252,7 +261,12 @@ def collect() -> dict:
 
     out = {"batches": 0, "written": 0, "failed": 0, "still_working": 0,
            "per_tipo": {}}
-    for run in BatchRun.objects.filter(status__in=("submitted", "ended")):
+    open_runs = list(BatchRun.objects.filter(status__in=("submitted", "ended")))
+    progress.open(len(open_runs), "consegne", "Ritiro")
+    for run in open_runs:
+        # One tick per delivery, whatever came of it: the bar counts the
+        # deliveries looked at, "still working" included.
+        progress.item_done("done")
         kind = KINDS.get(run.kind)
         if kind is None:
             logger.warning("[batch] %s: tipo sconosciuto %r", run.batch_id, run.kind)

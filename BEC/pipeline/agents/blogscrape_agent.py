@@ -22,6 +22,8 @@ import logging
 
 from django.utils import timezone
 
+# Not `progress`: crawl_source has a local helper of that name (the Job's bar).
+from core import progress as stage_progress
 from core.models import BlogSource, KnowledgeDocument, ScraperConfig
 from pipeline.agents import blog_agent, blog_discovery
 
@@ -120,6 +122,8 @@ def crawl_source(source: BlogSource, *, job=None, force: bool = False,
     created = updated = unchanged = failed = 0
     dead = source.crawl_state.setdefault("dead_urls", [])
     for i, cand in enumerate(to_fetch):
+        # "3 di 12 articoli" on the bar of the source being read (no-op in a Job).
+        stage_progress.note(f"{source.name}: articolo {i + 1} di {len(to_fetch)}")
         # take() both paces the request and counts it against the budget;
         # the body fetch inside ingest() is the request being paid for.
         if not budget.take():
@@ -141,6 +145,7 @@ def crawl_source(source: BlogSource, *, job=None, force: bool = False,
             progress(30 + int(30 * (i + 1) / max(len(to_fetch), 1)),
                      f"{source.name}: {created + updated} articoli acquisiti")
 
+    stage_progress.note("")
     # Success bookkeeping. Zero candidates on a source that never produced
     # anything is a failure in disguise — the discovery is not working.
     if candidates or KnowledgeDocument.objects.filter(source=source).exists():
@@ -184,20 +189,26 @@ def run(ctx) -> dict:
     out = {"sources": len(sources), "crawled": 0, "new": 0, "updated": 0,
            "failed": 0, "deactivated": [], "detail": {}}
     pages_left = cfg["global_page_budget"]
+    stage_progress.open(len(sources), "fonti", "Fonti")
     for source in sources:
         if pages_left <= 0:
             logger.warning("[blogscrape] budget globale esaurito, mi fermo")
+            stage_progress.note("fermato: budget di pagine esaurito")
             break
+        stage_progress.start_item(*stage_progress.describe(source))
         try:
             r = crawl_source(source, limit=ctx.limit)
         except Exception as exc:  # noqa: BLE001 — one dead site never stops the others
             logger.warning("[blogscrape] %s: errore inatteso %r", source.name, exc)
+            stage_progress.item_done("failed")
             out["failed"] += 1
             out["detail"][source.name] = {"failed": _human_error(exc)}
             continue
         out["detail"][source.name] = r
         if r.get("skipped"):
+            stage_progress.item_done("skipped")
             continue
+        stage_progress.item_done("failed" if r.get("failed") else "done")
         out["crawled"] += 1
         out["new"] += r.get("new", 0)
         out["updated"] += r.get("updated", 0)
