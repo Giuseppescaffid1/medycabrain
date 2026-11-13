@@ -47,6 +47,10 @@ for `api.anthropic.com`), never guessed at call time.
 - **hf** — HuggingFace `InferenceClient`. Dormant (not in the order).
 - **ollama** — local, the last resort. Serialized by a file lock (`_ollama_slot`) because the
   CPU fits one ~7B generation at a time; an interactive caller can claim `priority`.
+  The number of threads is `OLLAMA_NUM_THREAD` (default 6, sent as `options.num_thread` by
+  `_ollama_chat`; `0` = do not send it). Ollama's own default is all 18 cores, and on this VDS
+  (EPYC Zen 1, KVM) the ceiling is memory, not cores. Measured with qwen2.5 7b Q4_K_M:
+  18 threads 0.2-0.8 tok/s, 12 threads 1.4-1.9, **6 threads 3.8-4.0**, 4 threads 2.9-3.2.
 
 Errors, and what each one does to the chain:
 
@@ -70,9 +74,13 @@ Errors, and what each one does to the chain:
 | 1 | **Anthropic** (`api.anthropic.com`) | `claude-sonnet-5` | `claude-sonnet-5` | paid per token, the project's own key |
 | 2 | **Groq** (`api.groq.com/openai/v1`) | `openai/gpt-oss-120b` | `openai/gpt-oss-20b` | free, no card, ~30 RPM, ~0.4s per call |
 | 3 | **aiapiflow** (gateway) | `claude-opus-5` | `claude-sonnet-4-6` | **balance exhausted** (403 `INSUFFICIENT_BALANCE`); revives by itself if topped up |
-| 4 | **Ollama** (local) | `qwen2.5:3b-instruct-q4_K_M` | same | last resort, ~1-3 tok/s on this CPU |
+| 4 | **Ollama** (local) | `qwen2.5:3b-instruct-q4_K_M` | same | last resort; the 7b does ~3.8-4.0 tok/s at 6 threads (see below), the 3b still has to be re-measured |
 
 Known limits, measured rather than assumed:
+
+- **Local Ollama is slow by hardware.** The machine tops out at ~5.6-7 tok/s in total for the 7b,
+  even with answers in parallel; reading the prompt runs at 9-13 tok/s. Bigger memory pages and
+  passive waiting were tried and gave nothing. The 3b model has not been re-measured at 6 threads.
 
 - **No sampling parameters on current Claude models.** `temperature` / `top_p` / `top_k` were
   removed on Sonnet 5, Opus 5 and the 4.7+ family; the SDK rejects the keyword outright
