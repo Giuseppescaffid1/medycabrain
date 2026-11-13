@@ -19,9 +19,14 @@ running one (`bind`) and closes it (`end_stage`).
 Rules, same as `llm/usage.py`:
 
 * **Never stops a stage.** Every write goes through `usage.guard`; with the
-  database down the stage carries on and the bar simply does not move.
+  database down the stage carries on and the bar simply does not move. The
+  closing write of a stage ignores the breaker and tries once, so a database
+  that came back mid-stage still gets the final state. Limit: if it is still
+  down at that moment, the row stays `running` and the page later shows the
+  stage as "giro interrotto" although it finished well.
 * **Throttled**: one write per stage every 2 s, plus one when a phase opens or
-  closes. Several threads (ENRICH_WORKERS) count on the same stage, so the
+  closes. `note()` is throttled like the counters; the closing write carries
+  the last note anyway. Several threads (ENRICH_WORKERS) count on the same stage, so the
   counters are behind a lock.
 * **No stage bound = no-op.** A Job or a manual command that calls an agent
   function directly has no bar; `start_item` still labels the model calls so
@@ -79,8 +84,9 @@ def bind(stage_run_id: int | None) -> None:
         _state = _fresh(stage_run_id) if stage_run_id else {}
     if stage_run_id:
         from django.utils import timezone
+        # A row the ghost sweep closed by mistake comes back clean.
         _write({"status": "running", "started_at": timezone.now(),
-                "pid": os.getpid()})
+                "pid": os.getpid(), "error": "", "finished_at": None})
 
 
 def end_stage(status: str, error: str = "") -> None:
@@ -96,7 +102,11 @@ def end_stage(status: str, error: str = "") -> None:
         _state = {}
     sid = fields.pop("_id")
     fields.update(status=status, error=error[:300], finished_at=timezone.now())
-    _write(fields, sid=sid)
+    # Forced past the breaker: the database may have come back since the writes
+    # that failed, and this one carries the final numbers. If it is still down,
+    # the row stays `running` and the ghost sweep closes it as "giro interrotto"
+    # even though the stage finished (known limit, see 02-pipeline.md).
+    _write(fields, sid=sid, force=True)
 
 
 def _snapshot_locked() -> dict:
@@ -117,7 +127,7 @@ def _close_phase_locked() -> None:
                         "unit": s["unit"], "seconds": seconds})
 
 
-def _write(fields: dict, sid: int | None = None) -> None:
+def _write(fields: dict, sid: int | None = None, force: bool = False) -> None:
     from django.utils import timezone
     sid = sid or (_state.get("id") if _state else None)
     if not sid:
@@ -126,7 +136,7 @@ def _write(fields: dict, sid: int | None = None) -> None:
     def _do():
         from core.models import StageRun
         StageRun.objects.filter(id=sid).update(updated_at=timezone.now(), **fields)
-    usage.guard("avanzamento", _do)
+    usage.guard("avanzamento", _do, force=force)
 
 
 def _flush(force: bool = False) -> None:
@@ -218,7 +228,7 @@ def note(text: str) -> None:
         if not _state:
             return
         _state["note"] = text[:200]
-    _flush(force=True)
+    _flush()
 
 
 def is_bound() -> bool:

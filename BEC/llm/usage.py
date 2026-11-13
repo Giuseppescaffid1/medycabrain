@@ -145,20 +145,33 @@ def _as_int(v) -> int | None:
 
 # ── writing, never raising ──────────────────────────────────────────────────
 
-def guard(label: str, fn, *args, **kwargs):
-    """Run a database write; on any failure log and return None."""
+def guard(label: str, fn, *args, force: bool = False, **kwargs):
+    """Run a database write; on any failure log and return None.
+
+    `force=True` ignores the breaker: the write that closes a stage must be
+    tried even if the breaker was tripped by an earlier write, because by now
+    the database may be back (a stage that finished well must not stay
+    `running` and be closed later as "giro interrotto"). If it succeeds the
+    breaker is cleared; if it fails the breaker is left as it was.
+    """
     global _breaker_until
-    if time.monotonic() < _breaker_until:
+    if not force and time.monotonic() < _breaker_until:
         return None
     try:
         from django.db import transaction
         # A savepoint: if a caller ever sits inside an atomic block, a failed
         # write must not poison the caller's transaction.
         with transaction.atomic():
-            return fn(*args, **kwargs)
+            result = fn(*args, **kwargs)
+        if force:
+            _breaker_until = 0.0
+        return result
     except Exception as exc:  # noqa: BLE001 — recording is never fatal
-        from django.db import InterfaceError, OperationalError
-        if isinstance(exc, (OperationalError, InterfaceError)):
+        from django.db import InterfaceError, OperationalError, ProgrammingError
+        # ProgrammingError = tables not migrated yet: every write would fail the
+        # same way, so it trips the same breaker (one warning, not one per write).
+        if not force and isinstance(
+                exc, (OperationalError, InterfaceError, ProgrammingError)):
             _breaker_until = time.monotonic() + BREAKER_SECONDS
         logger.warning("[usage] %s non registrato: %r", label, exc)
         return None
@@ -214,6 +227,9 @@ class Call:
         truncated = bool(truncated or fields.pop("truncated", False))
         if model:
             fields["model"] = model[:80]
+        # The last periodic write can be up to 2 s behind: close on the real number.
+        if fields.get("output_tokens") is not None:
+            fields["tokens_so_far"] = fields["output_tokens"]
         if self._started is not None:
             fields["duration_seconds"] = round(end - self._started, 2)
         else:  # a remote call that never saw a lock: all of it was the call
@@ -306,12 +322,29 @@ def close_ghosts(min_interval: float = 30.0) -> None:
         from core.models import LLMCall, StageRun
         from django.utils import timezone
         old = timezone.now() - timedelta(seconds=GHOST_AFTER_SECONDS)
+        open_ = ("waiting", "running")
+        # A call row is written when it starts and when it ends, so its age is
+        # its life. A stage row is different: `created_at` is the start of the
+        # ROUND (the plan) and a round can last more than 3 hours. For stages
+        # the clock is the last beat, `updated_at`; and a `waiting` stage of a
+        # round that still beats (any sibling written recently) is not a ghost.
+        beating = set(StageRun.objects.filter(updated_at__gte=old)
+                      .values_list("run_id", flat=True))
         for model_cls, msg in ((LLMCall, "processo interrotto"),
                                (StageRun, "giro interrotto")):
-            rows = model_cls.objects.filter(status__in=("waiting", "running"))
-            dead = [r.id for r in rows.only("id", "pid", "created_at")
-                    if not _pid_alive(r.pid) or r.created_at < old]
+            rows = model_cls.objects.filter(status__in=open_)
+            dead = []
+            for r in rows:
+                if not _pid_alive(r.pid):
+                    dead.append(r.id)
+                elif model_cls is LLMCall:
+                    if r.created_at < old:
+                        dead.append(r.id)
+                elif r.updated_at < old and r.run_id not in beating:
+                    dead.append(r.id)
             if dead:
-                model_cls.objects.filter(id__in=dead).update(
+                # Repeat the status filter: a row another process closed `done`
+                # a moment ago must not be rewritten `failed`.
+                model_cls.objects.filter(id__in=dead, status__in=open_).update(
                     status="failed", finished_at=timezone.now(), error=msg)
     guard("chiusura righe interrotte", _do)

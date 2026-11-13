@@ -1,7 +1,7 @@
 ---
 id: 2026-11-13-processi-locali
 titolo: Pagina "Processi locali" - cosa fa l'LLM locale e quanto costa in tempo
-stato: revisione
+stato: pronto
 ramo: feat/processi-locali
 pr: ""
 ticket: ""
@@ -855,8 +855,219 @@ La copia `FEC/public/docs/medycabrain-pipeline-cliente.drawio` era già diversa 
 `docs/` prima di questo lavoro: non l'ho riallineata. `FEC/dist` (ignorato da git) è stato
 ricostruito dalla build: se il sito live serve quella cartella ora vede già la pagina nuova, che
 senza la migrazione mostra solo errore di caricamento (le tabelle non esistono ancora).
+### Secondo giro
+
+Corretti i rilievi non bloccanti di revisione e collaudo (stesso ramo, nessuna migrazione nuova).
+
+- **Giri lunghi chiusi per errore** (`llm/usage.py` `close_ghosts`, `core/progress.py` `bind`): per
+  `StageRun` il tetto delle 3 ore guarda `updated_at`, non `created_at`; uno stadio `waiting` di un
+  giro che batte ancora (un'altra riga dello stesso `run_id` scritta di recente) non si chiude; pid
+  morto chiude subito come prima. `bind()` azzera `error` e `finished_at`. L'`update` ripete
+  `status__in`. Le righe `LLMCall` restano col vecchio criterio (si scrivono a inizio e fine).
+- **Stadio riuscito che sembra fallito**: `usage.guard(..., force=True)` ignora l'interruttore e,
+  se riesce, lo azzera; `end_stage` lo usa. Se il database e' ancora spento in quel momento la riga
+  resta `running` e la pagina la chiude come «giro interrotto»: limite scritto in `02-pipeline.md` e
+  nel docstring di `progress.py`.
+- **Tabella mancante**: `ProgrammingError` accende lo stesso interruttore (un avviso, non uno per
+  scrittura). Cambia anche il rilievo 1 del revisore sul docstring dell'interruttore.
+- **`tokens_so_far`** a fine chiamata = `output_tokens` (quando c'e').
+- **Testi**: «1 stadio su 1» (plurale i18n `lastRound_one/_other`); frase d'aggiornamento «ogni 2
+  secondi se gira qualcosa, ogni 15 se e' fermo»; `StageCard` non ripete la fase corrente nell'elenco
+  delle fasi chiuse.
+- **Documentazione**: `05-rest-api.md` e docstring di `progress_report.py` («6 letture, piu' una per
+  ogni processo locale con token in corso»); `note()` ora e' limitata come i contatori (la chiusura
+  scrive comunque l'ultima nota), docstring allineato.
+- Test nuovi: giro lungo vivo/pid riusato/pid morto/riga chiusa nel frattempo, chiusura con
+  l'interruttore aperto (e con database ancora spento), `bind` che ripulisce, `ProgrammingError`
+  con un solo avviso, token finali. Il test dei token in diretta ora esclude la scrittura finale.
+
+Non corretti (fuori dall'incarico): rilievo 4 (`source="cron"` senza terminale), rilievo 5 (`error`
+con `str(exc)`), le 7 query contro 6 del collaudo (probabile token di login), le prove non fatte
+del collaudo (giro vero con gli agenti reali, remoti, ore di Whisper).
+
+Esito (Postgres 16 usa-e-getta sulla porta 55433, poi spento e cancellato; produzione non toccata):
+
+```
+manage.py test --noinput                    -> Ran 236 tests in 25.229s   OK   (erano 227)
+manage.py makemigrations --check --dry-run  -> No changes detected
+npx tsc -b                                  -> exit 0
+npx vite build --outDir <scratchpad>/dist2  -> built in 30.36s   (FEC/dist non toccata)
+```
+
 ## 4. Revisione          (revisore)
+
+**Verdetto: passa.** Nessun rilievo bloccante. Letto tutto il diff `main..feat/processi-locali`
+(3 commit, solo sul ramo) e il file di lavoro. Non ho eseguito la suite (serve un database di
+prova): i 227 test sono quelli dichiarati dallo sviluppatore, non li ho riprovati. `stato:` resta
+`revisione` finche' il collaudo non e' scritto.
+
+**Controllato e a posto**
+- Invarianti: nessun terzo valore di `owner_type` (le tabelle nuove non hanno proprietario ne'
+  contenuti); i falliti restano `failed` (le righe fantasma si chiudono `failed`, nessun ritento,
+  non si toccano le colonne di stato di reel/articoli); nessuna credenziale nuova.
+- Segreti: nessuno nel diff (le sole corrispondenze sono `api_key: "k"` e `password="x"` nei test).
+- Migrazione `0026` non ancora applicata (cron 03:30/14:15 col codice nuovo): ogni scrittura passa
+  da `usage.guard` (`BEC/llm/usage.py` righe 148-164), che apre un savepoint (`transaction.atomic`)
+  e cattura `Exception`. Con le tabelle assenti il database solleva `ProgrammingError`: il savepoint
+  fa rollback, non avvelena la transazione di nessuno, `begin` restituisce una `Call` senza riga
+  (tutti i metodi non fanno nulla), `plan_stages` restituisce `{}` quindi `bind(None)` e i contatori
+  sono no-op. La chiamata al modello e lo stadio vanno avanti; resta solo qualche avviso nel log.
+  `ProgrammingError` non accende l'interruttore da 30 s (solo `OperationalError`/`InterfaceError`):
+  accettabile, perche' senza riga non ci sono altre scritture.
+- `client.py`: ritorni, timeout, fallback tra provider, lucchetto e `num_thread` invariati. La riga
+  locale nasce prima di `_ollama_slot`, `running()` e' la prima istruzione nel `with`; `rec.done()`
+  ora gira dopo il rilascio del lucchetto (il lucchetto si tiene meno, non di piu'). Per
+  `provider == "fast"` l'`endpoint` non e' mai `None` (`_providers`), quindi `endpoint["name"]` e'
+  sicuro.
+- Nessun prompt ne' risposta salvati: `begin` scrive solo `prompt_chars`, etichette e numeri.
+- Thread: contatore sotto `_lock`, `_tracked` conta una volta per elemento dentro il thread (anche
+  con `ENRICH_WORKERS=1`). Il server web e' `gthread` (`deploy/medycabrain-backend.service`), quindi
+  le richieste non girano nel thread principale e la riserva di processo di `usage.scope` non si
+  imposta li': nessuna etichetta passa da una richiesta all'altra.
+- `/ops/progress/` e `/ops/llm/`: `IsAuthenticated` come `PipelineStatusView`; niente
+  `LLMCall.error` nella risposta, solo la frase in chiaro di `StageRun.error`; nomi di account e
+  titoli gia' visibili nell'app (decisione 12).
+- Documentazione: modelli, pipeline, LLM, REST, frontend, riassunto, pagina `Documentazione`, drawio
+  pagina 2. Nessuno strumento MCP cambia, quindi `04-mcp-connector.md` giustamente non si muove.
+
+**Rilievi non bloccanti, per gravita'**
+
+1. `BEC/llm/usage.py` righe 306-316 (`close_ghosts`): per `StageRun` il tetto delle 3 ore usa
+   `created_at`, che e' il momento del piano (inizio giro), non l'ultimo battito. Con un giro che
+   dura piu' di 3 ore (plausibile quando `enrich` passera' al locale: 1617 reel x ~100 s), la prima
+   lettura della pagina chiude come `failed` / "giro interrotto" anche lo stadio che sta girando e
+   quelli ancora `waiting`, con il pid vivo. Poi `bind()` (`progress.py` riga 82) rimette `running`
+   ma non azzera `error` ne' `finished_at`, quindi il tempo passato resta congelato, e il fine
+   stadio sovrascrive tutto. Oggi un giro dura ~5 minuti, quindi non si vede; va corretto prima del
+   passaggio al locale (usare `updated_at` per `StageRun`, e azzerare `finished_at`/`error` in
+   `bind`). Stesso punto: l'`update` finale filtra solo `id__in=dead`, senza ripetere
+   `status__in=("waiting","running")`, quindi una riga appena chiusa `done` da un altro processo
+   nello stesso istante potrebbe essere riscritta `failed` (finestra minima, solo nel ramo delle 3
+   ore).
+2. `BEC/pipeline/agents/blogscrape_agent.py` (nuova riga prima di `to_fetch`) + `progress.py` righe
+   215-221: `note()` fa `_flush(force=True)`, quindi una scrittura per ogni articolo, fuori dal
+   limite "una ogni 2 s" scritto in disegno e nel docstring. Sono poche centinaia di scritture
+   protette, nessun rischio, ma il docstring non e' vero cosi' com'e'.
+3. `documentation/low-level/05-rest-api.md` e `progress_report.py` docstring dicono "6 letture" /
+   "four indexed reads": il numero cambia (una query in piu' per ogni processo locale con
+   `tokens_so_far`, `_typical_tokens`). Il test blocca 6 solo nello scenario provato. Da dire
+   "6 piu' una per processo locale in scrittura".
+4. `run_pipeline.py`: `source = "command" if sys.stdin.isatty() else "cron"` etichetta come `cron`
+   qualunque avvio senza terminale (anche un avvio da servizio o da un agente). Solo l'etichetta
+   sulla pagina.
+5. `usage.Call.fail` (`usage.py` riga 231): `error` contiene `str(exc)` troncato a 200 caratteri;
+   un `HTTPError` di `requests` ne riporta l'URL. Oggi gli endpoint non hanno chiavi nell'URL e il
+   campo non e' mai esposto dall'API, quindi non e' un problema; da ricordare se un provider mettera'
+   la chiave nella query.
+6. Non verificato da me ne' dallo sviluppatore: giro vero dopo `migrate`, database spento a meta',
+   pagina a 380 px e desktop, tempo di `/ops/progress/` contro i 50 ms. Tocca al collaudatore
+   (`scraper`, `downloader`, `transcriber`, `batch`, `blogscrape`, `knowledge` sono letti, non
+   eseguiti). Ordine suggerito: applicare `0026` e solo dopo far girare un giro.
+
 ## 5. Collaudo           (collaudatore)
+
+**Verdetto: PASSA**, con 5 note non bloccanti (in fondo) e un elenco di cose non provate. Collaudo del 13/11/2026 sul ramo `feat/processi-locali`. Tutto su una copia a lato: Postgres 16 temporaneo (porta 55432), `runserver` su 8031, frontend del ramo servito su 8032 (file statici + proxy). Il sito vero (9093), il suo database, `BEC/.env` e `FEC/dist` non sono stati toccati. A fine collaudo tutto è spento (porte 8031, 8032, 55432 libere; 9093 risponde 200 come prima; `git status` pulito a parte questo file).
+
+### 1. Suite, migrazioni, tipi, build
+
+```
+$ python manage.py makemigrations --check --dry-run   ->  No changes detected
+$ python manage.py check                              ->  System check identified no issues (0 silenced).
+$ python manage.py test --noinput                     ->  Ran 227 tests in 28.536s   OK
+$ npx tsc -b                                          ->  exit 0, nessun errore
+$ npx vite build --outDir <scratchpad>/dist           ->  ✓ built in 20.88s   (git status pulito: FEC/dist non toccata)
+```
+
+### 2. Il cron senza migrazione (database fermo a 0025, `llm_calls`/`stage_runs` assenti)
+
+Verificato: `showmigrations` -> `[X] 0025_search_indexes`, `[ ] 0026_llmcall_stagerun`; `\dt llm_calls` -> «Did not find any relation». Poi, col codice del ramo:
+
+```
+model qwen2.5:3b-instruct-q4_K_M order ['ollama'] threads 6
+tables present: []
+plan_stages -> {}
+query inside atomic after chat: 0          <- query dopo chat() DENTRO transaction.atomic: la transazione non è avvelenata
+chat out: 'Ciao!' 1.5s                     <- chiamata vera a Ollama, riuscita
+connection usable: True in_atomic: False
+```
+Righe di log prodotte: 3 `WARNING llm.usage [usage] ... ProgrammingError('relation "stage_runs"/"llm_calls" does not exist')` (piano degli stadi, riga di chiamata, pulizia). Nessuna eccezione.
+Poi `DAG.run` vero con 3 stadi finti (uno che apre il conteggio e scrive elementi, uno che solleva, uno ok) sullo stesso database:
+```
+✓ scrape done   ✗ download FAILED: RuntimeError('boom')   ✓ transcribe done
+✗ failed steps: download        exit code 1 connection usable True
+```
+Esito: **passa**. Il comportamento è quello di prima della modifica (stadi e chiamate vanno, il fallimento resta fallimento, codice di uscita 1). Nota: l'errore «tabella mancante» è `ProgrammingError`, non `OperationalError`, quindi l'interruttore da 30 s **non** scatta: a ogni scrittura il programma riprova e fa un warning. Con un giro vero senza migrazione i warning sono pochi (lo stadio non ha riga legata, quindi `progress` non scrive), ma una chiamata `chat()` in un giro lungo farebbe un tentativo + warning per chiamata. Costo: una query fallita per scrittura. Non rompe niente.
+
+### 3. Chiamata vera a Ollama via `client.chat` (copia a lato, `OLLAMA_NUM_THREAD=6`)
+
+Modello 3b (quello del `.env`), prompt corto, `max_tokens=60`. Stati letti da `psql` ogni ~3 s:
+```
+17:52:26 | running | qwen2.5:3b... | tokens_so_far 1
+17:52:30 | running | qwen2.5:3b... | tokens_so_far 30
+17:52:33 | done    | qwen2.5:3b... | so_far 49 | prompt 39 | output 60 | wait 0.0 | durata 9.2 | eval 7.8 | truncated t
+```
+Riga finale: `load_seconds 0.01, prompt_seconds 1.26, eval_seconds 7.78, prompt_tokens 39, output_tokens 60, max_tokens 60, status done, truncated t` (tetto di token raggiunto: giusto). **3b: 60 token in 7,78 s = 7,7 token/s** (il 3b non era misurato).
+Modello 7b, due processi insieme (per vedere la coda): 
+```
+id 2 done | 7b | wait 0      | durata 120.6 | load 103.69 | prompt 2.96 | eval 13.93 | out 60   -> 4,3 tok/s (a freddo, caricamento 104 s)
+id 3 done | 7b | wait 119.14 | durata 12.63 | load 0      | prompt 0.24 | eval 12.34 | out 60   -> 4,9 tok/s
+```
+La seconda chiamata ha aspettato 119 s il lucchetto (stato `waiting` -> `running` -> `done`, `wait_seconds` giusto). 7b a 4,3-4,9 tok/s: un po' sopra il 3,8-4,0 atteso, plausibile (prompt corto). `tokens_so_far` si muove durante la generazione (1 -> 30 -> 49) e cresce a ogni poll. Nota: a fine chiamata `tokens_so_far` resta l'ultimo valore scritto (49, 55, 52) e non diventa uguale a `output_tokens` (60); la pagina usa `output_tokens` quando la riga è `done`, quindi non si vede, ma il campo non è «sostituito dal numero vero» come dice il disegno (fatto 3). Esito: **passa**.
+
+### 4. Stadio simulato con `progress` (totale, avanzamenti, un fallimento a metà)
+
+`DAG.run` con 4 stadi finti (scrape 6, download 40 con eccezione dopo 12, transcribe 60 a 1/s con 1 elemento fallito, enrich 3 chiamate vere a Ollama). `GET /api/v1/ops/progress/` a metà giro (estratto):
+```
+scrape      done    6/6   who=none   phases=[{done 6, total 6, seconds 2}]
+download    failed  12/40 error "Errore imprevisto durante la lavorazione."  (RuntimeError con percorso interno: il percorso NON compare)
+transcribe  running 6/60  rate_per_minute 56.85  rate_source "measured"  eta_seconds 57  who "stt"  current {kind reel, label "@competitor · tr5"}
+enrich      waiting
+```
+Pagina a 18/60: «53,8 al min · passato 21s · mancano circa 47s». Per `enrich` (locale): «86 token · 5,4 token/s · sta scrivendo · locale · qwen2.5:3b»; «Velocità 5,3 al min, stima dai giri precedenti» (letta dal `logs/pipeline.log` vero, come da disegno). Stadio fallito: «Fallito», «12 fatti su 40 prima dell'errore».
+**Tempo di risposta** di `/ops/progress/`: con `curl` via proxy 8 richieste = 39, 44, 47, 49, 52, 68, 125, 47 ms (il 125 ha anche autenticazione e runserver); nel processo Django (10 richieste, test client) **15 / 19 / 53 ms (min/mediana/max)**, **7 query** (il test del ramo dice `assertNumQueries(6)`: la settima è probabilmente il token di login del client reale, non l'ho isolata). `/ops/llm/?day=` 26 ms. Soglia dei 50 ms: la mediana la rispetta, le richieste reali via HTTP stanno intorno a 40-70 ms, quindi **al limite**; dati reali (migliaia di righe) non provati.
+Processo ucciso con `kill -9` a metà giro: dopo ~3 s la pagina mostra «Interrotto alle 18:06: il processo si è fermato.» e le righe passano a `failed` / «giro interrotto» (la prima lettura dell'endpoint subito dopo la kill diceva ancora `running: true`: la pulizia è limitata a una volta ogni 30 s, come da disegno).
+
+### 5. La pagina da utente vero (Chromium headless, Playwright in un venv a lato; login vero con utente creato nel database a lato)
+
+Screenshot in `/tmp/claude-1001/-home-medyca-admin-projects-medycabrain/0d4cff47-c166-46c1-b8e9-f2d9487add1c/scratchpad/shots/` (m = 380 px, d = 1280 px):
+- niente in corso, tabelle vuote: `empty-m.png`, `empty-d.png` («Qui comparirà l'avanzamento dal prossimo giro.»)
+- niente in corso, dopo un giro: `idle-m.png`, `idle-d.png` («Non sta girando niente. Ultimo giro: oggi alle 18:04, 3 min, 1 stadi su 1.»)
+- stadio in corso con barra: `running-m.png` (transcribe 18/60, con download fallito e scrape finito sopra), `live-m.png` e `live-d.png` (enrich locale, riga «sta scrivendo ... 86 token 5,4 token/s»), `enrich*.png`
+- stadio fallito: visibile in `running-m.png` (scheda rossa con icona, parola «Fallito», frase, «12 fatti su 40 prima dell'errore»)
+- giro interrotto: `killed-m.png`
+- caricamento: `loading-m.png` (riquadro vuoto in attesa mentre «Oggi» è già visibile); errore: `error-m.png` («Non riesco a leggere l'avanzamento. Controlla la connessione e riprova.» + «Riprova»; risposta 500 simulata con intercettazione di rete)
+- Stato: `stato-m.png`, `stato-d.png`
+Misure: `scrollWidth` = 380 a 380 px e 1280 a 1280 px su tutte le viste (nessuno scorrimento orizzontale); nessun errore in console. Menu a sinistra su desktop: «Avanzamento» compare subito sotto «Stato pipeline», voce evidenziata sulla pagina. Le quattro caselle (Fatti, Velocità, Passato, Mancano) stanno 2x2 a 380 px (viste con gli occhi in `running-m.png` e `live-m.png`).
+**Pagina Stato**: sparito «Job in corso»; «Ora in esecuzione» dice «Quello che sta girando adesso si vede nella pagina Avanzamento.» + «Segui l'avanzamento, stadio per stadio»; il titolo è «Totale storico per stadio». Esito: **passa**. (Nota: il «La raccolta riparte il .» con data vuota è sul database a lato vuoto, non l'ho attribuito al ramo.)
+**Da guardare con occhi umani**: gli screenshot sopra sono stati guardati da me; il giudizio estetico (colori, peso del rosso del fallito, ritmo delle schede) resta a Giuseppe. Indirizzo/gesto: sul sito vero, dopo il rilascio, aprire `/avanzamento` e fare «Aggiorna ora» da Stato a telefono.
+
+### 6. Database spento a metà di uno stadio
+
+Postgres fermato (`pg_ctl stop -m fast`) a 18:07:12 mentre girava `transcribe` (30 elementi), riacceso a 18:07:52, con `enrich` (3 chiamate vere a Ollama, 400 token) nel mezzo:
+```
+WARNING llm.usage [usage] avanzamento non registrato: OperationalError('connection ... Connection refused')   (1 solo warning per stadio: l'interruttore da 30 s funziona)
+✓ transcribe done in 30.1s     ✓ enrich done in 50.4s     ✓ all steps completed
+```
+**Lo stadio prosegue e finisce**, le chiamate a Ollama funzionano a database spento. Prezzo: le righe scritte durante il buco mancano (le 3 chiamate di `enrich` non sono in `llm_calls`), e la riga `transcribe` è rimasta `running 10/30`: poi la pagina l'ha chiusa come `failed` «giro interrotto» pur essendo lo stadio finito bene (vedi nota 2). Esito: **passa** per il requisito (non si ferma), con questo limite.
+
+### Note non bloccanti (da decidere, non fermano il verdetto)
+
+1. Tabelle mancanti = `ProgrammingError`, non scatta l'interruttore: un tentativo e un warning per scrittura. Se il cron girasse senza migrazione il log si riempie di warning, nient'altro.
+2. Dopo un database spento a metà stadio, quello stadio può apparire «Fallito: giro interrotto» pur riuscito (il processo era vivo ma la riga non è stata aggiornata prima che il pid sparisse). Comunque è l'unico caso in cui la pagina «mente» in negativo; va scritto tra i limiti noti.
+3. Piccoli difetti di testo: «1 stadi su 1» (plurale); sotto «ADESSO» la frase «Si aggiorna da solo ogni 2 secondi» resta anche quando non gira niente (e allora è ogni 15 s); «Fase: download · download 12/40» ripete la parola (probabilmente effetto dei nomi che ho dato io alle fasi nella simulazione).
+4. `tokens_so_far` non è riallineato a `output_tokens` a fine chiamata (punto 3).
+5. 7 query invece di 6 e 40-70 ms via HTTP: al limite dei 50 ms del disegno.
+
+### Cosa NON ho potuto provare (e perché)
+
+- **Un giro vero con gli agenti reali** (`scraper`, `downloader`, `transcriber`, `batch`, `blogscrape`, `knowledge`, `enrich` vero): servirebbero Apify/Instagram/Whisper/Anthropic e dati; ho usato stadi finti che chiamano `progress.*` e `client.chat` come fanno gli agenti. Le sette modifiche agli agenti restano provate solo dai test e dalla lettura. Va guardato il primo giro della notte dopo il rilascio.
+- **Modelli remoti** (`usage` di Anthropic/OpenAI): nessuna chiave usata; la riga remota (inizio+fine) non è stata vista con una chiamata vera.
+- **Blocco «In consegna» con dati** (`BatchRun` aperti): sul database a lato non ce n'erano; visto solo il caso vuoto.
+- **Ore di Whisper nel totale «Oggi»**: non provate con una trascrizione vera.
+- **Menu a hamburger a 380 px** aperto, e il comportamento a scheda nascosta (nessuna richiesta in background): non guardati.
+- **Dati reali in volume** (tempo dell'endpoint con migliaia di righe) e **la pagina contro il backend di produzione** (non esiste ancora la migrazione lì, per ordine).
+- Il «giudizio visivo» finale è di Giuseppe (vedi sopra).
+- Nota d'ambiente: ho usato l'Ollama vero del VDS (porta 11434): ho caricato prima il 7b poi il 3b; ora è caricato il 3b. Nessun'altra modifica al servizio.
 ## 6. Rilascio           (rilasciatore)
 ## Registro delle decisioni
 

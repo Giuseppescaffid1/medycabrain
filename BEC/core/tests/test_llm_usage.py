@@ -11,14 +11,18 @@ from __future__ import annotations
 
 import contextlib
 import json
+import os
 import tempfile
+from datetime import timedelta
 from concurrent.futures import ThreadPoolExecutor
 from unittest import mock
 
 from django.db import OperationalError
 from django.test import SimpleTestCase, TestCase, override_settings
 
-from core.models import LLMCall
+from django.utils import timezone
+
+from core.models import LLMCall, StageRun
 from llm import client, usage
 
 SECRET_PROMPT = "TESTO-RISERVATO-DEL-PROMPT-12345"
@@ -137,7 +141,8 @@ class OllamaRecordingTests(TestCase):
                                return_value=_ollama_response(lines)):
             with mock.patch.object(usage.Call, "_update", autospec=True) as upd:
                 client.chat("s", "u", retries=0)
-        live = [c for c in upd.call_args_list if "tokens_so_far" in c.kwargs]
+        live = [c for c in upd.call_args_list
+                if "tokens_so_far" in c.kwargs and c.kwargs.get("status") != "done"]
         self.assertLessEqual(len(live), 1)
 
 
@@ -268,3 +273,68 @@ class GhostTests(TestCase):
         LLMCall.objects.create(process="x", status="running", pid=999_999_999)
         usage.close_ghosts()  # inside the interval: no write
         self.assertEqual(LLMCall.objects.get().status, "running")
+
+
+class LongRoundsAreNotGhostsTests(TestCase):
+    """A round of more than 3 hours (enrich on the local model) must not be
+    closed by the sweep while its process lives and keeps writing."""
+
+    def setUp(self):
+        usage._reset_breaker()
+        usage._last_reap = 0.0
+        self.pid = os.getpid()
+
+    def _stage(self, stage, status, created_ago, beat_ago):
+        row = StageRun.objects.create(run_id="long", stage=stage, status=status,
+                                      pid=self.pid)
+        now = timezone.now()
+        StageRun.objects.filter(id=row.id).update(
+            created_at=now - created_ago, updated_at=now - beat_ago)
+        return row
+
+    def test_a_live_round_with_a_recent_beat_is_left_alone_waiting_stages_too(self):
+        running = self._stage("enrich", "running", timedelta(hours=5), timedelta(seconds=3))
+        waiting = self._stage("embed", "waiting", timedelta(hours=5), timedelta(hours=5))
+        usage.close_ghosts()
+        for r in (running, waiting):
+            r.refresh_from_db()
+            self.assertIn(r.status, ("running", "waiting"))
+            self.assertEqual(r.error, "")
+
+    def test_a_live_pid_with_no_beat_for_hours_is_closed_as_a_reused_pid(self):
+        stuck = self._stage("enrich", "running", timedelta(hours=5), timedelta(hours=4))
+        usage.close_ghosts()
+        stuck.refresh_from_db()
+        self.assertEqual((stuck.status, stuck.error), ("failed", "giro interrotto"))
+
+    def test_a_dead_pid_is_still_closed_at_once(self):
+        row = StageRun.objects.create(run_id="d", stage="enrich", status="running",
+                                      pid=999_999_999)
+        usage.close_ghosts()
+        row.refresh_from_db()
+        self.assertEqual(row.status, "failed")
+
+    def test_a_row_closed_done_in_the_meantime_is_not_rewritten_failed(self):
+        row = StageRun.objects.create(run_id="d", stage="enrich", status="running",
+                                      pid=999_999_999)
+        real = StageRun.objects.filter
+
+        def closed_meanwhile(*a, **kw):
+            if "id__in" in kw:
+                StageRun.objects.filter(id=row.id).update(status="done")
+            return real(*a, **kw)
+        with mock.patch.object(StageRun.objects, "filter", side_effect=closed_meanwhile):
+            usage.close_ghosts()
+        row.refresh_from_db()
+        self.assertEqual(row.status, "done")
+
+
+class FinalTokensTests(TestCase):
+    def test_a_finished_call_closes_on_the_real_token_count(self):
+        usage._reset_breaker()
+        rec = usage.begin("ollama", "m", is_local=True, waiting=False)
+        rec.tokens(49)
+        rec.stats(output_tokens=60)
+        rec.done()
+        c = LLMCall.objects.get()
+        self.assertEqual((c.tokens_so_far, c.output_tokens), (60, 60))

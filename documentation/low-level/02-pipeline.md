@@ -689,7 +689,15 @@ stage (done/total, speed, elapsed, remaining). Mechanism:
   `start_item` still names the item for the model calls.
 - Writes are throttled to one per stage per 2 s (plus one when a phase opens or closes) and every
   write is wrapped: **if the database does not answer, the stage carries on** and the bar simply
-  stops moving.
+  stops moving. A dead database trips a 30 s breaker (also when the tables do not exist yet:
+  one warning in the log, not one per write). The write that closes a stage ignores the breaker
+  and is tried once, so a database that came back mid-stage still gets the final state.
+  **Known limit:** if the database is still down at that moment, the row stays `running` and
+  the page later closes it as «giro interrotto» although the stage finished well; the stage
+  itself, and the reels it processed, are fine. A round that lasts more than 3 hours is not
+  closed by mistake: for stages the sweep looks at the last beat (`updated_at`), and a
+  `waiting` stage of a round that still beats is left alone. `note()` is throttled like the
+  counters.
 - `enrich` and `knowledge` count **inside the worker thread** (`_tracked` in `enrich_agent.py`,
   once per item, not per rate-limit retry), because their results arrive in submission order
   and late; the counters are behind a lock (5 threads by default).

@@ -187,7 +187,7 @@ function lastRoundLine(r: RoundData, t: (k: string, o?: Record<string, unknown>)
   return t("progress.lastRound", {
     when: whenLabel(r.finished_at),
     duration: fmtDuration(Math.max(1, Math.round((end - start) / 1000))),
-    done: finished,
+    count: finished,
     total: r.stages.length,
   });
 }

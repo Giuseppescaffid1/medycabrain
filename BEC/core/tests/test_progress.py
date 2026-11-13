@@ -18,7 +18,7 @@ from unittest import mock
 
 from django.contrib.auth.models import User
 from django.core.management import call_command
-from django.db import OperationalError
+from django.db import OperationalError, ProgrammingError
 from django.test import SimpleTestCase, TestCase
 from django.utils import timezone
 from rest_framework.authtoken.models import Token
@@ -37,7 +37,7 @@ class CounterThreadSafetyTests(SimpleTestCase):
     def setUp(self):
         self.writes = []
         p = mock.patch.object(progress, "_write",
-                              side_effect=lambda f, sid=None: self.writes.append(dict(f)))
+                              side_effect=lambda f, sid=None, **kw: self.writes.append(dict(f)))
         p.start()
         self.addCleanup(p.stop)
         progress.bind(1)
@@ -425,3 +425,63 @@ class PruneTests(TestCase):
         call_command("prune_llm_calls", stdout=out)
         self.assertEqual(set(LLMCall.objects.values_list("id", flat=True)), {b.id, c.id})
         self.assertEqual(StageRun.objects.count(), 0)
+
+
+class DatabaseBackAtTheEndTests(TestCase):
+    """A stage that finished well must not look failed because the database
+    was down for a while in the middle of it."""
+
+    def setUp(self):
+        usage._reset_breaker()
+        self.addCleanup(usage._reset_breaker)
+
+    def test_the_closing_write_is_tried_even_with_the_breaker_open(self):
+        row = StageRun.objects.create(run_id="r", stage="enrich", pid=os.getpid())
+        progress.bind(row.id)
+        progress.open(3, "reel", "Analisi")
+        # the database dropped: an intermediate write trips the breaker...
+        with mock.patch("django.db.models.query.QuerySet.update",
+                        side_effect=OperationalError("giù")):
+            progress.item_done("done")
+            progress.note("n")  # (throttled or not, it must not raise)
+            progress._flush(force=True)
+        self.assertGreater(usage._breaker_until, 0)
+        # ...and is back when the stage closes: the final state is written.
+        progress.end_stage("done")
+        row.refresh_from_db()
+        self.assertEqual((row.status, row.done), ("done", 1))
+        self.assertEqual(usage._breaker_until, 0.0)
+
+    def test_a_still_dead_database_leaves_the_row_open_and_the_breaker_alone(self):
+        row = StageRun.objects.create(run_id="r", stage="enrich", pid=os.getpid())
+        progress.bind(row.id)
+        with mock.patch("django.db.models.query.QuerySet.update",
+                        side_effect=OperationalError("giù")):
+            progress.end_stage("done")
+        row.refresh_from_db()
+        self.assertEqual(row.status, "running")
+
+
+class BindResetsAReopenedRowTests(TestCase):
+    def test_a_row_closed_by_mistake_comes_back_clean(self):
+        row = StageRun.objects.create(run_id="r", stage="enrich", status="failed",
+                                      error="giro interrotto",
+                                      finished_at=timezone.now())
+        progress.bind(row.id)
+        row.refresh_from_db()
+        self.addCleanup(progress.end_stage, "done")
+        self.assertEqual((row.status, row.error, row.finished_at), ("running", "", None))
+
+
+class MissingTablesTripTheBreakerTests(TestCase):
+    def setUp(self):
+        usage._reset_breaker()
+        self.addCleanup(usage._reset_breaker)
+
+    def test_programming_error_warns_once_not_once_per_write(self):
+        boom = ProgrammingError('relation "stage_runs" does not exist')
+        with mock.patch("django.db.models.query.QuerySet.update", side_effect=boom), \
+             self.assertLogs("llm.usage", level="WARNING") as logs:
+            for _ in range(5):
+                usage.guard("avanzamento", lambda: StageRun.objects.filter(id=1).update(done=1))
+        self.assertEqual(len(logs.records), 1)

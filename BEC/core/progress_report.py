@@ -6,8 +6,9 @@ What `GET /api/v1/ops/progress/` and `GET /api/v1/ops/llm/` answer. Read-only
 from `stage_runs`, `llm_calls`, `jobs` and `batch_runs`, written by
 `core/progress.py` and `llm/usage.py`.
 
-`progress_snapshot()` is polled every 2 seconds by an open page, so it is four
-indexed reads and nothing else: no system commands, no log parsing
+`progress_snapshot()` is polled every 2 seconds by an open page, so it is six
+indexed reads, plus one more for every local process with a call already writing
+(`_typical_tokens`), and nothing else: no system commands, no log parsing
 (`ops.snapshot()` measures 303-566 ms because it does both). The one exception
 is the speed of earlier rounds, used before a stage has finished 3 items; it
 reads `queue_eta._measured_rates()` (cached by the log's size and mtime) and is

@@ -23,6 +23,9 @@ export function StageCard({ stage, updatedAt }: { stage: StageData; updatedAt?: 
   const { t } = useTranslation();
   const processed = stage.done + stage.failed + stage.skipped;
   const hasTotal = stage.total != null && stage.total > 0;
+  // A failed stage has already closed its current phase into `phases`: do not
+  // say it twice ("Fase: download · download 12/40").
+  const earlier = stage.phases.filter((p) => p.phase !== stage.phase);
 
   if (stage.status === "waiting") {
     return (
@@ -99,10 +102,10 @@ export function StageCard({ stage, updatedAt }: { stage: StageData; updatedAt?: 
       {stage.phase && (
         <p className="mt-1.5 text-xs text-muted">
           {t("progress.phase")}: <span className="font-semibold text-navy">{stage.phase}</span>
-          {stage.phases.length > 0 && (
+          {earlier.length > 0 && (
             <span>
               {" · "}
-              {stage.phases
+              {earlier
                 .map((p) => `${p.phase} ${p.done + p.skipped}/${p.total ?? "?"}`)
                 .join(" · ")}
             </span>
