@@ -85,3 +85,10 @@ nulla.
   è il compromesso, ed è scritto qui.
 - All'avvio il servizio precarica embedder e indice (a freddo la prima
   ricerca costava 14s; a caldo ~0,5s).
+
+## Cosa vede il cliente (accesso automatico)
+
+Dal novembre 2026 claude.ai, quando si preme Connect, esegue un suo giro di
+"accesso". Da noi è automatico: **nessuna schermata di login, nessuna password**.
+Il cliente incolla l'indirizzo, preme Connect e il connettore risulta collegato
+in pochi secondi. La chiave resta l'indirizzo con il segreto (vedi sopra).
