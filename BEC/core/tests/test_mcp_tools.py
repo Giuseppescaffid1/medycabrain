@@ -225,6 +225,22 @@ class MCPToolsGate(TestCase):
         self.assertEqual(hit["apri_nel_brain"],
                          "https://brain.example/content/blog/7")
 
+    def test_invite_page_uses_public_url(self):
+        # The invite page hands the client the connector address: it must come
+        # from MCP_PUBLIC_URL, not a hardcoded host that no longer answers.
+        import asyncio
+        sent = []
+
+        async def send(msg):
+            sent.append(msg)
+
+        with mock.patch.object(server, "MCP_PUBLIC_URL", "https://mcp.example"), \
+                mock.patch.object(server, "MCP_SECRET", "s3cret"):
+            asyncio.run(server._invite_page(send))
+        body = sent[1]["body"].decode()
+        self.assertIn("https://mcp.example/s3cret/mcp", body)
+        self.assertNotIn("messtudent.com", body)
+
     def test_server_instructions_forbid_citing_a_bare_number(self):
         # The instructions are what actually makes the client's Claude cite
         # readably; without this line the new field is just unused data.

@@ -29,6 +29,7 @@ What is measured, per layer:
 from __future__ import annotations
 
 import json
+import os
 import statistics
 import time
 from datetime import datetime, timezone
@@ -83,8 +84,8 @@ class Command(BaseCommand):
     def add_arguments(self, parser):
         parser.add_argument("--no-judge", action="store_true",
                             help="Salta il giudice LLM (solo metriche deterministiche).")
-        parser.add_argument("--base", default="https://messtudent.com/medyca-mcp",
-                            help="Base URL del connettore (default: percorso pubblico).")
+        parser.add_argument("--base", default=os.environ.get("MCP_PUBLIC_URL", "https://mcp.medyca.it").rstrip("/"),
+                            help="Base URL del connettore (default: MCP_PUBLIC_URL).")
 
     # ── MCP transport ──────────────────────────────────────────────────
     def _call(self, tool: str, args: dict) -> tuple[list[dict] | dict, float]:
