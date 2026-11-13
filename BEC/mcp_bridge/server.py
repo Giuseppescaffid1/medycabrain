@@ -19,7 +19,7 @@ and restarting. The trade-off is documented in docs/mcp-connettore-claude.md
 — whoever has the URL has read access, treat it like a password.
 
 Runs as its own service (uvicorn on 127.0.0.1:8020, systemd
-medycabrain-mcp) behind messtudent.com's existing HTTPS. Django is set up
+medycabrain-mcp) behind Caddy (HTTPS, mcp.medyca.it). Django is set up
 in-process for ORM access; this shares the backend's models but not its
 gunicorn workers, so a slow MCP call cannot occupy an app slot.
 """
@@ -43,12 +43,17 @@ from mcp.server.mcpserver import MCPServer  # noqa: E402
 
 MCP_SECRET = os.environ.get("MCP_SECRET", "")
 MCP_INVITE = os.environ.get("MCP_INVITE", "")
+# Public HTTPS base where clients reach the connector (Caddy in front,
+# Cloudflare proxied). An env var because it already moved once, from
+# messtudent.com/medyca-mcp to mcp.medyca.it: the invite page must not hand
+# out a dead address.
+MCP_PUBLIC_URL = os.environ.get("MCP_PUBLIC_URL", "https://mcp.medyca.it").rstrip("/")
 
 # Where the brain's own UI lives, so every reference can carry a link the
 # client can click. Never hardcoded: the brain moves with the deployment (IP
 # today, a hostname the day it gets one), and a stale link in a citation is
-# worse than no link. Default is the current preview, BRAIN_BASE_URL in
-# BEC/.env overrides it.
+# worse than no link. The default is only a fallback: the production value
+# is set in BEC/.env (BRAIN_BASE_URL).
 BRAIN_BASE_URL = os.environ.get("BRAIN_BASE_URL",
                                 "http://81.17.96.27:9093").rstrip("/")
 
@@ -572,7 +577,7 @@ def _clean(segment: str) -> str:
 
 
 async def _invite_page(send):
-    url = f"https://messtudent.com/medyca-mcp/{MCP_SECRET}/mcp"
+    url = f"{MCP_PUBLIC_URL}/{MCP_SECRET}/mcp"
     html = f"""<!doctype html><html lang="it"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex,nofollow">

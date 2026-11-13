@@ -27,7 +27,7 @@ Per stamparlo:
 
 ```
 cd /home/giuseppe/projects/medycabrain/BEC
-echo "https://messtudent.com/medyca-mcp/$(grep '^MCP_SECRET=' .env | cut -d= -f2)/mcp"
+echo "$(grep '^MCP_PUBLIC_URL=' .env | cut -d= -f2)/$(grep '^MCP_SECRET=' .env | cut -d= -f2)/mcp"
 ```
 
 Per ruotarlo (es. se l'URL è finito nelle mani sbagliate): cambiare
@@ -75,8 +75,9 @@ nulla.
   (l'8020 era occupata da ig-reels-publisher). Processo separato dal
   backend: una chiamata MCP lenta non occupa i worker dell'app.
 - HTTPS: i connettori claude.ai lo esigono; si appoggia al certificato di
-  messtudent.com (`location /medyca-mcp/` nel server 443 di
-  `sites-enabled/spi`). Il dominio medycabrain non ha ancora DNS/SSL propri.
+  `https://mcp.medyca.it`: Caddy sul server prende il certificato e passa
+  le richieste al servizio; Cloudflare fa da proxy in modalità Full (strict).
+  L'indirizzo si cambia con `MCP_PUBLIC_URL` in `.env`.
 - Autenticazione: segreto nel percorso, verificato dall'app (non da nginx,
   così ruota da `.env` senza sudo). OAuth completo (authorization server +
   dynamic client registration) sarebbe sproporzionato per un solo cliente —

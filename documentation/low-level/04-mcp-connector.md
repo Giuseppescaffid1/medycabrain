@@ -37,7 +37,7 @@ MCPServer`), which calls `django.setup()` in-process so it can use the ORM. The 
 
 ```mermaid
 flowchart TD
-    Claude["Claude on claude.ai"] -->|"HTTPS /medyca-mcp/SECRET/mcp"| NG["nginx :443<br/>(messtudent.com)"]
+    Claude["Claude on claude.ai"] -->|"HTTPS mcp.medyca.it/SECRET/mcp"| NG["Caddy :443<br/>(mcp.medyca.it, Cloudflare Full strict)"]
     NG -->|"proxy"| U["uvicorn 127.0.0.1:8025<br/>mcp_bridge.server:app<br/>(systemd medycabrain-mcp)"]
     U --> DJ["django.setup() in-process"]
     DJ --> ORM["Django ORM"]
@@ -277,7 +277,8 @@ groundedness, all of which the suite checks at 100%.
   `MCP_SECRET` (from `BEC/.env`). A `_clean()` step strips whitespace/invisible unicode from
   copy-pasted URLs and forgives a missing `/mcp` suffix. There is no OAuth/login — **the URL
   is the credential**. Full OAuth was judged disproportionate for a single client.
-- **Public URL:** `https://messtudent.com/medyca-mcp/{MCP_SECRET}/mcp`. The server also serves a
+- **Public URL:** `{MCP_PUBLIC_URL}/{MCP_SECRET}/mcp`, i.e. `https://mcp.medyca.it/{MCP_SECRET}/mcp`
+  (`MCP_PUBLIC_URL` in `BEC/.env`; it used to be `messtudent.com/medyca-mcp`). The server also serves a
   small "invito" HTML page (`MCP_INVITE`) with a copy button.
 - **Process/port:** systemd unit `medycabrain-mcp` runs
   `venv/bin/uvicorn mcp_bridge.server:app --host 127.0.0.1 --port 8025 --workers 1`. It is its
@@ -288,10 +289,10 @@ groundedness, all of which the suite checks at 100%.
   a search was ~14 s; warm ~0.5 s). The embedder load is behind a lock: warming runs in a
   background thread while requests are already being served, and two concurrent loads of
   SentenceTransformer leave it half-built (`Cannot copy out of meta tensor`).
-- **HTTPS:** no dedicated DNS/cert for medycabrain — it rides `messtudent.com`'s existing 443
-  cert via an nginx `location /medyca-mcp/` block that proxies to `127.0.0.1:8025`. **That
-  nginx block is not in this repo** — `deploy/nginx-medycabrain.conf` is only the port-9093 app
-  preview and has no MCP route.
+- **HTTPS:** `mcp.medyca.it` is served by Caddy on the server (144.91.123.46), which gets its own
+  cert and proxies to `127.0.0.1:8025`; Cloudflare sits in front as a proxy in Full (strict)
+  mode. **The Caddy config is not in this repo** — `deploy/nginx-medycabrain.conf` is only the
+  port-9093 app preview and has no MCP route.
 
 ## Registering it on claude.ai
 
