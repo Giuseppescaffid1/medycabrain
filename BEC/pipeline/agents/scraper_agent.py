@@ -30,6 +30,7 @@ from pathlib import Path
 from django.conf import settings
 from django.utils import timezone as dj_tz
 
+from core import progress
 from core.models import PENDING, Reel, ScraperConfig, TrackedAccount
 from scraper import ig_client, instaloader_fallback
 from scraper.session_store import load_cookies
@@ -392,23 +393,31 @@ def run(ctx) -> dict:
     per_account = {}
     money_stopped = False
     spent_before = (apify_budget.spend(force=True) or {}).get("spent_usd")
+    # No model works here: the bar counts accounts, the page says "nessun modello".
+    progress.open(accounts.count(), "account", "Account")
     for account in accounts:
+        progress.start_item(*progress.describe(account))
         if budget[0] <= 0:
             per_account[account.username] = "skipped (budget)"
+            progress.item_done("skipped")
             continue
         # Once the money ceiling is reached, every remaining account would be
         # refused anyway. Say it once and stop asking — a dozen identical
         # "budget exceeded" lines read as a dozen failures.
         if money_stopped:
             per_account[account.username] = "skipped (tetto di spesa)"
+            progress.item_done("skipped")
             continue
         new_count, err = _scrape_one(account, provider_order, budget)
         if err and "tetto" in err:
             money_stopped = True
+            progress.note("fermato: tetto di spesa Apify")
+            progress.item_done("skipped")
             per_account[account.username] = "skipped (tetto di spesa)"
             logger.warning("[scraper] fermato dal tetto di spesa Apify: %s", err)
             continue
         per_account[account.username] = new_count if err is None else f"error: {err}"
+        progress.item_done("done" if err is None else "failed")
         if err is None:
             total_new += new_count
             account.last_scraped_at = dj_tz.now()

@@ -862,3 +862,136 @@ class BatchRun(models.Model):
     def __str__(self):
         return f"{self.kind} {self.batch_id} ({self.status})"
 
+
+
+class StageRun(models.Model):
+    """One stage of one pipeline round: the numbers behind the "Avanzamento" bars.
+
+    Only the agent knows how many items its round will cover (the list is built
+    in memory at the start and never written anywhere), and counting rows by
+    status cannot rebuild it: the downloader takes a capped slice of the queue,
+    may stop early on Instagram's quota and re-queues its failures at the end,
+    so "pending" can go backwards. Hence a row of its own, written by
+    `core/progress.py`.
+
+    No owner and no content: names only appear in `current`, as short labels.
+    A row left `waiting`/`running` by a dead process is closed as `failed`
+    ("giro interrotto") by whoever reads the page — never re-queued.
+    """
+
+    STATUS_CHOICES = [
+        ("waiting", "waiting"),   # planned, not started yet
+        ("running", "running"),
+        ("done", "done"),
+        ("failed", "failed"),
+    ]
+    SOURCE_CHOICES = [
+        ("cron", "automatico"),
+        ("manual", "avviato a mano"),
+        ("command", "comando"),
+    ]
+
+    run_id = models.CharField(max_length=32)  # same code on every stage of a round
+    stage = models.CharField(max_length=24)
+    source = models.CharField(max_length=8, choices=SOURCE_CHOICES, default="cron")
+    job = models.ForeignKey("Job", null=True, blank=True, on_delete=models.SET_NULL,
+                            related_name="stage_runs")
+    pid = models.IntegerField(null=True, blank=True)
+
+    status = models.CharField(max_length=8, choices=STATUS_CHOICES, default="waiting")
+    error = models.CharField(max_length=300, blank=True, default="")
+    note = models.CharField(max_length=200, blank=True, default="")
+
+    # `total` stays null until the agent declares it: the page then shows
+    # "in corso da N min" without numbers, like tqdm without a total.
+    total = models.IntegerField(null=True, blank=True)
+    done = models.IntegerField(default=0)
+    failed = models.IntegerField(default=0)
+    skipped = models.IntegerField(default=0)
+    unit = models.CharField(max_length=16, blank=True, default="")
+    phase = models.CharField(max_length=40, blank=True, default="")
+    # Phases already closed: [{"phase", "total", "done", "failed", "skipped", "seconds"}]
+    phases = models.JSONField(default=list, blank=True)
+    # What a stage without an LLM is working on: {"kind", "id", "label", "who"}
+    current = models.JSONField(default=dict, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    started_at = models.DateTimeField(null=True, blank=True)
+    phase_started_at = models.DateTimeField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = "stage_runs"
+        ordering = ["-created_at", "id"]
+        indexes = [models.Index(fields=["status"]), models.Index(fields=["run_id"])]
+
+    def __str__(self):
+        return f"{self.stage} {self.run_id} ({self.status})"
+
+
+class LLMCall(models.Model):
+    """One attempt to ask a model something (or to transcribe one audio file).
+
+    Numbers and short labels only: **never the prompt, never the answer**.
+    The row is born BEFORE the call (`waiting` for the local model's lock,
+    `running` otherwise) so the page can say who is working now, and closed
+    when it ends. See `llm/usage.py`, the only writer.
+    """
+
+    STATUS_CHOICES = [
+        ("waiting", "waiting"),   # queued for the local model's lock
+        ("running", "running"),
+        ("done", "done"),
+        ("failed", "failed"),
+    ]
+
+    kind = models.CharField(max_length=4, default="chat")  # chat | stt
+    process = models.CharField(max_length=40)  # pipeline:enrich, job:strategy, web:chat...
+    stage = models.CharField(max_length=24, blank=True, default="")
+    job = models.ForeignKey("Job", null=True, blank=True, on_delete=models.SET_NULL,
+                            related_name="llm_calls")
+    run_id = models.CharField(max_length=32, blank=True, default="")
+    pid = models.IntegerField(null=True, blank=True)
+    stage_run = models.ForeignKey(StageRun, null=True, blank=True,
+                                  on_delete=models.SET_NULL, related_name="llm_calls")
+
+    # The item being worked on: a short name, never its text.
+    item_kind = models.CharField(max_length=8, blank=True, default="")  # reel|article|upload
+    item_id = models.IntegerField(null=True, blank=True)
+    item_label = models.CharField(max_length=80, blank=True, default="")
+
+    provider = models.CharField(max_length=40, blank=True, default="")
+    is_local = models.BooleanField(default=False)
+    model = models.CharField(max_length=80, blank=True, default="")
+
+    status = models.CharField(max_length=8, choices=STATUS_CHOICES, default="running")
+    truncated = models.BooleanField(default=False)
+    error = models.CharField(max_length=300, blank=True, default="")
+
+    created_at = models.DateTimeField(auto_now_add=True)  # entered the queue
+    started_at = models.DateTimeField(null=True, blank=True)  # lock taken
+    finished_at = models.DateTimeField(null=True, blank=True)
+    wait_seconds = models.FloatField(null=True, blank=True)
+    duration_seconds = models.FloatField(null=True, blank=True)
+    load_seconds = models.FloatField(null=True, blank=True)
+    prompt_seconds = models.FloatField(null=True, blank=True)
+    eval_seconds = models.FloatField(null=True, blank=True)
+
+    prompt_tokens = models.IntegerField(null=True, blank=True)
+    output_tokens = models.IntegerField(null=True, blank=True)
+    tokens_so_far = models.IntegerField(null=True, blank=True)  # live, counted per chunk
+    max_tokens = models.IntegerField(null=True, blank=True)
+    prompt_chars = models.IntegerField(null=True, blank=True)
+
+    class Meta:
+        db_table = "llm_calls"
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["status"]),
+            models.Index(fields=["created_at"]),
+            models.Index(fields=["process", "created_at"]),
+        ]
+
+    def __str__(self):
+        return f"{self.process} {self.provider} ({self.status})"

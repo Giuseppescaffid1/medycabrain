@@ -67,8 +67,9 @@ erDiagram
     KnowledgeDocument ||--o{ CustomTopicMatch : ""
 ```
 
-Not drawn (no hard FKs, they are outputs / bookkeeping): `BlogDraft`, `ContentIdea`,
-`StrategyBrief`, `Job`, `ScraperConfig`, `BatchRun`.
+Not drawn above (no hard FKs, they are outputs / bookkeeping): `BlogDraft`, `ContentIdea`,
+`StrategyBrief`, `Job`, `ScraperConfig`, `BatchRun`. The two progress tables have their own
+small diagram, in [the bookkeeping section](#progress-tables-stagerun-and-llmcall-migration-0026).
 
 ## The tables, grouped by role
 
@@ -265,6 +266,54 @@ Three assignment tables tie content to a cluster *within a run*:
 - `kind` (`ideation|pipeline|blog|strategy|strategy_draft|editorial|blogsource_discover|upload_transcribe|link_transcribe`),
   `status` (`queued|running|done|failed`), `progress` (0–100), `message`, `params`/`result`
   (JSON), `error`, `finished_at`; helper `set_progress()`.
+
+### Progress tables: `StageRun` and `LLMCall` (migration 0026)
+
+Behind the «Avanzamento» page. Written by `core/progress.py` and `llm/usage.py`, read by
+`core/progress_report.py`. **No owner (`owner_type`) and no content**: a stage row holds counts,
+a call row holds numbers and a short item label (`@account · shortcode`, an article title,
+at most 80 characters). The prompt and the answer are **never** stored. Detail is kept 90 days
+(`LLM_CALL_RETENTION_DAYS`, `manage.py prune_llm_calls`); older daily totals are lost (no
+summary table in v1).
+
+```mermaid
+erDiagram
+    Job ||--o{ StageRun : "SET_NULL"
+    Job ||--o{ LLMCall : "SET_NULL"
+    StageRun ||--o{ LLMCall : "SET_NULL"
+```
+
+**`StageRun`** — `stage_runs`. One row per stage of one pipeline round (the bar).
+- `run_id` (same code on every stage and every call of the round), `stage`, `source`
+  (`cron|manual|command`), `job` (set when the round is a UI-started `Job`), `pid`.
+- `status` (`waiting|running|done|failed`), `error` (a client sentence, never a repr or a
+  path), `note` (e.g. «fermato: quota Instagram esaurita»).
+- Counters: `total` (**null until the agent declares it** — the page then says «in corso da N
+  min» with no numbers), `done`, `failed`, `skipped`, `unit`, `phase`, `phases` (JSON list of the
+  phases already closed: `{phase,total,done,failed,skipped,unit,seconds}`), `current` (JSON
+  `{kind,id,label,who}`, for stages that call no model).
+- Times: `created_at`, `started_at`, `phase_started_at`, `updated_at`, `finished_at`.
+- Why a table and not counts on `Reel`: only the agent knows its round's total, and counting
+  rows is wrong on `download` (capped slice, early stop on the Instagram quota, failures
+  re-queued at the end: "pending" can go backwards).
+- Indexed `status`, `run_id`.
+
+**`LLMCall`** — `llm_calls`. One row per attempt to ask a model, or to transcribe one file.
+- `kind` (`chat|stt`), `process` (`pipeline:enrich`, `job:strategy`, `web:chat`, `mcp:cerca`,
+  `cmd:reprocess`, `altro`), `stage`, `job`, `run_id`, `pid`, `stage_run`.
+- Item: `item_kind` (`reel|article|upload|…`), `item_id`, `item_label`.
+- With what: `provider` (`ollama`, `hf`, the endpoint name, `whisper`/`whisper-locale`),
+  `is_local`, `model`.
+- State: `waiting` (queued for the local model's lock) → `running` → `done|failed`, plus
+  `truncated` (answer cut by the token ceiling or by the timeout, which returns partial text
+  without an error) and `error` (short).
+- Times: `created_at` (entered the queue), `started_at` (lock taken), `finished_at`,
+  `wait_seconds`, `duration_seconds`, `load_seconds`, `prompt_seconds`, `eval_seconds`.
+- Tokens: `prompt_tokens`, `output_tokens`, `tokens_so_far` (live: chunks counted, written at
+  most every 2 s), `max_tokens` (the ceiling asked for), `prompt_chars`.
+- Indexed `status`, `created_at`, `(process, created_at)`.
+- A process killed mid-call leaves a `waiting`/`running` row: whoever reads the page closes it
+  as `failed` («processo interrotto») when the `pid` is gone or after 3 hours. Never re-queued.
 
 ## Why embeddings are JSON, not pgvector
 

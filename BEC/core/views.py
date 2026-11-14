@@ -1146,6 +1146,30 @@ class StrategyBriefViewSet(viewsets.ModelViewSet):
         return Response(serializers.JobSerializer(job).data, status=status.HTTP_202_ACCEPTED)
 
 
+class ProgressView(APIView):
+    """`GET /ops/progress/` — what is running right now, stage by stage.
+
+    Polled every 2 s by the Avanzamento page, so it only does indexed reads
+    (see core/progress_report.py); `/ops/status/` is too heavy for that.
+    """
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from core import progress_report
+        return Response(progress_report.progress_snapshot())
+
+
+class LLMDailyView(APIView):
+    """`GET /ops/llm/?day=AAAA-MM-GG` — machine hours per kind of process."""
+
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        from core import progress_report
+        return Response(progress_report.daily_report(request.query_params.get("day")))
+
+
 class PipelineStatusView(APIView):
     """Operational view of the pipeline: how far each stage has got.
 

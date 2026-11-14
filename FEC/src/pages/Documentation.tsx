@@ -203,6 +203,16 @@ export default function Documentation() {
               </p>
             </section>
 
+            {/* ── Where to watch a round, item by item ─────────────── */}
+            <section>
+              <h2 className="mb-3 text-xs font-bold uppercase tracking-wider text-muted">
+                {t("docs.progress.title")}
+              </h2>
+              <p className="rounded-xl border border-border bg-surface p-4 text-sm leading-relaxed text-navy shadow-card">
+                {t("docs.progress.body")}
+              </p>
+            </section>
+
             {/* ── Known limits: say it before the client discovers it ── */}
             <section>
               <h2 className="mb-3 text-xs font-bold uppercase tracking-wider text-muted">

@@ -29,7 +29,7 @@ from django.conf import settings
 from django.db.models import Count, Q
 
 from core.models import DONE, KnowledgeDocument, Reel
-from llm import client
+from llm import client, usage
 
 logger = logging.getLogger(__name__)
 
@@ -398,10 +398,13 @@ def _rerank(query: str, hits: list[dict]) -> list[dict]:
         # truncation fail *fast* — it is deterministic, so retrying it 3× only
         # multiplies the latency the client feels as "search not working"
         # before this same except-block falls back to the blend order anyway.
-        data = client.chat_json(
-            "Sei un valutatore di pertinenza per una ricerca. Solo JSON valido.",
-            user, max_tokens=2000, temperature=0.0,
-            model=client.model_for("bulk"), retries=0)
+        # `default=True`: from the chat this stays "web:chat"; from the MCP
+        # search (its own process, no other label) it is "mcp:cerca".
+        with usage.scope("mcp:cerca", default=True):
+            data = client.chat_json(
+                "Sei un valutatore di pertinenza per una ricerca. Solo JSON valido.",
+                user, max_tokens=2000, temperature=0.0,
+                model=client.model_for("bulk"), retries=0)
         order = data.get("ordine") if isinstance(data, dict) else None
         if not order:
             return hits
@@ -649,7 +652,9 @@ def answer(query: str, top_k: int = 8, scope: str = "all",
     the reasoning model — the same one that analyses transcripts — because
     reading several sources and refusing to over-claim is judgement work.
     """
-    p = _prepare(query, top_k, scope, history, references, content_type)
+    # The retrieval's reranker calls the model too: it belongs to the chat.
+    with usage.scope("web:chat"):
+        p = _prepare(query, top_k, scope, history, references, content_type)
     hits = p["hits"]
     if not hits:
         return {"answer": "La knowledge bank è ancora vuota o non indicizzata.",
@@ -659,13 +664,14 @@ def answer(query: str, top_k: int = 8, scope: str = "all",
                 "sources": hits, "model": "",
                 "reference_problems": p["ref_problems"]}
     try:
-        text = client.chat(
-            p["system"], p["user"],
-            max_tokens=900, temperature=0.2, priority=True, timeout=600,
-            # Deliberately the reasoning tier, not the analysis one: the chat
-            # answers many questions a day and does not need the deepest model.
-            model=client.model_for("reasoning"),
-        )
+        with usage.scope("web:chat"):
+            text = client.chat(
+                p["system"], p["user"],
+                max_tokens=900, temperature=0.2, priority=True, timeout=600,
+                # Deliberately the reasoning tier, not the analysis one: the chat
+                # answers many questions a day and does not need the deepest model.
+                model=client.model_for("reasoning"),
+            )
         used = client.last_model_used()
     except Exception as exc:  # noqa: BLE001
         text, used = f"(Errore nella generazione: {exc!r})", ""

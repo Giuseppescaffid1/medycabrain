@@ -30,6 +30,7 @@ import logging
 
 from django.conf import settings
 
+from core import progress
 from core.models import DONE, FAILED, PENDING, DocumentArgument, KnowledgeDocument
 from llm import client, prompts
 
@@ -208,7 +209,9 @@ def run(ctx) -> dict:
             qs = qs[: ctx.limit]
         # The cost of a document is the model's reading time, not CPU:
         # the reel stage's thread pool applies unchanged.
-        for doc, _res, exc in _parallel(list(qs), _enrich_one):
+        docs = list(qs)
+        progress.open(len(docs), "articoli", "Analisi")
+        for doc, _res, exc in _parallel(docs, _enrich_one):
             if exc is None:
                 enriched += 1
             else:
@@ -222,7 +225,9 @@ def run(ctx) -> dict:
             argument_status=PENDING, enrich_status=DONE, is_active=True)
         if ctx.limit:
             qs_a = qs_a[: ctx.limit]
-        for doc, n, exc in _parallel(list(qs_a), _extract_arguments):
+        arg_list = list(qs_a)
+        progress.open(len(arg_list), "articoli", "Affermazioni")
+        for doc, n, exc in _parallel(arg_list, _extract_arguments):
             if exc is None:
                 doc.argument_status = DONE
                 doc.save(update_fields=["argument_status"])
@@ -241,11 +246,16 @@ def run(ctx) -> dict:
         embed_status=PENDING, is_active=True).exclude(content_text="")
     if ctx.limit:
         qs2 = qs2[: ctx.limit]
-    for doc in qs2:
+    to_embed = list(qs2)
+    progress.open(len(to_embed), "articoli", "Vettori")
+    for doc in to_embed:
+        progress.start_item(*progress.describe(doc))
         try:
             _embed_one(doc)
             embedded += 1
+            progress.item_done("done")
         except Exception as exc:  # noqa: BLE001
+            progress.item_done("failed")
             doc.embed_status = FAILED
             doc.last_error = repr(exc)[:500]
             doc.save(update_fields=["embed_status", "last_error"])

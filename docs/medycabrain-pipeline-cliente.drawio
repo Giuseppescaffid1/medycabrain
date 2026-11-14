@@ -208,7 +208,12 @@
         <mxCell id="l_le9" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#D5E3F2;endArrow=block;endFill=1;" edge="1" parent="1" source="l_db" target="l_api"><mxGeometry relative="1" as="geometry" /></mxCell>
         <mxCell id="l_le10" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#D5E3F2;endArrow=block;endFill=1;" edge="1" parent="1" source="l_api" target="l_fe"><mxGeometry relative="1" as="geometry" /></mxCell>
         <mxCell id="l_le11" value="scrive" style="edgeStyle=orthogonalEdgeStyle;rounded=1;html=1;strokeColor=#D5E3F2;endArrow=block;endFill=1;fontColor=#52688A;fontSize=10;" edge="1" parent="1" source="l_scr" target="l_db"><mxGeometry relative="1" as="geometry" /></mxCell>
-      </root>
+      
+        <!-- AVANZAMENTO (2026-11-13) -->
+        <mxCell id="l_prog" value="AVANZAMENTO — stage_runs + llm_calls (pagina /avanzamento)&#10;DAG.run scrive una riga per stadio (waiting&#8594;running&#8594;done/failed); gli agenti dichiarano totale ed elementi (core/progress.py, scritture ogni 2 s, mai fatali)&#10;chat() registra ogni chiamata al modello: waiting&#8594;running&#8594;done, token, secondi, attesa del lock (llm/usage.py) &#8212; mai prompt n&#233; risposta&#10;GET /ops/progress/ ogni 2 s (6 letture indicizzate) &#183; GET /ops/llm/ totali del giorno &#183; dettaglio tenuto 90 giorni (prune_llm_calls)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#EEF5FD;strokeColor=#4A6FAC;fontColor=#2C4984;fontSize=11;align=left;spacingLeft=10;verticalAlign=top;spacingTop=8;arcSize=8;" vertex="1" parent="1">
+          <mxGeometry x="450" y="620" width="790" height="120" as="geometry" />
+        </mxCell>
+</root>
     </mxGraphModel>
   </diagram>
 

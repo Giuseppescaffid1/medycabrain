@@ -238,28 +238,6 @@ export default function Status() {
                   <EvalsPanel runs={data.operations?.evals ?? []} />
                 </section>
 
-                {/* Running jobs */}
-                <section>
-                  <h2 className="mb-3 text-xs font-bold uppercase tracking-wider text-muted">
-                    {t("status.jobs")}
-                  </h2>
-                  {data.jobs.length === 0 ? (
-                    <p className="text-sm text-muted">{t("status.noJobs")}</p>
-                  ) : (
-                    <div className="space-y-2">
-                      {data.jobs.map((j) => (
-                        <div key={j.id} className="rounded-xl border border-border bg-surface p-3 shadow-card">
-                          <div className="flex justify-between gap-3 text-sm">
-                            <span className="font-semibold text-navy">{j.kind_label ?? j.kind}</span>
-                            <span className="tabular-nums text-muted">{j.progress}%</span>
-                          </div>
-                          <div className="truncate text-xs text-muted">{j.message}</div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </section>
-
                 {/* What is running right now */}
                 <Operations data={data.operations} />
 
